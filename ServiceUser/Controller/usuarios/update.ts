@@ -28,7 +28,7 @@ export async function updateUsuario(
     const id = ctx.params.id;
     const contentType = ctx.request.headers.get("content-type") ?? "";
 
-    // ── Parseo del cuerpo ────────────────────────────────────────────────────
+    //Parseo del cuerpo
     // deno-lint-ignore no-explicit-any
     let datos: Record<string, any> = {};
     let fotoBytes: Uint8Array | null = null;
@@ -47,7 +47,7 @@ export async function updateUsuario(
       datos = await ctx.request.body.json();
     }
 
-    // ── Obtener estado actual del usuario ────────────────────────────────────
+    //Obtener estado actual del usuario
     const currentRes = await query<{
       foto_url: string | null;
       username: string;
@@ -69,7 +69,7 @@ export async function updateUsuario(
 
     const current = currentRes.rows[0];
 
-    // ── Procesado de imagen (sobreescribir mismo key) ─────────────────────────
+    //Procesado de imagen (sobreescribir mismo key)
     let newFotoUrl: string | null = current.foto_url;
 
     if (fotoBytes !== null) {
@@ -93,7 +93,7 @@ export async function updateUsuario(
       newFotoUrl = await uploadImage(imageKey, new Uint8Array(webpBuffer));
     }
 
-    // ── Actualización en transacción ─────────────────────────────────────────
+    //Actualización en transacción
     const {
       nombre,
       apellidoPaterno,
