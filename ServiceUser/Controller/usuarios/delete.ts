@@ -21,7 +21,7 @@ export async function deleteUsuario(
   try {
     const id = ctx.params.id;
 
-    // ── Obtener foto_url antes de borrar ─────────────────────────────────────
+    //Obtener foto_url antes de borrar
     const userRes = await query<{ foto_url: string | null }>(
       `SELECT foto_url FROM usuarios WHERE id = $1`,
       [id],
@@ -35,10 +35,10 @@ export async function deleteUsuario(
 
     const fotoUrl = userRes.rows[0].foto_url;
 
-    // ── Eliminar de la BD (CASCADE borra cuenta, docs, dir, contactos, etc.) ─
+    //Eliminar de la BD (CASCADE borra cuenta, docs, dir, contactos, etc.)
     await query(`DELETE FROM usuarios WHERE id = $1`, [id]);
 
-    // ── Eliminar imagen de MinIO ──────────────────────────────────────────────
+    //Eliminar imagen de MinIO
     if (fotoUrl) {
       const key = getKeyFromUrl(fotoUrl);
       if (key) {

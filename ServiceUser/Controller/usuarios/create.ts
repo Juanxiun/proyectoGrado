@@ -23,7 +23,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
   try {
     const contentType = ctx.request.headers.get("content-type") ?? "";
 
-    // ── Parseo del cuerpo ────────────────────────────────────────────────────
+    //Parseo del cuerpo
     // deno-lint-ignore no-explicit-any
     let datos: Record<string, any>;
     let fotoBytes: Uint8Array | null = null;
@@ -49,7 +49,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
       datos = await ctx.request.body.json();
     }
 
-    // ── Validación de campos obligatorios ────────────────────────────────────
+    //Validación de campos obligatorios
     const {
       rolId,
       nombre,
@@ -77,7 +77,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
       return;
     }
 
-    // ── Obtener nombre del rol para el nombrado de la imagen ─────────────────
+    //Obtener nombre del rol para el nombrado de la imagen
     const rolResult = await query<{ id: bigint; rol: string }>(
       `SELECT id, rol FROM roles WHERE id = $1`,
       [rolId],
@@ -89,7 +89,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
     }
     const rolNombre = rolResult.rows[0].rol.toLowerCase();
 
-    // ── Procesado de imagen → WebP → MinIO ──────────────────────────────────
+    //Procesado de imagen → WebP → MinIO
     let fotoUrl: string | null = null;
 
     if (fotoBytes !== null) {
@@ -106,11 +106,11 @@ export async function createUsuario(ctx: Context): Promise<void> {
       fotoUrl = await uploadImage(imageKey, new Uint8Array(webpBuffer));
     }
 
-    // ── Hash de contraseña ───────────────────────────────────────────────────
+    //Hash de contraseña
     // deno-lint-ignore no-explicit-any
     const passwordHash: string = await (bcrypt as any).hash(cuenta.password, 12);
 
-    // ── Inserción en transacción ─────────────────────────────────────────────
+    //Inserción en transacción
     const usuarioId = await sTransaction(async (tx) => {
       // 1. Tabla principal usuarios
       const usuarioRes = await tx.queryObject<{ id: bigint }>(`

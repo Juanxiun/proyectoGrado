@@ -11,6 +11,7 @@
     "@tajpouria/cors": "jsr:@tajpouria/cors@^1.2.1",
     "bcryptjs": "npm:bcryptjs",
     "jose": "npm:jose",
+    "send": "npm:send@^1.2.1",
     "sharp": "npm:sharp"
   }
 }

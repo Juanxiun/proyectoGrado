@@ -22,7 +22,7 @@ export async function getUsuarios(ctx: Context): Promise<void> {
     const estado = params.get("estado");
     const buscar = params.get("buscar");
 
-    // ── Condiciones dinámicas ────────────────────────────────────────────────
+    //Condiciones dinámicas
     const conditions: string[] = [];
     const filterParams: unknown[] = [];
     let idx = 1;
@@ -50,7 +50,7 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
-    // ── Query principal ──────────────────────────────────────────────────────
+    //Query principal
     const mainQuery = `
       SELECT
         u.id,
@@ -116,7 +116,7 @@ export async function getUsuario(
   try {
     const id = ctx.params.id;
 
-    // ── Usuario base ─────────────────────────────────────────────────────────
+    //Usuario base
     const userRes = await query<{
       id: bigint;
       nombre: string;
@@ -150,7 +150,7 @@ export async function getUsuario(
 
     const user = userRes.rows[0];
 
-    // ── Consultas paralelas de relaciones ────────────────────────────────────
+    //Consultas paralelas de relaciones
     const [cuentaRes, docRes, dirRes, contRes, apodRes] = await Promise.all([
       query(
         `SELECT id, username, email, ultimo_login
