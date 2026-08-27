@@ -9,6 +9,7 @@ import { deleteUsuario } from "./Controller/usuarios/delete.ts";
 import { getUsuario, getUsuarios } from "./Controller/usuarios/views.ts";
 
 import { login } from "./Controller/auth/login.ts";
+import { handleWebhookEvent } from "./Controller/webhookHandler.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8000);
 
@@ -30,6 +31,9 @@ app.use(async (ctx, next) => {
   console.log(`${ctx.request.method} ${ctx.request.url.pathname} → ${ctx.response.status} (${ms}ms)`);
 });
 
+// Endpoint principal para Webhooks Asíncronos
+rt.post("/webhook", handleWebhookEvent);
+
 rt.get("/usuarios", getUsuarios);
 rt.get("/usuarios/:id", getUsuario);
 rt.post("/usuarios", createUsuario);
@@ -42,9 +46,9 @@ rt.get("/health", (ctx) => {
   ctx.response.status = 200;
   ctx.response.body = {
     status: "ok",
-    service: "ServiceUser",
+    service: "ServiceUser (Webhook Engine Active)",
     timestamp: new Date().toISOString(),
-    version: "1.0.0",
+    version: "2.0.0",
   };
 });
 
@@ -58,6 +62,7 @@ app.use((ctx) => {
 
 console.log(`\nServiceUser corriendo en http://localhost:${PORT}`);
 console.log(`   Rutas disponibles:`);
+console.log(`   POST   /webhook (Webhooks Asíncronos)`);
 console.log(`   POST   /auth/login`);
 console.log(`   GET    /usuarios`);
 console.log(`   GET    /usuarios/:id`);

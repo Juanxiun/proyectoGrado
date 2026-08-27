@@ -4,12 +4,39 @@ import { STORAGE_KEYS } from '../constants/config';
 
 const isWeb = Platform.OS === 'web';
 
+type Listener = () => void;
+const listeners = new Set<Listener>();
+
+function notifyListeners() {
+  listeners.forEach((fn) => fn());
+}
+
+if (isWeb && typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (!e.key || e.key === STORAGE_KEYS.TOKEN || e.key === STORAGE_KEYS.USER) {
+      notifyListeners();
+    }
+  });
+
+  // Chequeo periódico en Web por si se borran las cookies/localStorage directamente en DevTools
+  let prevToken = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEYS.TOKEN) : null;
+  setInterval(() => {
+    const currentToken = localStorage.getItem(STORAGE_KEYS.TOKEN);
+    if (currentToken !== prevToken) {
+      prevToken = currentToken;
+      notifyListeners();
+    }
+  }, 1000);
+}
+
 async function setItem(key: string, value: string): Promise<void> {
   if (isWeb) {
     localStorage.setItem(key, value);
+    notifyListeners();
     return;
   }
   await SecureStore.setItemAsync(key, value);
+  notifyListeners();
 }
 
 async function getItem(key: string): Promise<string | null> {
@@ -22,9 +49,11 @@ async function getItem(key: string): Promise<string | null> {
 async function removeItem(key: string): Promise<void> {
   if (isWeb) {
     localStorage.removeItem(key);
+    notifyListeners();
     return;
   }
   await SecureStore.deleteItemAsync(key);
+  notifyListeners();
 }
 
 export const storage = {
@@ -39,5 +68,13 @@ export const storage = {
   clear: async () => {
     await removeItem(STORAGE_KEYS.TOKEN);
     await removeItem(STORAGE_KEYS.USER);
+    notifyListeners();
+  },
+
+  onAuthChange: (listener: Listener) => {
+    listeners.add(listener);
+    return () => {
+      listeners.delete(listener);
+    };
   },
 };

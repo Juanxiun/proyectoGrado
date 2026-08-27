@@ -1,4 +1,4 @@
-import { apiRequest, buildQuery } from './client';
+import { wsClient } from './websocket.client';
 import type {
   UpdateUsuarioPayload,
   UpdateUsuarioResponse,
@@ -9,33 +9,21 @@ import type {
 
 export const usuariosApi = {
   list: (params: UsuariosQueryParams = {}) =>
-    apiRequest<UsuariosListResponse>(`/api/usuarios${buildQuery(params as Record<string, string | number | undefined>)}`),
+    wsClient.sendWsRequest<UsuariosListResponse>('usuarios.list', params),
 
-  getById: (id: string) => apiRequest<Usuario>(`/api/usuarios/${id}`),
+  getById: (id: string) =>
+    wsClient.sendWsRequest<Usuario>('usuarios.get', { id }),
 
   update: (id: string, payload: UpdateUsuarioPayload) =>
-    apiRequest<UpdateUsuarioResponse>(`/api/usuarios/${id}`, {
-      method: 'PUT',
-      body: payload,
+    wsClient.sendWsRequest<UpdateUsuarioResponse>('usuarios.update', { id, ...payload }),
+
+  updateWithPhoto: (id: string, datos: UpdateUsuarioPayload, fotoUri: string) =>
+    wsClient.sendWsRequest<UpdateUsuarioResponse>('usuarios.update', {
+      id,
+      ...datos,
+      fotoUri,
     }),
 
-  updateWithPhoto: (id: string, datos: UpdateUsuarioPayload, fotoUri: string) => {
-    const form = new FormData();
-    form.append('datos', JSON.stringify(datos));
-
-    const filename = fotoUri.split('/').pop() ?? 'foto.jpg';
-    form.append('foto', {
-      uri: fotoUri,
-      name: filename,
-      type: 'image/jpeg',
-    } as unknown as Blob);
-
-    return apiRequest<UpdateUsuarioResponse>(`/api/usuarios/${id}`, {
-      method: 'PUT',
-      body: form,
-    });
-  },
-
   delete: (id: string) =>
-    apiRequest<{ message: string }>(`/api/usuarios/${id}`, { method: 'DELETE' }),
+    wsClient.sendWsRequest<{ message: string }>('usuarios.delete', { id }),
 };
