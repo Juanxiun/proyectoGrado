@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
 import { authApi } from '../api/auth.api';
 import { storage } from '../utils/storage';
-import type { AuthUsuario, LoginRequest } from '../types';
+import type { AuthUsuario, LoginRequest, LoginResponse } from '../types';
 
 interface UseAuthReturn {
   loading: boolean;
   error: string | null;
-  login: (credentials: LoginRequest) => Promise<AuthUsuario>;
+  login: (credentials: LoginRequest) => Promise<LoginResponse>;
+  verify2FA: (tempToken: string, code: string) => Promise<LoginResponse>;
+  resend2FA: (tempToken: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -19,9 +21,11 @@ export function useAuthActions(): UseAuthReturn {
     setError(null);
     try {
       const response = await authApi.login(credentials);
-      await storage.setToken(response.token);
-      await storage.setUser(JSON.stringify(response.usuario));
-      return response.usuario;
+      if (response.token && response.usuario) {
+        await storage.setToken(response.token);
+        await storage.setUser(JSON.stringify(response.usuario));
+      }
+      return response;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Error al iniciar sesión';
       setError(message);
@@ -32,8 +36,19 @@ export function useAuthActions(): UseAuthReturn {
   }, []);
 
   const logout = useCallback(async () => {
-    await storage.clear();
+    try { await authApi.logout(); } finally { await storage.clear(); }
   }, []);
 
-  return { loading, error, login, logout };
+  const verify2FA = useCallback(async (tempToken: string, code: string) => {
+    const response = await authApi.verify2FA(tempToken, code);
+    if (response.token && response.usuario) {
+      await storage.setToken(response.token);
+      await storage.setUser(JSON.stringify(response.usuario));
+    }
+    return response;
+  }, []);
+
+  const resend2FA = useCallback(async (tempToken: string) => { await authApi.resend2FA(tempToken); }, []);
+
+  return { loading, error, login, verify2FA, resend2FA, logout };
 }

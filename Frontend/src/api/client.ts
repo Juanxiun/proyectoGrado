@@ -19,7 +19,7 @@ type RequestOptions = Omit<RequestInit, 'body'> & {
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await storage.getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  return token ? { Authorization: ('Bearer ' + token) } : {};
 }
 
 export async function apiRequest<T>(

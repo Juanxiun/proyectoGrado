@@ -3,13 +3,24 @@ import { query } from "../../connects/Database/transaction.ts";
 import { serialize } from "../../utils/serialize.ts";
 import { jwtConfig } from "../../config/jwt.config.ts";
 import { SignJWT } from "jose";
+import bcrypt from "bcryptjs";
+import {
+  extractDeviceInfo,
+  extractLocationInfo,
+} from "../../utils/deviceDetector.ts";
+import {
+  is2FARequiredForRole,
+  generateAndSend2FACode,
+} from "../../services/twoFactor.service.ts";
+import { createSession } from "../../services/session.service.ts";
 
 /**
  * Roles del sistema:
- *   director   → acceso total
- *   gerencia   → gestión administrativa
- *   profesor   → docente (info de cursos/materias del periodo activo)
- *   estudiante → (info de inscripción activa: nivel, grado, paralelo)
+ *   director   → acceso total (Requiere 2FA)
+ *   control    → control y auditoría (Requiere 2FA)
+ *   gerencia   → gestión administrativa (Requiere 2FA)
+ *   maestros   → docente (Requiere 2FA)
+ *   estudiante → alumno (Múltiples dispositivos + Anti-trampa por distancia)
  *   padres     → apoderado/tutor
  */
 
@@ -30,7 +41,8 @@ export async function login(ctx: Context): Promise<void> {
     const body = await ctx.request.body.json();
     const { login: loginInput, password } = body ?? {};
 
-    if (!loginInput || !password) {
+    if (typeof loginInput !== "string" || typeof password !== "string" ||
+      !loginInput.trim() || !password) {
       ctx.response.status = 400;
       ctx.response.body = {
         error: "Los campos 'login' (username o email) y 'password' son obligatorios",
@@ -90,8 +102,6 @@ export async function login(ctx: Context): Promise<void> {
     }
 
     // deno-lint-ignore no-explicit-any
-    const { default: bcrypt } = await import("bcryptjs");
-    // deno-lint-ignore no-explicit-any
     const valid: boolean = await (bcrypt as any).compare(password, user.password_hash);
 
     if (!valid) {
@@ -147,7 +157,9 @@ export async function login(ctx: Context): Promise<void> {
         break;
       }
 
-      case "profesor": {
+      case "profesor":
+      case "maestro":
+      case "maestros": {
         const cursosRes = await query<{
           asignacion_id: bigint;
           curso_id: bigint;
@@ -196,11 +208,59 @@ export async function login(ctx: Context): Promise<void> {
         break;
     }
 
+    // Extraer dispositivo y geolocalización
+    const deviceInfo = extractDeviceInfo(ctx);
+    const locationInfo = extractLocationInfo(ctx, body);
+
+    // Verificación de 2FA para roles privilegiados (Director, Maestros, Control)
+    if (is2FARequiredForRole(user.rol)) {
+      const twoFactorResult = await generateAndSend2FACode({
+        userId: String(user.id),
+        username: user.username,
+        email: user.email,
+        nombre: user.nombre,
+        apellidoPaterno: user.apellido_paterno,
+        apellidoMaterno: user.apellido_materno,
+        fotoUrl: user.foto_url,
+        rol: user.rol,
+        rolId: String(user.rol_id),
+        extraInfo,
+        deviceInfo,
+        locationInfo,
+      });
+
+      ctx.response.status = 200;
+      ctx.response.body = {
+        requires2FA: true,
+        tempToken: twoFactorResult.tempToken,
+        message: "Se requiere verificación en dos pasos (2FA). Se ha enviado un código de acceso a tu correo electrónico.",
+        emailMasked: twoFactorResult.emailMasked,
+        expiresInSeconds: twoFactorResult.expiresInSeconds,
+      };
+      return;
+    }
+
+    // Para roles sin 2FA (ej. Estudiante, Padres): Creación directa de sesión en Redis
+    const { session, closedPreviousSessions } = await createSession({
+      usuarioId: String(user.id),
+      username: user.username,
+      rol: user.rol,
+      deviceInfo,
+      locationInfo,
+    });
+
     const payload = {
       sub: String(user.id),
       username: user.username,
       rol: user.rol,
+      role: rolNombre === "maestro" || rolNombre === "maestros" || rolNombre === "docente"
+        ? "profesor"
+        : rolNombre,
+      roles: [rolNombre === "maestro" || rolNombre === "maestros" || rolNombre === "docente"
+        ? "profesor"
+        : rolNombre],
       rolId: String(user.rol_id),
+      sessionId: session.sessionId,
       ...extraInfo,
     };
 
@@ -212,7 +272,9 @@ export async function login(ctx: Context): Promise<void> {
 
     ctx.response.status = 200;
     ctx.response.body = serialize({
+      requires2FA: false,
       token,
+      sessionId: session.sessionId,
       usuario: {
         id: user.id,
         username: user.username,
@@ -225,10 +287,20 @@ export async function login(ctx: Context): Promise<void> {
         rolId: user.rol_id,
         ...extraInfo,
       },
+      session: {
+        sessionId: session.sessionId,
+        inicioConexion: session.inicioConexion,
+        dispositivo: session.dispositivo,
+        ubicacion: session.ubicacion,
+        activo: session.activo,
+        posibleTrampa: session.posibleTrampa,
+        alertaTrampa: session.alertaTrampa,
+      },
+      sesionesPreviasCerradas: closedPreviousSessions.length > 0 ? closedPreviousSessions : undefined,
     });
   } catch (err) {
     console.error("[login]", err);
     ctx.response.status = 500;
-    ctx.response.body = { error: "Error interno del servidor" };
+    ctx.response.body = { error: "Error interno del servidor al iniciar sesión" };
   }
 }
