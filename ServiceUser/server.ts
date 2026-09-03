@@ -42,9 +42,10 @@ app.use(async (ctx, next) => {
 
 // Rutas de Usuarios (CRUD)
 rt.get("/usuarios", requireAuth(["director", "control", "profesor"]), getUsuarios);
-rt.get("/usuarios/:id", requireAuth(["director", "control", "profesor"]), getUsuario);
+// La autorización fina (propio perfil o jerarquía de gestión) se realiza en el controlador.
+rt.get("/usuarios/:id", requireAuth(), getUsuario);
 rt.post("/usuarios", requireAuth(["director", "control"]), createUsuario);
-rt.put("/usuarios/:id", requireAuth(["director", "control"]), updateUsuario);
+rt.put("/usuarios/:id", requireAuth(), updateUsuario);
 rt.patch("/usuarios/:id/baja", requireAuth(["director", "control"]), bajaUsuario);
 rt.delete("/usuarios/:id", requireAuth(["director", "control"]), deleteUsuario);
 

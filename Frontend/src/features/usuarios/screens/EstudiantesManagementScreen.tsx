@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -58,6 +58,15 @@ const emptyStudentForm = {
   referencia: '',
 };
 
+function InlineInput({ error, className = '', ...props }: ComponentProps<typeof TextInput> & { error?: string }) {
+  return (
+    <View className="flex-1 min-w-[150px]">
+      <TextInput {...props} className={`bg-white rounded-xl px-3 py-2.5 border text-sm ${error ? 'border-red-500' : 'border-gray-200'} ${className}`} />
+      {error ? <Text className="text-xs text-red-600 mt-1">{error}</Text> : null}
+    </View>
+  );
+}
+
 export function EstudiantesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
@@ -69,7 +78,11 @@ export function EstudiantesManagementScreen() {
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<1 | 2>(1);
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingStudent, setEditingStudent] = useState<Usuario | null>(null);
+  const [editingTutorId, setEditingTutorId] = useState<string | null>(null);
+  const [editTab, setEditTab] = useState<'student' | 'tutor'>('student');
+  const [studentsListTab, setStudentsListTab] = useState<'enabled' | 'disabled'>('enabled');
 
   const [tutorForm, setTutorForm] = useState(emptyTutorForm);
   const [tutorDocs, setTutorDocs] = useState<UsuarioDoc[]>([{ tipoDoc: 'CI', numeroDoc: '' }]);
@@ -97,8 +110,11 @@ export function EstudiantesManagementScreen() {
   }, [search, statusFilter]);
 
   const resetForms = () => {
+    setFieldErrors({});
     setStep(1);
     setEditingStudent(null);
+    setEditingTutorId(null);
+    setEditTab('student');
     setCreatedTutorId(null);
     setTutorSummary(null);
     setTutorForm(emptyTutorForm);
@@ -110,6 +126,46 @@ export function EstudiantesManagementScreen() {
       { tipoDoc: 'RUDE', numeroDoc: '' },
     ]);
     setStudentPhoto(undefined);
+  };
+
+  const clearFieldError = (field: string) => setFieldErrors((current) => {
+    const { [field]: _, ...remaining } = current;
+    return remaining;
+  });
+
+  const validateStudent = () => {
+    const errors: Record<string, string> = {};
+    if (!studentForm.nombre.trim()) errors.studentNombre = 'El nombre es obligatorio.';
+    if (!studentForm.apellidoPaterno.trim()) errors.studentApellidoPaterno = 'El apellido paterno es obligatorio.';
+    if (!studentForm.apellidoMaterno.trim()) errors.studentApellidoMaterno = 'El apellido materno es obligatorio.';
+    if (!studentForm.nacimiento) errors.studentNacimiento = 'La fecha de nacimiento es obligatoria.';
+    const ci = studentDocs.find((doc) => doc.tipoDoc.toUpperCase() === 'CI');
+    const rude = studentDocs.find((doc) => doc.tipoDoc.toUpperCase() === 'RUDE');
+    if (!ci?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
+    if (!rude?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    if (!editingStudent) {
+      if (!studentForm.username.trim()) errors.studentUsername = 'El usuario es obligatorio.';
+      if (!studentForm.email.trim()) errors.studentEmail = 'El correo institucional es obligatorio.';
+      else if (!/^\S+@\S+\.\S+$/.test(studentForm.email)) errors.studentEmail = 'Ingrese un correo válido.';
+      if (!studentForm.password) errors.studentPassword = 'La contraseña es obligatoria.';
+      else if (studentForm.password.length < 8) errors.studentPassword = 'Debe tener al menos 8 caracteres.';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const applyServerFieldErrors = (err: unknown, prefix: 'student' | 'tutor') => {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar la información.';
+    const normalized = message.toLowerCase();
+    const errors: Record<string, string> = {};
+    if (/username|usuario/.test(normalized)) {
+      if (prefix === 'student') errors.studentUsername = 'Este nombre de usuario ya está registrado.';
+      else errors['documento:CI'] = 'No se pudo registrar el tutor porque ya existe una cuenta generada con estos datos. Revise el CI.';
+    }
+    if (/email|correo/.test(normalized)) errors[`${prefix}Email`] = 'Este correo ya está registrado.';
+    if (/numero_doc|número de documento|numero de documento|documento/.test(normalized)) errors['documento:CI'] = 'Este número de documento ya está registrado.';
+    if (Object.keys(errors).length) setFieldErrors(errors);
+    return { message, handled: Object.keys(errors).length > 0 };
   };
 
   // Autogenerar username al cambiar datos del estudiante si es nuevo
@@ -184,33 +240,23 @@ export function EstudiantesManagementScreen() {
 
       setStep(2);
     } catch (err) {
-      Alert.alert('Error al registrar tutor', err instanceof Error ? err.message : 'No se pudo guardar el tutor');
+      const result = applyServerFieldErrors(err, 'tutor');
+      if (!result.handled) Alert.alert('Error al registrar tutor', result.message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveStudent = async () => {
-    if (!studentForm.nombre || !studentForm.apellidoPaterno || !studentForm.apellidoMaterno || !studentForm.nacimiento) {
-      Alert.alert('Datos incompletos', 'Complete los datos personales obligatorios del estudiante.');
-      return;
-    }
+    if (!validateStudent()) return;
     const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
     const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
-    if (!ciDoc?.numeroDoc || !rudeDoc?.numeroDoc) {
-      Alert.alert('Documentos requeridos', 'El CI y el RUDE son obligatorios según la normativa de Bolivia.');
-      return;
-    }
-    if (!editingStudent && (!studentForm.username || !studentForm.email || !studentForm.password)) {
-      Alert.alert('Cuenta de acceso', 'Ingrese las credenciales de acceso para la cuenta del estudiante.');
-      return;
-    }
     if (!editingStudent && !studentPhoto) {
       Alert.alert('Foto requerida', 'Debe subir la foto de perfil del estudiante (PNG/JPG).');
       return;
     }
 
-    const hasCiFile = Boolean(ciDoc.fileUri || ciDoc.docUrl);
+    const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
     if (!hasCiFile) {
       Alert.alert(
         '⚠️ Archivo Crítico CI Faltante',
@@ -293,31 +339,35 @@ export function EstudiantesManagementScreen() {
       resetForms();
       refresh();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar el estudiante');
+      const result = applyServerFieldErrors(err, 'student');
+      if (!result.handled) Alert.alert('Error', result.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (u: Usuario) => {
-    setEditingStudent(u);
-    const docs = u.documentos ?? [];
-    const nac = u.nacimiento ? String(u.nacimiento).slice(0, 10) : '';
+  const handleEdit = async (u: Usuario) => {
+    try {
+      // La lista contiene un resumen; se cargan ambas fichas completas antes de editar.
+      const student = await usuariosApi.getById(u.id);
+      setEditingStudent(student);
+      const docs = student.documentos ?? [];
+      const nac = student.nacimiento ? String(student.nacimiento).slice(0, 10) : '';
 
-    setStudentForm({
-      nombre: u.nombre ?? '',
-      apellidoPaterno: u.apellidoPaterno || (u as any).apellido_paterno || '',
-      apellidoMaterno: u.apellidoMaterno || (u as any).apellido_materno || '',
+      setStudentForm({
+      nombre: student.nombre ?? '',
+      apellidoPaterno: student.apellidoPaterno || (student as any).apellido_paterno || '',
+      apellidoMaterno: student.apellidoMaterno || (student as any).apellido_materno || '',
       nacimiento: nac,
-      genero: (u.genero as any) ?? 'masculino',
-      username: u.username ?? (u as any).cuenta?.username ?? '',
-      email: u.email ?? (u as any).cuenta?.email ?? '',
+      genero: (student.genero as any) ?? 'masculino',
+      username: student.username ?? (student as any).cuenta?.username ?? '',
+      email: student.email ?? (student as any).cuenta?.email ?? '',
       password: '',
-      zona: u.direccion?.zona ?? '',
-      distrito: u.direccion?.distrito ?? '',
-      calle: u.direccion?.calle ?? '',
-      numero: u.direccion?.numero ?? '',
-      referencia: u.direccion?.referencia ?? '',
+      zona: student.direccion?.zona ?? '',
+      distrito: student.direccion?.distrito ?? '',
+      calle: student.direccion?.calle ?? '',
+      numero: student.direccion?.numero ?? '',
+      referencia: student.direccion?.referencia ?? '',
     });
 
     const mappedDocs: UsuarioDoc[] = docs.map((d) => ({
@@ -335,10 +385,68 @@ export function EstudiantesManagementScreen() {
       mappedDocs.push({ tipoDoc: 'RUDE', numeroDoc: '' });
     }
     setStudentDocs(mappedDocs);
-    setStudentPhoto(u.fotoUrl ?? undefined);
+      setStudentPhoto(student.fotoUrl ?? undefined);
 
-    setStep(2);
-    setShowModal(true);
+      const tutorLink = student.apoderados?.[0];
+      if (tutorLink) {
+        const tutor = await usuariosApi.getById(tutorLink.apoderadoId);
+        const tutorCi = tutor.documentos?.map((doc) => ({ ...doc, fileUri: undefined, fileName: undefined })) ?? [];
+        setEditingTutorId(tutor.id);
+        setTutorForm({
+          nombre: tutor.nombre ?? '', apellidoPaterno: tutor.apellidoPaterno ?? '', apellidoMaterno: tutor.apellidoMaterno ?? '',
+          nacimiento: tutor.nacimiento ? String(tutor.nacimiento).slice(0, 10) : '', genero: (tutor.genero as any) ?? 'masculino',
+          ci: tutorCi.find((doc) => doc.tipoDoc === 'CI')?.numeroDoc ?? '',
+          celular: tutor.contactos?.find((contacto) => contacto.tipo === 'Celular')?.contenido ?? '',
+          email: tutor.cuenta?.email ?? tutor.email ?? '', zona: tutor.direccion?.zona ?? '', distrito: tutor.direccion?.distrito ?? '',
+          calle: tutor.direccion?.calle ?? '', numero: tutor.direccion?.numero ?? '', referencia: tutor.direccion?.referencia ?? '',
+          parentesco: tutorLink.parentesco ?? 'Tutor',
+        });
+        setTutorDocs(tutorCi);
+        setTutorPhoto(tutor.fotoUrl ?? undefined);
+        setTutorSummary(`${tutor.nombre} ${tutor.apellidoPaterno} (${tutorLink.parentesco})`);
+      } else {
+        setEditingTutorId(null);
+        setTutorSummary(null);
+      }
+
+      setStep(2);
+      setEditTab('student');
+      setShowModal(true);
+    } catch (err) {
+      Alert.alert('Error al cargar', err instanceof Error ? err.message : 'No se pudo cargar la ficha del estudiante.');
+    }
+  };
+
+  const handleUpdateTutor = async () => {
+    if (!editingTutorId) return;
+    if (!tutorForm.nombre || !tutorForm.apellidoPaterno || !tutorForm.apellidoMaterno || !tutorForm.nacimiento) {
+      Alert.alert('Datos incompletos', 'Complete los datos obligatorios del tutor.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await usuariosApi.updateWithFiles(editingTutorId, {
+        nombre: tutorForm.nombre,
+        apellidoPaterno: tutorForm.apellidoPaterno,
+        apellidoMaterno: tutorForm.apellidoMaterno,
+        nacimiento: tutorForm.nacimiento,
+        genero: tutorForm.genero,
+        cuenta: tutorForm.email ? { email: tutorForm.email } : undefined,
+        documentos: tutorDocs,
+        contactos: tutorForm.celular ? [{ tipo: 'Celular', contenido: tutorForm.celular }] : [],
+        direccion: tutorForm.zona ? {
+          zona: tutorForm.zona, distrito: tutorForm.distrito || undefined, calle: tutorForm.calle || undefined,
+          numero: tutorForm.numero || undefined, referencia: tutorForm.referencia || undefined,
+        } : undefined,
+      }, tutorPhoto);
+      Alert.alert('Éxito', 'Datos del tutor actualizados correctamente.');
+      refresh();
+    } catch (err) {
+      const result = applyServerFieldErrors(err, 'tutor');
+      if (!result.handled) Alert.alert('Error', result.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleToggleState = (u: Usuario) => {
@@ -451,7 +559,9 @@ export function EstudiantesManagementScreen() {
                 {editingStudent ? 'Editar Estudiante' : 'Registro de Estudiante y Tutor'}
               </Text>
               <Text className="text-xs text-gray-500">
-                {step === 1 ? 'Paso 1 de 2: Registrar Tutor Apoderado' : 'Paso 2 de 2: Datos del Estudiante y Documentación'}
+                {editingStudent
+                  ? (editTab === 'student' ? 'Datos del estudiante y documentación' : 'Datos completos del tutor o apoderado')
+                  : (step === 1 ? 'Paso 1 de 2: Registrar Tutor Apoderado' : 'Paso 2 de 2: Datos del Estudiante y Documentación')}
               </Text>
             </View>
             <TouchableOpacity
@@ -479,6 +589,26 @@ export function EstudiantesManagementScreen() {
                 className={`flex-row items-center px-4 py-2 rounded-xl gap-2 ${step === 2 ? 'bg-maroon' : 'bg-gray-100'}`}
               >
                 <Text className={`font-bold text-xs ${step === 2 ? 'text-white' : 'text-gray-600'}`}>2. Estudiante</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {editingStudent && (
+            <View className="flex-row items-center gap-2 mb-5 p-1.5 rounded-xl bg-gray-100 self-start">
+              <TouchableOpacity
+                onPress={() => setEditTab('student')}
+                className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${editTab === 'student' ? 'bg-maroon' : ''}`}
+              >
+                <Ionicons name="school-outline" size={16} color={editTab === 'student' ? '#FFF' : '#4B5563'} />
+                <Text className={`text-xs font-bold ${editTab === 'student' ? 'text-white' : 'text-gray-600'}`}>Datos del estudiante</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => editingTutorId && setEditTab('tutor')}
+                disabled={!editingTutorId}
+                className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${editTab === 'tutor' ? 'bg-maroon' : ''} ${!editingTutorId ? 'opacity-50' : ''}`}
+              >
+                <Ionicons name="people-outline" size={16} color={editTab === 'tutor' ? '#FFF' : '#4B5563'} />
+                <Text className={`text-xs font-bold ${editTab === 'tutor' ? 'text-white' : 'text-gray-600'}`}>Datos del tutor</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -522,6 +652,7 @@ export function EstudiantesManagementScreen() {
                   requiredTypes={TUTOR_REQUIRED_DOCS}
                   title="Documentos del Tutor (CI Obligatorio)"
                   showRequiredBadge={true}
+                  fieldErrors={fieldErrors}
                 />
               </BentoCard>
 
@@ -567,7 +698,47 @@ export function EstudiantesManagementScreen() {
             </View>
           )}
 
-          {(step === 2 || editingStudent) && (
+          {editingStudent && editTab === 'tutor' && (
+            <View className="gap-4">
+              <BentoCard className="p-4 bg-cream/40 border border-gold/30">
+                <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Tutor (MinIO)</Text>
+                <ProfilePhotoPicker photoUri={tutorPhoto} onChange={setTutorPhoto} required={false} />
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos personales del tutor o apoderado</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  <TextInput value={tutorForm.nombre} onChangeText={(v) => setTutorForm((f) => ({ ...f, nombre: v }))} placeholder="Nombre *" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.apellidoPaterno} onChangeText={(v) => setTutorForm((f) => ({ ...f, apellidoPaterno: v }))} placeholder="Apellido paterno *" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.apellidoMaterno} onChangeText={(v) => setTutorForm((f) => ({ ...f, apellidoMaterno: v }))} placeholder="Apellido materno *" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm" />
+                  <BirthDatePicker value={tutorForm.nacimiento} onChange={(v) => setTutorForm((f) => ({ ...f, nacimiento: v }))} />
+                </View>
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <DocumentInput documents={tutorDocs} onChange={setTutorDocs} requiredTypes={TUTOR_REQUIRED_DOCS} title="Documentos del Tutor (CI obligatorio)" showRequiredBadge fieldErrors={fieldErrors} />
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Contacto y domicilio del tutor</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  <InlineInput value={tutorForm.email} onChangeText={(v) => { clearFieldError('tutorEmail'); setTutorForm((f) => ({ ...f, email: v })); }} placeholder="Correo electrónico" keyboardType="email-address" error={fieldErrors.tutorEmail} />
+                  <TextInput value={tutorForm.celular} onChangeText={(v) => setTutorForm((f) => ({ ...f, celular: v }))} placeholder="Celular" keyboardType="phone-pad" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.zona} onChangeText={(v) => setTutorForm((f) => ({ ...f, zona: v }))} placeholder="Zona" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.distrito} onChangeText={(v) => setTutorForm((f) => ({ ...f, distrito: v }))} placeholder="Distrito" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.calle} onChangeText={(v) => setTutorForm((f) => ({ ...f, calle: v }))} placeholder="Calle" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.numero} onChangeText={(v) => setTutorForm((f) => ({ ...f, numero: v }))} placeholder="Número" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.referencia} onChangeText={(v) => setTutorForm((f) => ({ ...f, referencia: v }))} placeholder="Referencia" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                </View>
+              </BentoCard>
+
+              <TouchableOpacity onPress={handleUpdateTutor} disabled={saving} className="bg-maroon rounded-xl py-3.5 items-center flex-row justify-center gap-2 shadow">
+                {saving ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="save-outline" size={18} color="#FFF" /><Text className="text-white font-bold text-sm">Guardar datos del tutor</Text></>}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {(step === 2 || editingStudent) && (!editingStudent || editTab === 'student') && (
             <View className="gap-4">
               {tutorSummary && (
                 <View className="bg-gold/15 border border-gold/40 rounded-xl p-3 flex-row items-center justify-between">
@@ -587,35 +758,38 @@ export function EstudiantesManagementScreen() {
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                 <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos Personales del Estudiante</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  <TextInput
+                  <InlineInput
                     value={studentForm.nombre}
                     onChangeText={(v) => {
+                      clearFieldError('studentNombre');
                       setStudentForm((f) => ({ ...f, nombre: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(v, studentForm.apellidoPaterno, studentForm.apellidoMaterno, ciDoc);
                     }}
                     placeholder="Nombre *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentNombre}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.apellidoPaterno}
                     onChangeText={(v) => {
+                      clearFieldError('studentApellidoPaterno');
                       setStudentForm((f) => ({ ...f, apellidoPaterno: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(studentForm.nombre, v, studentForm.apellidoMaterno, ciDoc);
                     }}
                     placeholder="Apellido Paterno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentApellidoPaterno}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.apellidoMaterno}
                     onChangeText={(v) => {
+                      clearFieldError('studentApellidoMaterno');
                       setStudentForm((f) => ({ ...f, apellidoMaterno: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(studentForm.nombre, studentForm.apellidoPaterno, v, ciDoc);
                     }}
                     placeholder="Apellido Materno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentApellidoMaterno}
                   />
                   <BirthDatePicker value={studentForm.nacimiento} onChange={(v) => setStudentForm((f) => ({ ...f, nacimiento: v }))} />
                 </View>
@@ -632,33 +806,34 @@ export function EstudiantesManagementScreen() {
                   requiredTypes={STUDENT_REQUIRED_DOCS}
                   title="Documentos del Estudiante (CI y RUDE en PDF)"
                   showRequiredBadge={true}
+                  fieldErrors={fieldErrors}
                 />
               </BentoCard>
 
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                 <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Cuenta Institucional del Estudiante</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  <TextInput
+                  <InlineInput
                     value={studentForm.username}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, username: v }))}
+                    onChangeText={(v) => { clearFieldError('studentUsername'); setStudentForm((f) => ({ ...f, username: v })); }}
                     placeholder="Nombre de Usuario *"
                     autoCapitalize="none"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentUsername}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.email}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, email: v }))}
+                    onChangeText={(v) => { clearFieldError('studentEmail'); setStudentForm((f) => ({ ...f, email: v })); }}
                     placeholder="Correo institucional *"
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentEmail}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.password}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, password: v }))}
+                    onChangeText={(v) => { clearFieldError('studentPassword'); setStudentForm((f) => ({ ...f, password: v })); }}
                     placeholder={editingStudent ? 'Nueva Contraseña (Opcional)' : 'Contraseña (Mín. 8 caract.) *'}
                     secureTextEntry
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentPassword}
                   />
                 </View>
               </BentoCard>
@@ -684,8 +859,26 @@ export function EstudiantesManagementScreen() {
         </BentoCard>
       )}
 
+      {/* Separación de listados para no mezclar estudiantes con estados distintos. */}
+      <View className="flex-row items-center gap-2 p-1.5 rounded-xl bg-gray-100 self-start">
+        <TouchableOpacity
+          onPress={() => setStudentsListTab('enabled')}
+          className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${studentsListTab === 'enabled' ? 'bg-maroon' : ''}`}
+        >
+          <Ionicons name="checkmark-circle-outline" size={16} color={studentsListTab === 'enabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${studentsListTab === 'enabled' ? 'text-white' : 'text-gray-600'}`}>Habilitados ({habilitados.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setStudentsListTab('disabled')}
+          className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${studentsListTab === 'disabled' ? 'bg-maroon' : ''}`}
+        >
+          <Ionicons name="close-circle-outline" size={16} color={studentsListTab === 'disabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${studentsListTab === 'disabled' ? 'text-white' : 'text-gray-600'}`}>Deshabilitados ({deshabilitados.length})</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* GRID DE CARTAS BENTO PARA ESTUDIANTES - HABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {studentsListTab === 'enabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
@@ -821,10 +1014,10 @@ export function EstudiantesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay estudiantes habilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* GRID DE CARTAS BENTO PARA ESTUDIANTES - DESHABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {studentsListTab === 'disabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="close-circle" size={20} color="#DC2626" />
@@ -957,7 +1150,7 @@ export function EstudiantesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay estudiantes deshabilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* Ficha rápida de consulta para roles sin permisos de edición */}
       {selectedStudentDetail && (

@@ -102,6 +102,13 @@ Deno.test("Bento Grid Email: Contains required colors and OTP structure", () => 
 });
 
 import { generateUsername } from "../utils/username.ts";
+import { normalizeRole } from "../middleware/auth.ts";
+
+Deno.test("Authorization roles: normalizes role aliases consistently", () => {
+  assertEquals(normalizeRole("Gerencia"), "control");
+  assertEquals(normalizeRole("Padres"), "estudiante");
+  assertEquals(normalizeRole("Docente"), "profesor");
+});
 
 Deno.test("Username Generation: Generates correct institutional username with single-digit checksum", () => {
   // Test case 1:

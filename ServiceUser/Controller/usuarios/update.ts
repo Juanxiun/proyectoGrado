@@ -142,11 +142,22 @@ export async function updateUsuario(
     }
 
     const current = currentRes.rows[0];
+    const viewerRole = ctx.state.auth?.role;
+    const isSelf = String(ctx.state.auth?.sub) === String(id);
+    const targetRole = current.rol.trim().toLowerCase();
+    const canManage = viewerRole === "director" ||
+      (viewerRole === "control" &&
+        ["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole));
+
+    if (!isSelf && !canManage) {
+      ctx.response.status = 403;
+      ctx.response.body = { error: "No tiene permisos para actualizar este usuario" };
+      return;
+    }
+
     if (
-      ctx.state.auth?.role === "control" &&
-      !["profesor", "maestro", "docente", "estudiante"].includes(
-        current.rol.trim().toLowerCase(),
-      )
+      viewerRole === "control" && !isSelf &&
+      !["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole)
     ) {
       ctx.response.status = 403;
       ctx.response.body = {
@@ -169,6 +180,24 @@ export async function updateUsuario(
       maestro,
       rolId,
     } = datos;
+
+    // Un estudiante/apoderado sólo administra su foto, contraseña, contactos y dirección.
+    // Esta validación es deliberadamente del lado del servidor para que no pueda
+    // eludirse modificando la petición desde el navegador.
+    if (isSelf && viewerRole === "estudiante") {
+      const hasForbiddenPersonalFields = [
+        nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero, estado, maestro, rolId,
+      ].some((value) => value !== undefined);
+      const hasForbiddenAccountFields = cuenta &&
+        (cuenta.username !== undefined || cuenta.email !== undefined);
+      if (hasForbiddenPersonalFields || hasForbiddenAccountFields || documentos !== undefined) {
+        ctx.response.status = 403;
+        ctx.response.body = {
+          error: "El estudiante sólo puede actualizar su foto, contraseña, contactos y dirección",
+        };
+        return;
+      }
+    }
 
     if (rolId !== undefined) {
       const roleRes = await query<{ id: bigint; rol: string }>(
@@ -398,7 +427,14 @@ export async function updateUsuario(
       fotoUrl: await resolveMediaUrl(newFotoUrl),
     };
   } catch (err) {
+    const msg = (err as Error)?.message?.toLowerCase() ?? "";
+    const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
     console.error("[updateUsuario]", err);
+    if (msg.includes("unique") || msg.includes("duplicate")) {
+      ctx.response.status = 409;
+      ctx.response.body = { error: constraint.includes("username") ? "El username ya está registrado" : constraint.includes("email") ? "El email ya está registrado" : constraint.includes("numero_doc") ? "El número de documento ya está registrado" : "Ya existe un dato registrado para otro usuario" };
+      return;
+    }
     ctx.response.status = 500;
     ctx.response.body = { error: "Error interno del servidor" };
   }

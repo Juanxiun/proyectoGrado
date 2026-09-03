@@ -212,10 +212,17 @@ export async function getUsuario(
     const viewerRole = ctx.state.auth?.role;
     const isSelf = String(ctx.state.auth?.sub) === String(id);
     const targetRole = String(user.rol).trim().toLowerCase();
-    const canView = isSelf ||
+    const isOwnTutor = viewerRole === "estudiante" && await query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM estudiante_apoderado
+         WHERE estudiante_id = $1 AND apoderado_id = $2
+       ) AS exists`,
+      [ctx.state.auth?.sub, id],
+    ).then((result) => Boolean(result.rows[0]?.exists));
+    const canView = isSelf || isOwnTutor ||
       viewerRole === "director" ||
-      (viewerRole === "control" && ["profesor", "maestro", "docente", "estudiante"].includes(targetRole)) ||
-      (viewerRole === "profesor" && targetRole === "estudiante");
+      (viewerRole === "control" && ["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole)) ||
+      (viewerRole === "profesor" && ["estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole));
 
     if (!canView) {
       ctx.response.status = 403;

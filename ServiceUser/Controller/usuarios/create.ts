@@ -200,10 +200,11 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
     ctx.response.body = serialize({ message: "Usuario creado correctamente", id: usuarioId, username: cuentaFinal?.username ?? null, email: cuentaFinal?.email ?? null, fotoUrl: await resolveMediaUrl(fotoUrl) });
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
+    const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
     console.error("[createUsuario]", err);
     if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate")) {
       ctx.response.status = 409;
-      ctx.response.body = { error: "Ya existe un usuario con ese username, email o numero de documento" };
+      ctx.response.body = { error: constraint.includes("username") ? "El username ya está registrado" : constraint.includes("email") ? "El email ya está registrado" : constraint.includes("numero_doc") ? "El número de documento ya está registrado" : "Ya existe un usuario con ese username, email o número de documento" };
       return;
     }
     ctx.response.status = 500;

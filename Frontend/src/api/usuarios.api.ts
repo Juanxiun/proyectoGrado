@@ -114,8 +114,13 @@ async function sendMultipart<T = { message: string; id: string; fotoUrl: string 
 ): Promise<T> {
   const form = new FormData();
 
+  // No enviar `documentos: []` cuando el payload no contempla documentos.
+  // Para estudiantes esa distinción protege la edición de sus documentos,
+  // mientras les permite enviar una foto mediante multipart.
+  const includesDocuments = Object.prototype.hasOwnProperty.call(payload, 'documentos');
   const documentos = (payload.documentos ?? []).map(({ fileUri, fileName, ...doc }) => doc);
-  form.append('datos', JSON.stringify({ ...payload, documentos }));
+  const datos = includesDocuments ? { ...payload, documentos } : payload;
+  form.append('datos', JSON.stringify(datos));
 
   const localFoto = isLocalFileUri(fotoUri) ? fotoUri : undefined;
   if (localFoto) {
