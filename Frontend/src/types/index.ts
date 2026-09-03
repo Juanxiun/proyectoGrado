@@ -87,6 +87,16 @@ export interface UsuarioCont {
   contenido: string;
 }
 
+export interface UsuarioApoderado {
+  apoderadoId: string;
+  parentesco: string;
+  esPrincipal: boolean;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  username?: string;
+}
+
 export interface Usuario {
   id: string;
   rolId: string;
@@ -107,6 +117,7 @@ export interface Usuario {
   documentos?: UsuarioDoc[];
   direccion?: UsuarioDir | null;
   contactos?: UsuarioCont[];
+  apoderados?: UsuarioApoderado[];
 }
 
 export interface UsuariosListResponse {

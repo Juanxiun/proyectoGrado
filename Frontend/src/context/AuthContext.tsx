@@ -24,16 +24,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pending2FA, setPending2FA] = useState<AuthContextValue['pending2FA']>(null);
 
   useEffect(() => {
-    (async () => {
+    const syncUser = async () => {
       try {
-        const stored = await storage.getUser();
-        if (stored) setUser(JSON.parse(stored) as AuthUsuario);
+        const storedUser = await storage.getUser();
+        const storedToken = await storage.getToken();
+        if (storedUser && storedToken) {
+          setUser(JSON.parse(storedUser) as AuthUsuario);
+        } else {
+          setUser(null);
+        }
       } catch {
-        await storage.clear();
+        setUser(null);
       } finally {
         setIsLoading(false);
       }
-    })();
+    };
+
+    syncUser();
+    const unsubscribe = storage.onAuthChange(() => {
+      syncUser();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const login = useCallback(
