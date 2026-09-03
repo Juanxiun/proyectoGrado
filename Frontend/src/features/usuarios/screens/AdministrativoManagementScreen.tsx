@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -267,6 +267,15 @@ export function AdministrativoManagementScreen() {
     return r === 'director' || r === 'gerencia' || r === 'control' || r === 'administrativo' || String(u.rolId) === '4' || String(u.rolId) === '1';
   });
 
+  const habilitados = useMemo(
+    () => adminList.filter((u) => u.estado === 1),
+    [adminList]
+  );
+  const deshabilitados = useMemo(
+    () => adminList.filter((u) => u.estado === 0),
+    [adminList]
+  );
+
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-12" showsVerticalScrollIndicator={false}>
       {/* Cabecera Bento */}
@@ -483,134 +492,264 @@ export function AdministrativoManagementScreen() {
         </BentoCard>
       )}
 
-      {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS */}
-      <View className="gap-3">
-        <View className="flex-row justify-between items-center px-1">
-          <Text className="text-base font-bold text-gray-900">
-            Nómina de Personal Administrativo ({adminList.length})
-          </Text>
+      {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS - HABILITADOS */}
+      <BentoCard className="p-5 bg-white">
+        <View className="flex-row items-center justify-between mb-4">
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+            <Text className="text-lg font-bold text-gray-900">Habilitados</Text>
+            <View className="bg-green-100 px-3 py-1 rounded-full">
+              <Text className="text-sm font-bold text-green-700">{habilitados.length}</Text>
+            </View>
+          </View>
           {loading && <ActivityIndicator color="#7A1F3D" />}
         </View>
 
-        {error && <Text className="text-red-600 text-xs">{error}</Text>}
+        {error && <Text className="text-red-600 text-xs mb-3">{error}</Text>}
 
-        <View className="flex-row flex-wrap gap-4">
-          {adminList.map((adm) => {
-            const docs = adm.documentos ?? [];
-            const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
-              (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
-            const apPat = adm.apellidoPaterno || (adm as any).apellido_paterno || '';
-            const apMat = adm.apellidoMaterno || (adm as any).apellido_materno || '';
-            const admFullName = getFullName(adm.nombre, apPat, apMat);
-            const cargo = adm.rol ?? `Rol ${adm.rolId}`;
-            const celular = adm.contactos?.[0]?.contenido || '';
+        {habilitados.length > 0 ? (
+          <View className="flex-row flex-wrap gap-4">
+            {habilitados.map((adm) => {
+              const docs = adm.documentos ?? [];
+              const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
+                (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
+              const apPat = adm.apellidoPaterno || (adm as any).apellido_paterno || '';
+              const apMat = adm.apellidoMaterno || (adm as any).apellido_materno || '';
+              const admFullName = getFullName(adm.nombre, apPat, apMat);
+              const cargo = adm.rol ?? `Rol ${adm.rolId}`;
+              const celular = adm.contactos?.[0]?.contenido || '';
 
-            return (
-              <BentoCard
-                key={adm.id}
-                className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
-              >
-                {/* Cabecera con Foto MinIO y estado */}
-                <View>
-                  <View className="flex-row items-start justify-between mb-3">
-                    <View className="relative">
-                      {adm.fotoUrl ? (
-                        <RemoteImage
-                          uri={adm.fotoUrl}
-                          className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-maroon/20"
-                          fallbackText={`${adm.nombre?.charAt(0) || 'A'}${apPat?.charAt(0) || ''}`}
-                        />
-                      ) : (
-                        <View className="w-16 h-16 rounded-2xl bg-maroon/10 border-2 border-maroon/20 items-center justify-center">
-                          <Text className="text-maroon font-bold text-xl">
-                            {adm.nombre?.charAt(0) || 'A'}{apPat?.charAt(0) || ''}
+              return (
+                <BentoCard
+                  key={adm.id}
+                  className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
+                >
+                  {/* Cabecera con Foto MinIO y estado */}
+                  <View>
+                    <View className="flex-row items-start justify-between mb-3">
+                      <View className="relative">
+                        {adm.fotoUrl ? (
+                          <RemoteImage
+                            uri={adm.fotoUrl}
+                            className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-maroon/20"
+                            fallbackText={`${adm.nombre?.charAt(0) || 'A'}${apPat?.charAt(0) || ''}`}
+                          />
+                        ) : (
+                          <View className="w-16 h-16 rounded-2xl bg-maroon/10 border-2 border-maroon/20 items-center justify-center">
+                            <Text className="text-maroon font-bold text-xl">
+                              {adm.nombre?.charAt(0) || 'A'}{apPat?.charAt(0) || ''}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <StatusBadge status={adm.estado} />
+                    </View>
+
+                    {/* Datos del administrativo */}
+                    <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
+                      {admFullName}
+                    </Text>
+                    <Text className="text-xs font-mono text-maroon mt-0.5">
+                      @{adm.username || 'sin-cuenta'}
+                    </Text>
+
+                    {/* Píldoras Bento de cargo y CI */}
+                    <View className="flex-row flex-wrap gap-1.5 mt-3">
+                      <View className="bg-maroon/10 px-2.5 py-1 rounded-lg border border-maroon/20">
+                        <Text className="text-xs font-bold text-maroon">{cargo}</Text>
+                      </View>
+                      <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
+                        <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
+                      </View>
+                    </View>
+
+                    {/* Contacto rápido */}
+                    <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
+                      {adm.email ? (
+                        <View className="flex-row items-center gap-1.5">
+                          <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
+                          <Text className="text-xs text-gray-500" numberOfLines={1}>
+                            {adm.email}
                           </Text>
                         </View>
-                      )}
-                    </View>
-
-                    <StatusBadge status={adm.estado} />
-                  </View>
-
-                  {/* Datos del administrativo */}
-                  <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
-                    {admFullName}
-                  </Text>
-                  <Text className="text-xs font-mono text-maroon mt-0.5">
-                    @{adm.username || 'sin-cuenta'}
-                  </Text>
-
-                  {/* Píldoras Bento de cargo y CI */}
-                  <View className="flex-row flex-wrap gap-1.5 mt-3">
-                    <View className="bg-maroon/10 px-2.5 py-1 rounded-lg border border-maroon/20">
-                      <Text className="text-xs font-bold text-maroon">{cargo}</Text>
-                    </View>
-                    <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-                      <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
+                      ) : null}
+                      {celular ? (
+                        <View className="flex-row items-center gap-1.5">
+                          <Ionicons name="call-outline" size={13} color="#9CA3AF" />
+                          <Text className="text-xs text-gray-500">{celular}</Text>
+                        </View>
+                      ) : null}
                     </View>
                   </View>
 
-                  {/* Contacto rápido */}
-                  <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
-                    {adm.email ? (
-                      <View className="flex-row items-center gap-1.5">
-                        <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
-                        <Text className="text-xs text-gray-500" numberOfLines={1}>
-                          {adm.email}
-                        </Text>
-                      </View>
-                    ) : null}
-                    {celular ? (
-                      <View className="flex-row items-center gap-1.5">
-                        <Ionicons name="call-outline" size={13} color="#9CA3AF" />
-                        <Text className="text-xs text-gray-500">{celular}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-
-                {/* Acciones Bento */}
-                <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
-                  <TouchableOpacity
-                    onPress={() => handleEdit(adm)}
-                    className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
-                  >
-                    <Ionicons name="create-outline" size={16} color="#7A1F3D" />
-                    <Text className="text-xs font-bold text-maroon">Editar</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={() => handleToggleState(adm)}
-                    className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
-                  >
-                    <Ionicons
-                      name={adm.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
-                      size={16}
-                      color={adm.estado === 1 ? '#DC2626' : '#16A34A'}
-                    />
-                    <Text
-                      className={`text-xs font-semibold ${
-                        adm.estado === 1 ? 'text-red-600' : 'text-green-600'
-                      }`}
+                  {/* Acciones Bento */}
+                  <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <TouchableOpacity
+                      onPress={() => handleEdit(adm)}
+                      className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
                     >
-                      {adm.estado === 1 ? 'Baja' : 'Activar'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </BentoCard>
-            );
-          })}
+                      <Ionicons name="create-outline" size={16} color="#7A1F3D" />
+                      <Text className="text-xs font-bold text-maroon">Editar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handleToggleState(adm)}
+                      className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
+                    >
+                      <Ionicons
+                        name={adm.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                        size={16}
+                        color={adm.estado === 1 ? '#DC2626' : '#16A34A'}
+                      />
+                      <Text
+                        className={`text-xs font-semibold ${
+                          adm.estado === 1 ? 'text-red-600' : 'text-green-600'
+                        }`}
+                      >
+                        {adm.estado === 1 ? 'Baja' : 'Activar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </BentoCard>
+              );
+            })}
+          </View>
+        ) : (
+          <View className="items-center justify-center py-12 px-4">
+            <Ionicons name="shield-outline" size={48} color="#D1D5DB" />
+            <Text className="text-gray-500 text-center mt-4 text-sm">No hay personal administrativo habilitado.</Text>
+          </View>
+        )}
+      </BentoCard>
+
+      {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS - DESHABILITADOS */}
+      <BentoCard className="p-5 bg-white">
+        <View className="flex-row items-center justify-between mb-4">
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="close-circle" size={20} color="#DC2626" />
+            <Text className="text-lg font-bold text-gray-900">Deshabilitados</Text>
+            <View className="bg-red-100 px-3 py-1 rounded-full">
+              <Text className="text-sm font-bold text-red-700">{deshabilitados.length}</Text>
+            </View>
+          </View>
         </View>
 
-        {!loading && adminList.length === 0 && (
-          <BentoCard className="p-8 items-center bg-white">
-            <Ionicons name="shield-outline" size={36} color="#9CA3AF" />
-            <Text className="text-gray-500 text-center mt-2 text-sm">
-              No se encontró personal administrativo registrado.
-            </Text>
-          </BentoCard>
+        {deshabilitados.length > 0 ? (
+          <View className="flex-row flex-wrap gap-4">
+            {deshabilitados.map((adm) => {
+              const docs = adm.documentos ?? [];
+              const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
+                (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
+              const apPat = adm.apellidoPaterno || (adm as any).apellido_paterno || '';
+              const apMat = adm.apellidoMaterno || (adm as any).apellido_materno || '';
+              const admFullName = getFullName(adm.nombre, apPat, apMat);
+              const cargo = adm.rol ?? `Rol ${adm.rolId}`;
+              const celular = adm.contactos?.[0]?.contenido || '';
+
+              return (
+                <BentoCard
+                  key={adm.id}
+                  className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
+                >
+                  {/* Cabecera con Foto MinIO y estado */}
+                  <View>
+                    <View className="flex-row items-start justify-between mb-3">
+                      <View className="relative">
+                        {adm.fotoUrl ? (
+                          <RemoteImage
+                            uri={adm.fotoUrl}
+                            className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-maroon/20"
+                            fallbackText={`${adm.nombre?.charAt(0) || 'A'}${apPat?.charAt(0) || ''}`}
+                          />
+                        ) : (
+                          <View className="w-16 h-16 rounded-2xl bg-maroon/10 border-2 border-maroon/20 items-center justify-center">
+                            <Text className="text-maroon font-bold text-xl">
+                              {adm.nombre?.charAt(0) || 'A'}{apPat?.charAt(0) || ''}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <StatusBadge status={adm.estado} />
+                    </View>
+
+                    {/* Datos del administrativo */}
+                    <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
+                      {admFullName}
+                    </Text>
+                    <Text className="text-xs font-mono text-maroon mt-0.5">
+                      @{adm.username || 'sin-cuenta'}
+                    </Text>
+
+                    {/* Píldoras Bento de cargo y CI */}
+                    <View className="flex-row flex-wrap gap-1.5 mt-3">
+                      <View className="bg-maroon/10 px-2.5 py-1 rounded-lg border border-maroon/20">
+                        <Text className="text-xs font-bold text-maroon">{cargo}</Text>
+                      </View>
+                      <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
+                        <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
+                      </View>
+                    </View>
+
+                    {/* Contacto rápido */}
+                    <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
+                      {adm.email ? (
+                        <View className="flex-row items-center gap-1.5">
+                          <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
+                          <Text className="text-xs text-gray-500" numberOfLines={1}>
+                            {adm.email}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {celular ? (
+                        <View className="flex-row items-center gap-1.5">
+                          <Ionicons name="call-outline" size={13} color="#9CA3AF" />
+                          <Text className="text-xs text-gray-500">{celular}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  {/* Acciones Bento */}
+                  <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <TouchableOpacity
+                      onPress={() => handleEdit(adm)}
+                      className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
+                    >
+                      <Ionicons name="create-outline" size={16} color="#7A1F3D" />
+                      <Text className="text-xs font-bold text-maroon">Editar</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={() => handleToggleState(adm)}
+                      className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
+                    >
+                      <Ionicons
+                        name={adm.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                        size={16}
+                        color={adm.estado === 1 ? '#DC2626' : '#16A34A'}
+                      />
+                      <Text
+                        className={`text-xs font-semibold ${
+                          adm.estado === 1 ? 'text-red-600' : 'text-green-600'
+                        }`}
+                      >
+                        {adm.estado === 1 ? 'Baja' : 'Activar'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </BentoCard>
+              );
+            })}
+          </View>
+        ) : (
+          <View className="items-center justify-center py-12 px-4">
+            <Ionicons name="shield-outline" size={48} color="#D1D5DB" />
+            <Text className="text-gray-500 text-center mt-4 text-sm">No hay personal administrativo deshabilitado.</Text>
+          </View>
         )}
-      </View>
+      </BentoCard>
     </ScrollView>
   );
 }

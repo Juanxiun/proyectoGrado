@@ -1,6 +1,12 @@
 import "./env.config.ts";
-import { Resend } from "resend";
+import { BrevoClient } from "@getbrevo/brevo";
 
-const apiKey = Deno.env.get("SEND") || "re_mock_placeholder_key";
-export const resend = new Resend(apiKey);
-export const EMAIL_FROM = Deno.env.get("EMAIL_FROM") || "AcademyShalom@test.shalom";
+export const EMAIL_FROM = Deno.env.get("EMAIL_FROM");
+
+//Brevo opcion goty para pobres
+const apikeyBrevo = String(Deno.env.get("BREVO_API_KEY"));
+export const brevo = new BrevoClient({
+  apiKey: apikeyBrevo,
+  timeoutInSeconds: 30,
+  maxRetries: 3,
+});
