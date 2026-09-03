@@ -1,6 +1,7 @@
-﻿import { Context } from "@oak/oak";
+import { Context } from "@oak/oak";
 import { query, sTransaction } from "../../connects/Database/transaction.ts";
-import { uploadFile, uploadImage } from "../../connects/Storage/minio.ts";
+import { resolveMediaUrl, uploadFile, uploadImage } from "../../connects/Storage/minio.ts";
+import { formFieldAsString, readFilePart, readMultipartForm } from "../../utils/multipart.ts";
 import { serialize } from "../../utils/serialize.ts";
 import {
   buildDocKey,
@@ -37,25 +38,25 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
     let documentFiles: Array<{ index: number; bytes: Uint8Array; name: string }> = [];
 
-    if (contentType.includes("multipart/form-data")) {
-      const form = await ctx.request.body.formData();
+    if (contentType.toLowerCase().includes("multipart/form-data")) {
+      const form = await readMultipartForm(ctx);
 
-      const datosField = form.get("datos");
-      if (!datosField || typeof datosField !== "string") {
+      const datosField = await formFieldAsString(form.get("datos"));
+      if (!datosField) {
         ctx.response.status = 400;
         ctx.response.body = { error: "El campo 'datos' (JSON string) es obligatorio en multipart" };
         return;
       }
       datos = JSON.parse(datosField);
 
-      const foto = form.get("foto");
-      if (!foto || !(foto instanceof File) || foto.size === 0) {
+      const foto = await readFilePart(form.get("foto"));
+      if (!foto) {
         ctx.response.status = 400;
         ctx.response.body = { error: "La foto es obligatoria y debe ser PNG o JPG" };
         return;
       }
 
-      fotoBytes = new Uint8Array(await foto.arrayBuffer());
+      fotoBytes = foto.bytes;
       fotoExt = detectImageExt(fotoBytes);
 
       if (!fotoExt) {
@@ -67,16 +68,15 @@ export async function createUsuario(ctx: Context): Promise<void> {
       if (Array.isArray(datos.documentos)) {
         for (let i = 0; i < datos.documentos.length; i++) {
           const doc = datos.documentos[i];
-          const docFile = form.get("doc_file_" + i) || form.get("doc_file_" + doc.tipoDoc);
-          if (docFile && docFile instanceof File) {
-            const docBytes = new Uint8Array(await docFile.arrayBuffer());
-            const isPdf = docBytes.length >= 4 && String.fromCharCode(...docBytes.slice(0, 4)) === "%PDF";
+          const docFile = await readFilePart(form.get("doc_file_" + i) || form.get("doc_file_" + doc.tipoDoc));
+          if (docFile) {
+            const isPdf = docFile.bytes.length >= 4 && String.fromCharCode(...docFile.bytes.slice(0, 4)) === "%PDF";
             if (!isPdf) {
               ctx.response.status = 400;
               ctx.response.body = { error: "El documento " + (i + 1) + " debe ser un PDF valido" };
               return;
             }
-            documentFiles.push({ index: i, bytes: docBytes, name: docFile.name });
+            documentFiles.push({ index: i, bytes: docFile.bytes, name: docFile.name });
           }
         }
         if (documentFiles.length !== datos.documentos.length) {
@@ -128,7 +128,7 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
     const ci = ciDoc?.numeroDoc ?? "";
 
     // Generar username, email y password automáticamente
-    const username = generateUsername(nombre, apellidoPaterno, apellidoMaterno, nacimiento, ci, rolNombre);
+    const username = generateUsername(nombre, apellidoPaterno, apellidoMaterno, ci);
     const email = generateEmail(username);
     const password = generatePassword(username);
 
@@ -197,7 +197,7 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
 
     ctx.response.status = 201;
     broadcastUserEvent({ action: "created", userId: String(usuarioId) });
-    ctx.response.body = serialize({ message: "Usuario creado correctamente", id: usuarioId, username: cuentaFinal?.username ?? null, email: cuentaFinal?.email ?? null, fotoUrl });
+    ctx.response.body = serialize({ message: "Usuario creado correctamente", id: usuarioId, username: cuentaFinal?.username ?? null, email: cuentaFinal?.email ?? null, fotoUrl: await resolveMediaUrl(fotoUrl) });
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
     console.error("[createUsuario]", err);

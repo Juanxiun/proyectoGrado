@@ -1,6 +1,7 @@
 import { Context } from "@oak/oak";
 import { query } from "../../connects/Database/transaction.ts";
 import { serialize } from "../../utils/serialize.ts";
+import { resolveMediaUrl } from "../../connects/Storage/minio.ts";
 import { jwtConfig } from "../../config/jwt.config.ts";
 import { SignJWT } from "jose";
 import bcrypt from "bcryptjs";
@@ -221,7 +222,7 @@ export async function login(ctx: Context): Promise<void> {
         nombre: user.nombre,
         apellidoPaterno: user.apellido_paterno,
         apellidoMaterno: user.apellido_materno,
-        fotoUrl: user.foto_url,
+        fotoUrl: await resolveMediaUrl(user.foto_url),
         rol: user.rol,
         rolId: String(user.rol_id),
         extraInfo,
@@ -282,7 +283,7 @@ export async function login(ctx: Context): Promise<void> {
         nombre: user.nombre,
         apellidoPaterno: user.apellido_paterno,
         apellidoMaterno: user.apellido_materno,
-        fotoUrl: user.foto_url,
+        fotoUrl: await resolveMediaUrl(user.foto_url),
         rol: user.rol,
         rolId: user.rol_id,
         ...extraInfo,

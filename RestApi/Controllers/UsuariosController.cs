@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using RestApi.Filters;
 using RestApi.Services;
 
 namespace RestApi.Controllers;
@@ -54,6 +55,7 @@ public sealed class UsuariosController : ControllerBase
     /// </summary>
     [HttpPost]
     [DisableRequestSizeLimit]
+    [DisableFormValueModelBinding]
     public async Task<IActionResult> Create()
     {
         if (Request.ContentLength == 0 && !Request.Headers.ContainsKey("Content-Type"))
@@ -71,12 +73,23 @@ public sealed class UsuariosController : ControllerBase
     /// </summary>
     [HttpPut("{id:long}")]
     [DisableRequestSizeLimit]
+    [DisableFormValueModelBinding]
     public async Task<IActionResult> Update(long id)
     {
         if (Request.ContentLength == 0 && !Request.Headers.ContainsKey("Content-Type"))
             return BadRequest(new { error = "El cuerpo del request está vacío" });
 
         var response = await _client.UpdateUsuarioAsync(id, Request);
+        return await ProxyResult(response);
+    }
+
+    /// <summary>
+    /// Baja lógica: marca al usuario como inactivo (estado = 0).
+    /// </summary>
+    [HttpPatch("{id:long}/baja")]
+    public async Task<IActionResult> Baja(long id)
+    {
+        var response = await _client.BajaUsuarioAsync(id, Request);
         return await ProxyResult(response);
     }
 

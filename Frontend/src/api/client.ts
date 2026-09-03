@@ -22,6 +22,17 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: ('Bearer ' + token) } : {};
 }
 
+function isFormData(body: unknown): body is FormData {
+  if (!body || typeof body !== 'object') return false;
+  if (typeof FormData !== 'undefined' && body instanceof FormData) return true;
+  const candidate = body as FormData;
+  return (
+    typeof candidate.append === 'function' &&
+    (Object.prototype.toString.call(body) === '[object FormData]' ||
+      (body as { constructor?: { name?: string } }).constructor?.name === 'FormData')
+  );
+}
+
 export async function apiRequest<T>(
   endpoint: string,
   options: RequestOptions = {},
@@ -36,14 +47,26 @@ export async function apiRequest<T>(
     Object.assign(headers, await getAuthHeaders());
   }
 
-  if (body && !(body instanceof FormData)) {
+  const isMultipart = isFormData(body);
+
+  if (isMultipart) {
+    delete headers['Content-Type'];
+    delete headers['content-type'];
+  } else if (body) {
     headers['Content-Type'] = 'application/json';
+  }
+
+  let finalBody: BodyInit | undefined;
+  if (isMultipart) {
+    finalBody = body as FormData;
+  } else if (body !== undefined && body !== null) {
+    finalBody = typeof body === 'string' ? body : JSON.stringify(body);
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...rest,
     headers,
-    body: body instanceof FormData ? body : body ? JSON.stringify(body) : undefined,
+    body: finalBody,
   });
 
   if (!response.ok) {

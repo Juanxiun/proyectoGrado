@@ -31,8 +31,9 @@ export function UserManagementScreen() {
   const refresh = () => fetchList({ buscar: search, limit: 50 }).catch(() => undefined);
   useEffect(() => { refresh(); return connectUsersWebSocket(refresh); }, []);
 
-  const username = form.cuenta?.username || (form.nombre && form.apellidoPaterno && form.apellidoMaterno && form.nacimiento
-    ? generateUsername(form.nombre, form.apellidoPaterno, form.apellidoMaterno, form.nacimiento) : '');
+  const currentCi = documents.find((d) => d.tipoDoc === 'CI' || d.tipoDoc === 'DNI')?.numeroDoc ?? '';
+  const username = form.cuenta?.username || (form.nombre && form.apellidoPaterno
+    ? generateUsername(form.nombre, form.apellidoPaterno, form.apellidoMaterno, currentCi) : '');
   const email = form.cuenta?.email || (username ? generateStudentEmail(username) : '');
   const setField = (key: keyof CreateUsuarioPayload, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
@@ -48,26 +49,57 @@ export function UserManagementScreen() {
     if (!editing && !fotoUri) {
       Alert.alert('Foto requerida', 'Debe subir la foto de perfil (PNG/JPG).'); return;
     }
+
+    const ciDoc = documents.find((d) => d.tipoDoc.toUpperCase() === 'CI');
+    const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
+    if (ciDoc && !hasCiFile) {
+      Alert.alert(
+        '⚠️ Archivo Crítico CI Faltante',
+        'No se ha adjuntado el archivo digital en PDF para la Cédula de Identidad (CI).\n\n¿Desea guardarlo sin archivo digital o prefiere adjuntarlo ahora?',
+        [
+          { text: 'Adjuntar ahora', style: 'cancel' },
+          { text: 'Guardar sin archivo', style: 'destructive', onPress: () => executeSave() },
+        ],
+      );
+      return;
+    }
+    await executeSave();
+  };
+
+  const executeSave = async () => {
     setSaving(true);
     try {
       const account = form.cuenta?.password ? { username, email, password: form.cuenta.password } : undefined;
       const datos = { ...form, cuenta: account, documentos: documents };
       if (editing) await usuariosApi.updateWithFiles(editing.id, datos as UpdateUsuarioPayload, fotoUri);
       else await usuariosApi.createWithFiles(datos, fotoUri);
-      setForm(empty); setEditing(null); setFotoUri(undefined); setDocuments([{ tipoDoc: 'DNI', numeroDoc: '' }]); setShowForm(false); refresh();
+      setForm(empty); setEditing(null); setFotoUri(undefined); setDocuments([{ tipoDoc: 'CI', numeroDoc: '' }]); setShowForm(false); refresh();
     } catch (e) { Alert.alert('No se pudo guardar', e instanceof Error ? e.message : 'Error del servidor'); }
     finally { setSaving(false); }
   };
 
   const edit = (u: Usuario) => {
     setEditing(u); setFotoUri(u.fotoUrl ?? undefined);
-    setForm({ rolId: u.rolId, nombre: u.nombre, apellidoPaterno: u.apellidoPaterno, apellidoMaterno: u.apellidoMaterno,
-      nacimiento: u.nacimiento.slice(0, 10), estado: u.estado, cuenta: { username: u.username ?? '', email: u.email ?? '', password: '' },
-      documentos: u.documentos ?? [{ tipoDoc: 'DNI', numeroDoc: '' }], direccion: u.direccion ?? undefined, contactos: u.contactos ?? [] });
-    setDocuments((u.documentos ?? []).map((d) => ({
+    setForm({
+      rolId: String(u.rolId),
+      nombre: u.nombre ?? '',
+      apellidoPaterno: u.apellidoPaterno || (u as any).apellido_paterno || '',
+      apellidoMaterno: u.apellidoMaterno || (u as any).apellido_materno || '',
+      nacimiento: u.nacimiento ? String(u.nacimiento).slice(0, 10) : '',
+      estado: u.estado,
+      cuenta: { username: u.username ?? '', email: u.email ?? '', password: '' },
+      documentos: u.documentos ?? [{ tipoDoc: 'CI', numeroDoc: '' }],
+      direccion: u.direccion ?? undefined,
+      contactos: u.contactos ?? []
+    });
+    const mappedDocs: UsuarioDoc[] = (u.documentos ?? []).map((d) => ({
       id: d.id, tipoDoc: d.tipoDoc || (d as any).tipo_doc, numeroDoc: d.numeroDoc || (d as any).numero_doc,
       docUrl: d.docUrl, fileUri: undefined, fileName: undefined,
-    })));
+    }));
+    if (!mappedDocs.some((d) => d.tipoDoc.toUpperCase() === 'CI')) {
+      mappedDocs.unshift({ tipoDoc: 'CI', numeroDoc: '' });
+    }
+    setDocuments(mappedDocs);
     setShowForm(true);
   };
 

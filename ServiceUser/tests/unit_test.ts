@@ -100,3 +100,23 @@ Deno.test("Bento Grid Email: Contains required colors and OTP structure", () => 
   assertStringIncludes(html, "Firefox 128");
   assertStringIncludes(html, "Autenticación Segura 2FA");
 });
+
+import { generateUsername } from "../utils/username.ts";
+
+Deno.test("Username Generation: Generates correct institutional username with single-digit checksum", () => {
+  // Test case 1:
+  // Paterno: Perez -> pe
+  // Materno: Gomez -> go
+  // Nombre: Juan -> ju
+  // CI: 8472915 -> first 2: 84, last 2: 15
+  // Digits: 8, 4, 1, 5 -> sum = 18 -> 1 + 8 = 9
+  const u1 = generateUsername("Juan", "Pérez", "Gómez", "8472915");
+  assertEquals(u1, "pegoju84159");
+
+  // Test case 2 with sum reducing 12 -> 3 as in user instructions:
+  // Digits: 1, 2, 4, 5 -> sum = 12 -> 1 + 2 = 3
+  // CI: 1299945 -> first 2: 12, last 2: 45
+  const u2 = generateUsername("Carlos", "Ramos", "Torres", "1299945");
+  assertEquals(u2, "ratoca12453");
+});
+

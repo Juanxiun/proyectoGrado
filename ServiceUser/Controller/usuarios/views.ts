@@ -1,6 +1,7 @@
 import { Context, RouterContext } from "@oak/oak";
 import { query } from "../../connects/Database/transaction.ts";
 import { serialize } from "../../utils/serialize.ts";
+import { resolveMediaIn } from "../../connects/Storage/minio.ts";
 
 /**
  * GET /usuarios
@@ -130,19 +131,22 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       ...r,
       id: String(r.id),
       rolId: String(r.rolId),
+      nacimiento: r.nacimiento instanceof Date
+        ? r.nacimiento.toISOString().slice(0, 10)
+        : (r.nacimiento ? String(r.nacimiento).slice(0, 10) : ""),
       apellidoPaterno: r.apellidoPaterno ?? "",
       apellidoMaterno: r.apellidoMaterno ?? "",
       documentos: docsByUserId[String(r.id)] ?? [],
     }));
 
     ctx.response.status = 200;
-    ctx.response.body = serialize({
+    ctx.response.body = serialize(await resolveMediaIn({
       data: formattedData,
       total: Number(countRes.rows[0].total),
       page,
       limit,
       totalPages: Math.ceil(Number(countRes.rows[0].total) / limit),
-    });
+    }));
   } catch (err) {
     console.error("[getUsuarios]", err);
     ctx.response.status = 500;
@@ -206,8 +210,10 @@ export async function getUsuario(
 
     const user = userRes.rows[0];
     const viewerRole = ctx.state.auth?.role;
+    const isSelf = String(ctx.state.auth?.sub) === String(id);
     const targetRole = String(user.rol).trim().toLowerCase();
-    const canView = viewerRole === "director" ||
+    const canView = isSelf ||
+      viewerRole === "director" ||
       (viewerRole === "control" && ["profesor", "maestro", "docente", "estudiante"].includes(targetRole)) ||
       (viewerRole === "profesor" && targetRole === "estudiante");
 
@@ -253,18 +259,21 @@ export async function getUsuario(
     ]);
 
     ctx.response.status = 200;
-    ctx.response.body = serialize({
+    ctx.response.body = serialize(await resolveMediaIn({
       ...user,
       id: String(user.id),
       rolId: String(user.rolId),
-      apellidoPaterno: user.apellidoPaterno ?? "",
-      apellidoMaterno: user.apellidoMaterno ?? "",
+      nacimiento: user.nacimiento instanceof Date
+        ? user.nacimiento.toISOString().slice(0, 10)
+        : (user.nacimiento ? String(user.nacimiento).slice(0, 10) : ""),
+      apellidoPaterno: user.apellidoPaterno ?? (user as any).apellido_paterno ?? "",
+      apellidoMaterno: user.apellidoMaterno ?? (user as any).apellido_materno ?? "",
       cuenta: cuentaRes.rows[0] ?? null,
       documentos: docRes.rows,
       direccion: dirRes.rows[0] ?? null,
       contactos: contRes.rows,
       apoderados: apodRes.rows,
-    });
+    }));
   } catch (err) {
     console.error("[getUsuario]", err);
     ctx.response.status = 500;

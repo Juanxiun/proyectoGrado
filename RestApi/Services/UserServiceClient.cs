@@ -39,6 +39,10 @@ public sealed class UserServiceClient
     public Task<HttpResponseMessage> UpdateUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Put, $"/usuarios/{id}", request);
 
+    /// <summary>PATCH /usuarios/:id/baja — baja lógica (estado inactivo).</summary>
+    public Task<HttpResponseMessage> BajaUsuarioAsync(long id, HttpRequest request)
+        => ForwardRequestAsync(HttpMethod.Patch, $"/usuarios/{id}/baja", request);
+
     /// <summary>DELETE /usuarios/:id</summary>
     public Task<HttpResponseMessage> DeleteUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Delete, $"/usuarios/{id}", request);
@@ -80,14 +84,32 @@ public sealed class UserServiceClient
     {
         using var message = new HttpRequestMessage(method, path);
 
+        incomingRequest.EnableBuffering();
+        if (incomingRequest.Body.CanSeek)
+        {
+            incomingRequest.Body.Position = 0;
+        }
+
         // Reenviar cuerpo si existe
         if (incomingRequest.ContentLength > 0 || incomingRequest.Headers.ContainsKey("Content-Type"))
         {
-            var content = new StreamContent(incomingRequest.Body);
+            using var ms = new MemoryStream();
+            await incomingRequest.Body.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            if (bytes.Length == 0 && incomingRequest.Body.CanSeek)
+            {
+                incomingRequest.Body.Position = 0;
+                await incomingRequest.Body.CopyToAsync(ms);
+                bytes = ms.ToArray();
+            }
+
+            var content = new ByteArrayContent(bytes);
             if (!string.IsNullOrEmpty(incomingRequest.ContentType))
             {
                 content.Headers.TryAddWithoutValidation("Content-Type", incomingRequest.ContentType);
             }
+            content.Headers.ContentLength = bytes.Length;
             message.Content = content;
         }
 
