@@ -90,8 +90,26 @@ export async function getUsuarios(ctx: Context): Promise<void> {
     ]);
 
     ctx.response.status = 200;
+    const data = dataRes.rows.map((row) => ({
+      id: row.id,
+      nombre: row.nombre,
+      apellidoPaterno: row.apellido_paterno,
+      apellidoMaterno: row.apellido_materno,
+      nacimiento: row.nacimiento,
+      genero: row.genero,
+      fotoUrl: row.foto_url,
+      estado: row.estado,
+      fechaCreacion: row.fecha_creacion,
+      fechaActualizacion: row.fecha_actualizacion,
+      rolId: row.rol_id,
+      rol: row.rol,
+      username: row.username,
+      email: row.email,
+      ultimoLogin: row.ultimo_login,
+    }));
+
     ctx.response.body = serialize({
-      data: dataRes.rows,
+      data,
       total: Number(countRes.rows[0].total),
       page,
       limit,
@@ -186,13 +204,54 @@ export async function getUsuario(
     ]);
 
     ctx.response.status = 200;
+    const cuenta = cuentaRes.rows[0];
+    const direccion = dirRes.rows[0];
     ctx.response.body = serialize({
-      ...user,
-      cuenta: cuentaRes.rows[0] ?? null,
-      documentos: docRes.rows,
-      direccion: dirRes.rows[0] ?? null,
+      id: user.id,
+      nombre: user.nombre,
+      apellidoPaterno: user.apellido_paterno,
+      apellidoMaterno: user.apellido_materno,
+      nacimiento: user.nacimiento,
+      genero: user.genero,
+      fotoUrl: user.foto_url,
+      estado: user.estado,
+      fechaCreacion: user.fecha_creacion,
+      fechaActualizacion: user.fecha_actualizacion,
+      rolId: user.rol_id,
+      rol: user.rol,
+      cuenta: cuenta ? {
+        id: cuenta.id,
+        username: cuenta.username,
+        email: cuenta.email,
+        ultimoLogin: cuenta.ultimo_login,
+      } : null,
+      documentos: docRes.rows.map((doc) => ({
+        id: doc.id,
+        tipoDoc: doc.tipo_doc,
+        numeroDoc: doc.numero_doc,
+        docUrl: doc.doc_url,
+      })),
+      direccion: direccion ? {
+        id: direccion.id,
+        zona: direccion.zona,
+        distrito: direccion.distrito,
+        bloque: direccion.bloque,
+        calle: direccion.calle,
+        numero: direccion.numero,
+        edificio: direccion.edificio,
+        piso: direccion.piso,
+        referencia: direccion.referencia,
+      } : null,
       contactos: contRes.rows,
-      apoderados: apodRes.rows,
+      apoderados: apodRes.rows.map((apoderado) => ({
+        apoderadoId: apoderado.apoderado_id,
+        parentesco: apoderado.parentesco,
+        esPrincipal: apoderado.es_principal,
+        nombre: apoderado.nombre,
+        apellidoPaterno: apoderado.apellido_paterno,
+        apellidoMaterno: apoderado.apellido_materno,
+        username: apoderado.username,
+      })),
     });
   } catch (err) {
     console.error("[getUsuario]", err);

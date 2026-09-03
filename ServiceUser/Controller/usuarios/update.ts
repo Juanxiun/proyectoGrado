@@ -33,18 +33,41 @@ export async function updateUsuario(
     let datos: Record<string, any> = {};
     let fotoBytes: Uint8Array | null = null;
 
-    if (contentType.includes("multipart/form-data")) {
-      const form = await ctx.request.body.formData();
-      const datosField = form.get("datos");
-      if (datosField && typeof datosField === "string") {
+    // El cuerpo de una petición es un stream: se decide el parser por el
+    // Content-Type y se consume exactamente una vez. No se debe intentar
+    // formData() y luego json(), porque Oak ya no puede volver a leerlo.
+    try {
+      if (contentType.includes("multipart/form-data")) {
+        const form = await ctx.request.body.formData();
+        const datosField = form.get("datos");
+        if (!datosField || typeof datosField !== "string") {
+          ctx.response.status = 400;
+          ctx.response.body = { error: "El campo 'datos' es obligatorio en multipart/form-data" };
+          return;
+        }
         datos = JSON.parse(datosField);
+        const foto = form.get("foto");
+        if (foto && foto instanceof File) {
+          fotoBytes = new Uint8Array(await foto.arrayBuffer());
+        }
+      } else if (contentType.includes("application/json")) {
+        datos = await ctx.request.body.json();
+      } else {
+        ctx.response.status = 415;
+        ctx.response.body = { error: "Content-Type no soportado. Use application/json o multipart/form-data" };
+        return;
       }
-      const foto = form.get("foto");
-      if (foto && foto instanceof File) {
-        fotoBytes = new Uint8Array(await foto.arrayBuffer());
-      }
-    } else {
-      datos = await ctx.request.body.json();
+    } catch (err) {
+      console.warn("[updateUsuario] Cuerpo inválido", err);
+      ctx.response.status = 400;
+      ctx.response.body = { error: "No se pudo interpretar el cuerpo de la solicitud" };
+      return;
+    }
+
+    if (!datos || typeof datos !== "object" || Array.isArray(datos)) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "Los datos de actualización deben ser un objeto" };
+      return;
     }
 
     //Obtener estado actual del usuario
@@ -194,7 +217,19 @@ export async function updateUsuario(
         }
       }
 
-      // 5. Maestro (si corresponde)
+      // 5. Documentos: si se envían, reemplazar todos
+      if (Array.isArray(documentos)) {
+        await tx.queryObject(`DELETE FROM usuario_doc WHERE usuario_id = $1`, [id]);
+        for (const doc of documentos) {
+          await tx.queryObject(
+            `INSERT INTO usuario_doc (usuario_id, tipo_doc, numero_doc, doc_url)
+             VALUES ($1, $2, $3, $4)`,
+            [id, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null],
+          );
+        }
+      }
+
+      // 6. Maestro (si corresponde)
       if (maestro?.especialidad !== undefined) {
         await tx.queryObject(`
           UPDATE maestros SET especialidad = $1 WHERE usuario_id = $2

@@ -1,4 +1,4 @@
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Image, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../context/AuthContext';
@@ -53,9 +53,7 @@ export function UsuariosDashboard() {
 
         <BentoCard className={`p-5 bg-cream ${isMobile ? '' : 'flex-1'}`}>
           <View className="items-center">
-            <View className="w-20 h-20 rounded-full bg-maroon items-center justify-center mb-3">
-              <Text className="text-white text-2xl font-bold">{user?.nombre?.charAt(0) ?? 'E'}</Text>
-            </View>
+            {user?.fotoUrl ? <Image source={{ uri: user.fotoUrl }} className="w-20 h-20 rounded-full bg-gray-100 mb-3" /> : <View className="w-20 h-20 rounded-full bg-maroon items-center justify-center mb-3"><Text className="text-white text-2xl font-bold">{user?.nombre?.charAt(0) ?? 'E'}</Text></View>}
             <Text className="text-lg font-bold text-gray-900">{fullName}</Text>
             <Text className="text-xs text-gray-400 mt-1">STU-2024-{user?.id?.padStart(4, '0') ?? '0892'}</Text>
             <StatusBadge label="Estudiante Regular" variant="success" />
