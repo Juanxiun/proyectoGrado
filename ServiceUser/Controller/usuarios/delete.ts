@@ -4,6 +4,7 @@ import {
   deleteImage,
   getKeyFromUrl,
 } from "../../connects/Storage/minio.ts";
+import { broadcastUserEvent } from "../../services/websocket.service.ts";
 
 /**
  * DELETE /usuarios/:id
@@ -20,16 +21,30 @@ export async function deleteUsuario(
 ): Promise<void> {
   try {
     const id = ctx.params.id;
+    if (!/^\d+$/.test(id)) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "El id debe ser numérico" };
+      return;
+    }
 
     //Obtener foto_url antes de borrar
-    const userRes = await query<{ foto_url: string | null }>(
-      `SELECT foto_url FROM usuarios WHERE id = $1`,
+    const userRes = await query<{ foto_url: string | null; rol: string }>(
+      `SELECT u.foto_url, r.rol
+       FROM usuarios u JOIN roles r ON r.id = u.rol_id
+       WHERE u.id = $1`,
       [id],
     );
 
     if (userRes.rows.length === 0) {
       ctx.response.status = 404;
       ctx.response.body = { error: `Usuario con id=${id} no encontrado` };
+      return;
+    }
+    const targetRole = userRes.rows[0].rol.trim().toLowerCase();
+    if (ctx.state.auth?.role === "control" &&
+      !["profesor", "maestro", "docente", "estudiante"].includes(targetRole)) {
+      ctx.response.status = 403;
+      ctx.response.body = { error: "Control solo puede gestionar profesores y estudiantes" };
       return;
     }
 
@@ -55,6 +70,7 @@ export async function deleteUsuario(
     }
 
     ctx.response.status = 200;
+    broadcastUserEvent({ action: "deleted", userId: id });
     ctx.response.body = {
       message: `Usuario id=${id} eliminado correctamente`,
     };

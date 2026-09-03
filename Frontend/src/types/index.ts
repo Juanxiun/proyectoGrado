@@ -33,8 +33,14 @@ export interface AuthUsuario {
 }
 
 export interface LoginResponse {
-  token: string;
-  usuario: AuthUsuario;
+  requires2FA?: boolean;
+  token?: string;
+  usuario?: AuthUsuario;
+  sessionId?: string;
+  tempToken?: string;
+  emailMasked?: string;
+  expiresInSeconds?: number;
+  message?: string;
 }
 
 export interface LoginRequest {
@@ -58,6 +64,9 @@ export interface UsuarioDoc {
   tipoDoc: TipoDocumento;
   numeroDoc: string;
   docUrl?: string | null;
+  /** URI local del PDF seleccionado (no se envía dentro de datos). */
+  fileUri?: string;
+  fileName?: string;
 }
 
 export interface UsuarioDir {
@@ -117,6 +126,7 @@ export interface UsuariosQueryParams {
 }
 
 export interface UpdateUsuarioPayload {
+  rolId?: string;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
@@ -132,6 +142,23 @@ export interface UpdateUsuarioPayload {
   direccion?: UsuarioDir;
   contactos?: UsuarioCont[];
   maestro?: { especialidad?: string };
+}
+
+export interface CreateUsuarioPayload {
+  rolId: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  nacimiento: string;
+  genero?: Genero;
+  estado?: EstadoUsuario;
+  cuenta?: { username: string; email: string; password: string };
+  documentos?: UsuarioDoc[];
+  direccion?: UsuarioDir;
+  contactos?: UsuarioCont[];
+  maestro?: { especialidad?: string; fechaContratacion?: string };
+  apoderadoId?: string;
+  parentesco?: string;
 }
 
 export interface UpdateUsuarioResponse {

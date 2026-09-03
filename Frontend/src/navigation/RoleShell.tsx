@@ -6,6 +6,9 @@ import { PlaceholderScreen } from '../displays/screens/PlaceholderScreen';
 import { NotFoundScreen } from '../displays/screens/ErrorScreens';
 import { getFullName } from '../utils/validation';
 import type { NavItem } from '../displays/components/Sidebar';
+import { DocentesManagementScreen } from '../features/usuarios/screens/DocentesManagementScreen';
+import { EstudiantesManagementScreen } from '../features/usuarios/screens/EstudiantesManagementScreen';
+import { AdministrativoManagementScreen } from '../features/usuarios/screens/AdministrativoManagementScreen';
 
 interface RoleShellProps {
   navItems: NavItem[];
@@ -28,6 +31,12 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
         return <Dashboard />;
       case 'Profile':
         return <ProfileScreen />;
+      case 'Docentes':
+        return <DocentesManagementScreen />;
+      case 'Estudiantes':
+        return <EstudiantesManagementScreen />;
+      case 'Administrativo':
+        return <AdministrativoManagementScreen />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />

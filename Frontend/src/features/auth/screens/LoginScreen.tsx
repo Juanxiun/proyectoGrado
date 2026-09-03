@@ -27,7 +27,8 @@ export function LoginScreen() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
 
   const handleUsernameChange = (value: string) => {
-    const filtered = value.replace(/[^a-zA-Z0-9]/g, '');
+    // ServiceUser acepta username o email; conservar los caracteres del correo.
+    const filtered = value.replace(/[^a-zA-Z0-9._%+\-@]/g, '');
     setUsername(filtered);
     setUsernameError(null);
   };

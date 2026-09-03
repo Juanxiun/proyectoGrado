@@ -4,6 +4,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { ROLE_DASHBOARD_MAP, ROLES } from '../constants/config';
 import { LoginScreen } from '../features/auth/screens/LoginScreen';
+import { TwoFactorScreen } from '../features/auth/screens/TwoFactorScreen';
 import { DireccionDashboard } from '../features/direccion/screens/DireccionDashboard';
 import { ControlDashboard } from '../features/control/screens/ControlDashboard';
 import { MaestrosDashboard } from '../features/maestros/screens/MaestrosDashboard';
@@ -19,6 +20,7 @@ import {
 
 export type RootStackParamList = {
   Login: undefined;
+  TwoFactor: undefined;
   Direccion: undefined;
   Control: undefined;
   Maestros: undefined;
@@ -46,7 +48,7 @@ function getRoleScreen(rol: string): keyof RootStackParamList {
 }
 
 function AppNavigator() {
-  const { isAuthenticated, isLoading, user } = useAuth();
+  const { isAuthenticated, isLoading, user, pending2FA } = useAuth();
 
   if (isLoading) {
     return (
@@ -56,7 +58,7 @@ function AppNavigator() {
     );
   }
 
-  const activeScreen = isAuthenticated && user
+  const activeScreen = pending2FA ? 'TwoFactor' : isAuthenticated && user
     ? getRoleScreen(user.rol)
     : 'Login';
 
@@ -67,7 +69,9 @@ function AppNavigator() {
         screenOptions={{ headerShown: false, animation: 'fade' }}
       >
         {!isAuthenticated ? (
-          <Stack.Screen name="Login" component={LoginScreen} />
+          pending2FA
+            ? <Stack.Screen name="TwoFactor" component={TwoFactorScreen} />
+            : <Stack.Screen name="Login" component={LoginScreen} />
         ) : (
           <>
             <Stack.Screen name="Direccion">

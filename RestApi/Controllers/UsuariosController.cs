@@ -22,7 +22,6 @@ public sealed class UsuariosController : ControllerBase
         _client = client;
     }
 
-    // ── GET /api/usuarios ─────────────────────────────────────────────────────
     /// <summary>
     /// Lista paginada de usuarios.
     /// Query params: page, limit, rolId, estado, buscar.
@@ -31,42 +30,39 @@ public sealed class UsuariosController : ControllerBase
     public async Task<IActionResult> GetAll()
     {
         var qs = UserServiceClient.ForwardQueryString(Request);
-        var response = await _client.GetUsuariosAsync(qs);
+        var response = await _client.GetUsuariosAsync(qs, Request);
         return await ProxyResult(response);
     }
 
-    // ── GET /api/usuarios/{id} ────────────────────────────────────────────────
     /// <summary>
     /// Obtiene un usuario por id con todas sus relaciones.
     /// </summary>
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetOne(long id)
     {
-        var response = await _client.GetUsuarioAsync(id);
+        var response = await _client.GetUsuarioAsync(id, Request);
         return await ProxyResult(response);
     }
 
-    // ── POST /api/usuarios ────────────────────────────────────────────────────
     /// <summary>
     /// Crea un usuario. Acepta application/json o multipart/form-data.
     ///
     /// Para multipart, enviar:
     ///   - datos: JSON string con los campos del usuario
-    ///   - foto:  archivo de imagen (se convierte a WebP en el ServiceUser)
+    ///   - foto:  archivo PNG/JPG obligatorio (se valida y sube a MinIO)
+    ///   - doc_file_{index}: archivo PDF opcional para cada documento
     /// </summary>
     [HttpPost]
     [DisableRequestSizeLimit]
     public async Task<IActionResult> Create()
     {
-        var content = UserServiceClient.BuildForwardContent(Request);
-        if (content is null)
+        if (Request.ContentLength == 0 && !Request.Headers.ContainsKey("Content-Type"))
             return BadRequest(new { error = "El cuerpo del request está vacío" });
 
-        var response = await _client.CreateUsuarioAsync(content);
+        var response = await _client.CreateUsuarioAsync(Request);
         return await ProxyResult(response);
     }
 
-    // ── PUT /api/usuarios/{id} ────────────────────────────────────────────────
     /// <summary>
     /// Actualiza un usuario. Acepta application/json o multipart/form-data.
     ///
@@ -77,26 +73,23 @@ public sealed class UsuariosController : ControllerBase
     [DisableRequestSizeLimit]
     public async Task<IActionResult> Update(long id)
     {
-        var content = UserServiceClient.BuildForwardContent(Request);
-        if (content is null)
+        if (Request.ContentLength == 0 && !Request.Headers.ContainsKey("Content-Type"))
             return BadRequest(new { error = "El cuerpo del request está vacío" });
 
-        var response = await _client.UpdateUsuarioAsync(id, content);
+        var response = await _client.UpdateUsuarioAsync(id, Request);
         return await ProxyResult(response);
     }
 
-    // ── DELETE /api/usuarios/{id} ─────────────────────────────────────────────
     /// <summary>
     /// Elimina un usuario y su imagen en MinIO.
     /// </summary>
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id)
     {
-        var response = await _client.DeleteUsuarioAsync(id);
+        var response = await _client.DeleteUsuarioAsync(id, Request);
         return await ProxyResult(response);
     }
 
-    // ── Utilidad: proxy de resultado ──────────────────────────────────────────
     private static async Task<IActionResult> ProxyResult(HttpResponseMessage response)
     {
         var body = await response.Content.ReadAsStringAsync();
