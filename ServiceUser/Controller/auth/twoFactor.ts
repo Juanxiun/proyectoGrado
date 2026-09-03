@@ -2,6 +2,7 @@ import { Context } from "@oak/oak";
 import { SignJWT } from "jose";
 import { jwtConfig } from "../../config/jwt.config.ts";
 import { serialize } from "../../utils/serialize.ts";
+import { resolveMediaUrl } from "../../connects/Storage/minio.ts";
 import {
   extractDeviceInfo,
   extractLocationInfo,
@@ -100,7 +101,7 @@ export async function verify2FA(ctx: Context): Promise<void> {
         nombre: sData.nombre,
         apellidoPaterno: sData.apellidoPaterno,
         apellidoMaterno: sData.apellidoMaterno,
-        fotoUrl: sData.fotoUrl,
+        fotoUrl: await resolveMediaUrl(sData.fotoUrl),
         rol: sData.rol,
         rolId: sData.rolId,
         ...sData.extraInfo,

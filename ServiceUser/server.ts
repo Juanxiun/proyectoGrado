@@ -5,6 +5,7 @@ import { oakCors } from "@tajpouria/cors";
 
 import { createUsuario } from "./Controller/usuarios/create.ts";
 import { updateUsuario } from "./Controller/usuarios/update.ts";
+import { bajaUsuario } from "./Controller/usuarios/baja.ts";
 import { deleteUsuario } from "./Controller/usuarios/delete.ts";
 import { getUsuario, getUsuarios } from "./Controller/usuarios/views.ts";
 
@@ -27,7 +28,7 @@ const rt = new Router();
 app.use(
   oakCors({
     origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Latitude", "X-Longitude", "X-Zona", "X-Ciudad", "X-Pais"],
   }),
 );
@@ -44,6 +45,7 @@ rt.get("/usuarios", requireAuth(["director", "control", "profesor"]), getUsuario
 rt.get("/usuarios/:id", requireAuth(["director", "control", "profesor"]), getUsuario);
 rt.post("/usuarios", requireAuth(["director", "control"]), createUsuario);
 rt.put("/usuarios/:id", requireAuth(["director", "control"]), updateUsuario);
+rt.patch("/usuarios/:id/baja", requireAuth(["director", "control"]), bajaUsuario);
 rt.delete("/usuarios/:id", requireAuth(["director", "control"]), deleteUsuario);
 
 // Rutas de Autenticación y 2FA
@@ -104,6 +106,7 @@ console.log(`   GET    /usuarios`);
 console.log(`   GET    /usuarios/:id`);
 console.log(`   POST   /usuarios`);
 console.log(`   PUT    /usuarios/:id`);
+console.log(`   PATCH  /usuarios/:id/baja`);
 console.log(`   DELETE /usuarios/:id`);
 console.log(`   GET    /health`);
 console.log(`======================================================\n`);

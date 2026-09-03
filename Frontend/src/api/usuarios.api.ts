@@ -1,4 +1,4 @@
-﻿import { Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { apiRequest, buildQuery } from './client';
 import type {
   UpdateUsuarioPayload,
@@ -28,50 +28,84 @@ export const usuariosApi = {
     sendMultipart<UpdateUsuarioResponse>(`/api/usuarios/${id}`, 'PUT', datos, fotoUri),
 
   updateWithFiles: (id: string, datos: UpdateUsuarioPayload, fotoUri?: string) => {
-    const hasFiles = fotoUri || (datos.documentos?.some((d) => d.fileUri) ?? false);
-    if (hasFiles) return sendMultipart<UpdateUsuarioResponse>(`/api/usuarios/${id}`, 'PUT', datos, fotoUri);
+    const newFoto = isLocalFileUri(fotoUri) ? fotoUri : undefined;
+    const hasFiles = Boolean(newFoto) || (datos.documentos?.some((d) => isLocalFileUri(d.fileUri)) ?? false);
+    if (hasFiles) return sendMultipart<UpdateUsuarioResponse>(`/api/usuarios/${id}`, 'PUT', datos, newFoto);
     return apiRequest<UpdateUsuarioResponse>(`/api/usuarios/${id}`, { method: 'PUT', body: datos });
   },
 
   delete: (id: string) =>
     apiRequest<{ message: string }>(`/api/usuarios/${id}`, { method: 'DELETE' }),
+
+  baja: (id: string) =>
+    apiRequest<{ message: string; estado: number }>(`/api/usuarios/${id}/baja`, { method: 'PATCH' }),
 };
 
-// Helpers
+function isLocalFileUri(uri?: string | null): uri is string {
+  if (!uri) return false;
+  return (
+    uri.startsWith('blob:') ||
+    uri.startsWith('file:') ||
+    uri.startsWith('data:') ||
+    uri.startsWith('content:') ||
+    uri.startsWith('ph://') ||
+    uri.startsWith('assets-library:')
+  );
+}
 
 function getNameAndType(uri: string, fallback: string, defaultType: string): { name: string; type: string } {
-  const name = uri.startsWith('data:') ? fallback : uri.split('/').pop() || fallback;
+  const name = uri.startsWith('data:') ? fallback : uri.split('/').pop()?.split('?')[0] || fallback;
   const ext = name.split('.').pop()?.toLowerCase();
   const type = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : defaultType;
   return { name, type };
 }
 
 /**
- * Construye la parte de archivo para FormData compatible con native y web.
- *
- * - Native: devuelve { uri, name, type }  — React Native fetch lo convierte
- *           en binario correctamente al construir el multipart body.
- * - Web:    el fetch del navegador NO entiende { uri, name, type } y lo
- *           convertiria en "[object Object]". Aqui hacemos fetch(uri) para
- *           obtener el Blob real y creamos un File object.
+ * Convierte URIs locales a Blob/File reales para que fetch envíe el boundary multipart.
+ * En React Native con file:// se usa el descriptor { uri, name, type } que el FormData nativo espera.
  */
 async function buildFilePart(
   uri: string,
   name: string,
   type: string,
 ): Promise<Blob | { uri: string; name: string; type: string }> {
-  if (Platform.OS === 'web') {
-    const response = await fetch(uri);
-    const blob = await response.blob();
-    return new File([blob], name, { type: blob.type || type });
+  const needsBlob = Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:');
+
+  if (needsBlob) {
+    try {
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      const mime = blob.type || type;
+      if (typeof File !== 'undefined') {
+        return new File([blob], name, { type: mime });
+      }
+      const fileBlob = blob as Blob & { name?: string; type?: string };
+      fileBlob.name = name;
+      fileBlob.type = mime;
+      return fileBlob;
+    } catch {
+      // Fallback para data-uri en caso de que fetch falle
+      if (uri.startsWith('data:')) {
+        const parts = uri.split(',');
+        const mime = parts[0].match(/:(.*?);/)?.[1] || type;
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+          u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        if (typeof File !== 'undefined') {
+          return new File([blob], name, { type: mime });
+        }
+        return blob;
+      }
+    }
   }
-  return { uri, name, type } as unknown as Blob;
+
+  return { uri, name, type };
 }
 
-/**
- * Envia una peticion multipart/form-data.
- * FormData contiene: "datos" (JSON) + "foto" (imagen) + "doc_file_N" (PDFs).
- */
 async function sendMultipart<T = { message: string; id: string; fotoUrl: string | null }>(
   endpoint: string,
   method: 'POST' | 'PUT',
@@ -83,17 +117,33 @@ async function sendMultipart<T = { message: string; id: string; fotoUrl: string 
   const documentos = (payload.documentos ?? []).map(({ fileUri, fileName, ...doc }) => doc);
   form.append('datos', JSON.stringify({ ...payload, documentos }));
 
-  if (fotoUri) {
-    const { name, type } = getNameAndType(fotoUri, 'foto.jpg', 'image/jpeg');
-    const part = await buildFilePart(fotoUri, name, type);
-    form.append('foto', part as Blob);
+  const localFoto = isLocalFileUri(fotoUri) ? fotoUri : undefined;
+  if (localFoto) {
+    const { name, type } = getNameAndType(localFoto, 'foto.jpg', 'image/jpeg');
+    const part = await buildFilePart(localFoto, name, type);
+    // En Web/browser se debe pasar el tercer argumento (filename) para asegurar encabezado Content-Disposition
+    if (Platform.OS === 'web') {
+      form.append('foto', part as unknown as Blob, name);
+    } else {
+      form.append('foto', part as unknown as Blob);
+    }
   }
 
   for (const [index, doc] of (payload.documentos ?? []).entries()) {
-    if (doc.fileUri) {
+    if (isLocalFileUri(doc.fileUri)) {
       const { name, type } = getNameAndType(doc.fileUri, doc.fileName ?? 'documento.pdf', 'application/pdf');
       const part = await buildFilePart(doc.fileUri, name, type);
-      form.append(`doc_file_${index}`, part as Blob);
+      if (Platform.OS === 'web') {
+        form.append(`doc_file_${index}`, part as unknown as Blob, name);
+        if (doc.tipoDoc) {
+          form.append(`doc_file_${doc.tipoDoc}`, part as unknown as Blob, name);
+        }
+      } else {
+        form.append(`doc_file_${index}`, part as unknown as Blob);
+        if (doc.tipoDoc) {
+          form.append(`doc_file_${doc.tipoDoc}`, part as unknown as Blob);
+        }
+      }
     }
   }
 

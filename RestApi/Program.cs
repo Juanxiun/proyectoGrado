@@ -1,7 +1,17 @@
+using Microsoft.AspNetCore.Http.Features;
 using RestApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 104_857_600;
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 104_857_600;
+});
 
 builder.Services.AddOpenApi();
 
@@ -23,6 +33,12 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+
+app.Use(async (context, next) =>
+{
+    context.Request.EnableBuffering();
+    await next();
+});
 
 app.MapControllers();
 
