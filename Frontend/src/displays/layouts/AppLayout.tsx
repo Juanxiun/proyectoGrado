@@ -9,6 +9,7 @@ interface AppLayoutProps {
   title: string;
   userName: string;
   userEmail: string;
+  userPhoto?: string | null;
   navItems: NavItem[];
   activeRoute: string;
   onNavigate: (route: string) => void;
@@ -20,6 +21,7 @@ export function AppLayout({
   title,
   userName,
   userEmail,
+  userPhoto,
   navItems,
   activeRoute,
   onNavigate,
@@ -40,6 +42,7 @@ export function AppLayout({
             title={title}
             userName={userName}
             userEmail={userEmail}
+            userPhoto={userPhoto}
             onProfilePress={onProfilePress}
           />
 

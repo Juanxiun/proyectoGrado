@@ -10,6 +10,8 @@ export const DIRECTOR_NAV: NavItem[] = [
   { key: 'usuarios', label: 'Usuarios', icon: 'people-outline', route: 'Usuarios' },
   { key: 'estructura', label: 'Estructura', icon: 'library-outline', route: 'Estructura' },
   { key: 'docentes', label: 'Docentes', icon: 'school-outline', route: 'Docentes' },
+  { key: 'estudiantes', label: 'Estudiantes', icon: 'people-outline', route: 'Estudiantes' },
+  { key: 'administrativos', label: 'Administrativos', icon: 'business-outline', route: 'Administrativos' },
   { key: 'inscripciones', label: 'Inscripciones', icon: 'document-text-outline', route: 'Inscripciones' },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'tesoreria', label: 'Tesorería', icon: 'wallet-outline', route: 'Tesoreria' },
@@ -18,6 +20,9 @@ export const DIRECTOR_NAV: NavItem[] = [
 export const CONTROL_NAV: NavItem[] = [
   ...BASE_NAV,
   { key: 'usuarios', label: 'Usuarios', icon: 'people-outline', route: 'Usuarios' },
+  { key: 'docentes', label: 'Docentes', icon: 'school-outline', route: 'Docentes' },
+  { key: 'estudiantes', label: 'Estudiantes', icon: 'people-outline', route: 'Estudiantes' },
+  { key: 'administrativos', label: 'Administrativos', icon: 'business-outline', route: 'Administrativos' },
   { key: 'inscripciones', label: 'Inscripciones', icon: 'document-text-outline', route: 'Inscripciones' },
   { key: 'tesoreria', label: 'Tesorería', icon: 'wallet-outline', route: 'Tesoreria' },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
