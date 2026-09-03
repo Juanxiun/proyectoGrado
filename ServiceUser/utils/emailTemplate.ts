@@ -24,222 +24,254 @@ export function generate2FABentoEmailHtml(props: TwoFactorEmailProps): string {
     fechaHora,
   } = props;
 
+  // Aseguramos que el código principal es el foco visual.
   const deviceText = `${dispositivo.browser ?? "Navegador Web"} en ${dispositivo.os ?? "Sistema Operativo"}`;
   const ipText = dispositivo.ip || "IP no registrada";
 
   return `
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Acceso Multifactor - Shalom</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-      background-color: #0b0c10;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-      color: #FFFFFF;
-      -webkit-font-smoothing: antialiased;
-    }
-    table {
-      border-spacing: 0;
-      width: 100%;
-    }
-    td {
-      padding: 0;
-    }
-    .wrapper {
-      width: 100%;
-      background-color: #0b0c10;
-      padding: 30px 10px;
-    }
-    .container {
-      max-width: 580px;
-      margin: 0 auto;
-      background-color: #14161d;
-      border: 1px solid rgba(240, 213, 179, 0.15);
-      border-radius: 20px;
-      overflow: hidden;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-    }
-    .bento-padding {
-      padding: 24px;
-    }
-    
-    /* Header Box */
-    .header-box {
-      background: #1c1e28;
-      border: 1px solid rgba(240, 213, 179, 0.1);
-      border-radius: 14px;
-      padding: 18px 20px;
-      margin-bottom: 14px;
-    }
-    
-    /* Hero OTP Card */
-    .bento-hero {
-      background: linear-gradient(135deg, #7A1F3D 0%, #4D1226 100%);
-      border: 1px solid #F0D5B3;
-      border-radius: 16px;
-      padding: 24px 20px;
-      text-align: center;
-      margin-bottom: 14px;
-      box-shadow: 0 6px 18px rgba(122, 31, 61, 0.35);
-    }
-    .otp-code {
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 36px;
-      font-weight: 800;
-      letter-spacing: 10px;
-      color: #F0D5B3;
-      background: rgba(0, 0, 0, 0.35);
-      padding: 10px 20px;
-      border-radius: 10px;
-      display: inline-block;
-      border: 1px dashed rgba(240, 213, 179, 0.5);
-      margin: 12px 0;
-    }
-    
-    /* Grid system */
-    .grid-2col {
-      width: 100%;
-    }
-    .grid-cell {
-      width: 50%;
-      vertical-align: top;
-      padding-bottom: 10px;
-    }
-    .cell-box {
-      background: #1c1e28;
-      border: 1px solid rgba(240, 213, 179, 0.1);
-      border-radius: 12px;
-      padding: 14px 16px;
-      box-sizing: border-box;
-    }
-    .label {
-      font-size: 10px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #F0D5B3;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-    .value {
-      font-size: 13px;
-      font-weight: 500;
-      color: #FFFFFF;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SGA - Verificación de Acceso</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Estilos generales y reset para email clients */
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f7fa; /* Fondo más suave */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 16px;
+            color: #333333;
+        }
+        .container {
+            max-width: 450px; /* Ampliado ligeramente para más contenido */
+            width: 90%;
+            margin: 20px 0;
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+            text-align: center;
+        }
 
-    /* Badges & Alerts */
-    .badge-pill {
-      display: inline-block;
-      background-color: rgba(240, 213, 179, 0.12);
-      color: #F0D5B3;
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      padding: 4px 10px;
-      border-radius: 20px;
-      border: 1px solid rgba(240, 213, 179, 0.25);
-    }
-    .alert-box {
-      background: rgba(122, 31, 61, 0.25);
-      border: 1px solid rgba(122, 31, 61, 0.6);
-      border-radius: 12px;
-      padding: 12px 16px;
-      font-size: 11px;
-      color: #e2e8f0;
-      line-height: 1.4;
-    }
-    .footer-text {
-      text-align: center;
-      font-size: 10px;
-      color: #64748b;
-      padding: 16px 20px 24px 20px;
-    }
-  </style>
+        /* Header - Identidad corporativa */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            background-color: #721c24; /* Manteniendo el color de marca */
+            color: white;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0; /* Solo bordes superiores redondeados */
+            margin-bottom: 20px;
+        }
+        .header img {
+            max-width: 40px;
+            margin-top: 5px;
+        }
+        .header .info {
+            text-align: right;
+            line-height: 1.2;
+        }
+        .header .info div:first-child {
+             font-size: 1.1em;
+             font-weight: bold;
+        }
+        .header .info div:last-child {
+             font-size: 0.9em;
+             opacity: 0.9;
+        }
+
+        /* Cuerpo del mensaje y títulos */
+        h1 {
+            font-size: 24px;
+            color: #721c24;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        p {
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+
+        /* Código de verificación (Foco principal) */
+        .code-box {
+            background-color: #e9ecef; /* Gris claro para destacar */
+            border: 1px solid #dee2e6;
+            color: #721c24;
+            font-size: 38px;
+            font-weight: bold;
+            letter-spacing: 5px;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 8px;
+            display: inline-block;
+            width: 80%;
+            max-width: 300px;
+        }
+
+        /* Temporizador */
+        .timer-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 30px;
+            padding: 10px 0;
+        }
+        .timer-container .icon {
+            color: #ffc107; /* Naranja suave */
+            margin-right: 10px;
+        }
+        .timer-container .time {
+            font-weight: bold;
+            color: #dc3545; /* Rojo de alerta */
+        }
+
+        /* Botones de acción */
+        .btn-copy, .btn-verification {
+            display: inline-block;
+            text-decoration: none; /* Quita el subrayado */
+            background-color: #721c24; /* Color de marca */
+            color: white;
+            padding: 12px 25px;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+            cursor: pointer;
+            border: none;
+            margin-bottom: 20px;
+        }
+        .btn-copy:hover, .btn-verification:hover {
+            background-color: #621820;
+        }
+
+        /* Grid de información (Datos de la sesión) */
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            text-align: left;
+            padding: 10px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 25px;
+        }
+        .info-grid div {
+            display: flex;
+            flex-direction: column;
+            font-size: 0.95em;
+        }
+        .info-grid .label {
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 3px;
+            font-size: 0.85em;
+        }
+        .info-grid .value {
+            color: #333;
+            font-weight: 500;
+        }
+
+        /* Alerta de seguridad */
+        .alert {
+            display: flex;
+            align-items: flex-start;
+            background-color: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ffeeba;
+            margin-bottom: 20px;
+        }
+        .alert .icon {
+            flex-shrink: 0;
+            margin-right: 15px;
+            font-size: 20px;
+            line-height: 1;
+            margin-top: 3px;
+            color: #856404;
+        }
+        .alert .message-content {
+             /* Asegura que el texto dentro de la alerta sea legible */
+            line-height: 1.4;
+            font-size: 0.95em;
+        }
+        
+        .footer {
+            text-align: center;
+        }
+
+    </style>
 </head>
 <body>
-  <div class="wrapper">
-    <table align="center" class="container">
-      <tr>
-        <td class="bento-padding">
-          
-          <div class="header-box">
-            <table style="width: 100%;">
-              <tr>
-                <td>
-                  <span class="badge-pill">Autenticación Segura 2FA</span>
-                  <h1 style="margin: 8px 0 2px 0; font-size: 18px; color: #FFFFFF; font-weight: 700; letter-spacing: 0.5px;">
-                    CENTRO EDUCATIVO CRISTIANO SHALOM
-                  </h1>
-                  <p style="margin: 0; font-size: 12px; color: #a0a5b5;">
-                    Hola, <strong style="color: #F0D5B3;">${nombre}</strong> (@${username}) • Rol: <span style="text-transform: capitalize;">${rol}</span>
-                  </p>
-                </td>
-              </tr>
-            </table>
-          </div>
-
-          <div class="bento-hero">
-            <p style="margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #F0D5B3; font-weight: 600;">
-              Código de Verificación
-            </p>
-            <div>
-              <span class="otp-code">${codigo2FA}</span>
+    <div class="container">
+        <div class="header">
+            <img src="https://via.placeholder.com/40/721c24/FFFFFF?text=SGA" alt="Logo">
+            <div class="info">
+                <div>AUTENTICACIÓN SEGURA</div>
+                <div>Juanitorex Gato Palta</div>
+                <div>ROL: DIRECTOR</div>
             </div>
-            <p style="margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.85);">
-              ⏱ Válido únicamente durante los próximos <strong>${tiempoExpiracionMinutos} minutos</strong>.
-            </p>
-          </div>
-
-          <table class="grid-2col">
-            <tr>
-              <td class="grid-cell" style="padding-right: 5px;">
-                <div class="cell-box">
-                  <div class="label">Dispositivo</div>
-                  <div class="value">${deviceText}</div>
-                </div>
-              </td>
-              <td class="grid-cell" style="padding-left: 5px;">
-                <div class="cell-box">
-                  <div class="label">Dirección IP</div>
-                  <div class="value">${ipText}</div>
-                </div>
-              </td>
-            </tr>
-            <tr>
-              <td class="grid-cell" style="padding-right: 5px;">
-                <div class="cell-box">
-                  <div class="label">Fecha y Hora</div>
-                  <div class="value">${fechaHora}</div>
-                </div>
-              </td>
-              <td class="grid-cell" style="padding-left: 5px;">
-                <div class="cell-box" style="border-color: rgba(122, 31, 61, 0.4);">
-                  <div class="label">Nivel de Acceso</div>
-                  <div class="value" style="color: #F0D5B3;">Restringido (${rol})</div>
-                </div>
-              </td>
-            </tr>
-          </table>
-
-          <div class="alert-box">
-            <strong style="color: #F0D5B3;">🛡️ Aviso de Seguridad:</strong> Si tú no has solicitado este código para ingresar a la plataforma, ignora este correo y actualiza tu contraseña inmediatamente.
-          </div>
-
-        </td>
-      </tr>
-      <tr>
-        <td class="footer-text">
-          © ${new Date().getFullYear()} Centro Educativo Cristiano Shalom. Todos los derechos reservados.<br>
-          Este es un mensaje automático de autenticación de seguridad.
-        </td>
-      </tr>
-    </table>
-  </div>
+        </div >
+        
+        <h1>Sistema de Gestión Académica</h1>
+        <p>Estimado/a <strong>Juanitorex Gato Palta</strong>, necesitamos su código de verificación para completar su inicio de sesión seguro.</p>
+        
+        <!-- Bloque de Código Principal -->
+        <div class="code-box">
+            <span>${codigo2FA}</span>
+        </div>
+        
+        <!-- Temporizador mejorado -->
+        <div class="timer-container">
+            <i class="fas fa-clock icon"></i>
+            <span>Válido únicamente durante los próximos <span class="time">${tiempoExpiracionMinutos} MINUTOS</span></span>
+        </div>
+        
+        <button class="btn-copy">
+            <i class="fas fa-copy icon" style="margin-right: 8px;"></i>
+            Copiar código
+        </button>
+        
+        <!-- Datos de sesión -->
+        <div class="info-grid">
+            <div>
+                <span class="label">Dispositivo</span>
+                <span class="value">${deviceText}</span>
+            </div>
+            <div>
+                <span class="label">Dirección IP</span>
+                <span class="value">${ipText}</span>
+            </div>
+            <div>
+                <span class="label">Fecha y Hora</span>
+                <span class="value">${fechaHora}</span>
+            </div>
+            <div>
+                <span class="label">Nivel de Acceso</span>
+                <span class="value">${rol}</span>
+            </div>
+        </div>
+        
+        <!-- Aviso de seguridad mejorado -->
+        <div class="alert">
+            <i class="fas fa-shield-alt icon"></i>
+            <div class="message-content">
+                <strong>⚠️ Advertencia de Seguridad:</strong> Si tú no has solicitado este código, por favor, ignora este mensaje y actualiza tu contraseña inmediatamente. Alguien podría estar intentando acceder a tu cuenta sin autorización.
+            </div>
+        </div>
+        
+        <div class="footer">
+            <button class="btn-verification">Cancelar o Volver al Login</button>
+        </div>
+    </div >
 </body>
 </html>
   `.trim();

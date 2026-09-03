@@ -97,7 +97,27 @@ export function useUsuarioUpdate() {
     [],
   );
 
-  return { loading, error, success, update, updateWithPhoto };
+  const updateWithFiles = useCallback(
+    async (id: string, payload: UpdateUsuarioPayload, fotoUri?: string) => {
+      setLoading(true);
+      setError(null);
+      setSuccess(false);
+      try {
+        const result = await usuariosApi.updateWithFiles(id, payload, fotoUri);
+        setSuccess(true);
+        return result;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al actualizar';
+        setError(message);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [],
+  );
+
+  return { loading, error, success, update, updateWithPhoto, updateWithFiles };
 }
 
 export function useUsuarioDelete() {

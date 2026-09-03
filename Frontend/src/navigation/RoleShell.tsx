@@ -37,6 +37,22 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
         return <EstudiantesManagementScreen />;
       case 'Administrativo':
         return <AdministrativoManagementScreen />;
+      case 'Estructura':
+        return <PlaceholderScreen title="Materias" />;
+      case 'Inscripciones':
+        return <PlaceholderScreen title="Materias" />;
+      case 'Evaluaciones':
+        return <PlaceholderScreen title="Evaluaciones" />;
+      case 'Tesoreria':
+        return <PlaceholderScreen title="Económico" />;
+      case 'Cursos':
+        return <PlaceholderScreen title="Materias" />;
+      case 'Calificaciones':
+        return <PlaceholderScreen title="Evaluaciones" />;
+      case 'Pagos':
+        return <PlaceholderScreen title="Económico" />;
+      case 'Horario':
+        return <PlaceholderScreen title="Horario" />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />

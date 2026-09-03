@@ -1,5 +1,5 @@
 import { getRedis } from "../connects/Redis/redis.ts";
-import { resend, EMAIL_FROM } from "../config/send.conf.ts";
+import { brevo, EMAIL_FROM } from "../config/send.conf.ts";
 import { generate2FABentoEmailHtml } from "../utils/emailTemplate.ts";
 import { DeviceInfo, LocationInfo } from "../utils/deviceDetector.ts";
 
@@ -101,13 +101,13 @@ export async function generateAndSend2FACode(params: {
 
   // Envío por correo electrónico con Resend
   try {
-    const sendResult = await resend.emails.send({
-      from: `Shalom Edu <${EMAIL_FROM}>`,
-      to: [params.email],
-      subject: `🔐 Tu código de verificación 2FA: ${code}`,
-      html,
+    const sendResult = await brevo.transactionalEmails.sendTransacEmail({
+      sender: { name: "Shalom Edu", email: EMAIL_FROM },
+      to: [{ email: params.email }],
+      subject: `Tu código de verificación 2FA: ${code}`,
+      htmlContent: html,
     });
-    console.log(`[2FA] Correo enviado a ${params.email} (Resend ID: ${sendResult.data?.id ?? "ok"})`);
+    console.log(`[2FA] Correo enviado a ${params.email} (Brevo Message ID: ${sendResult.messageId ?? "ok"})`);
   } catch (mailErr) {
     console.error(`[2FA] Error enviando correo a ${params.email}:`, mailErr);
     // En entornos de desarrollo donde el email no esté verificado o no haya internet, el código también se loguea
@@ -213,11 +213,11 @@ export async function resend2FACode(
   });
 
   try {
-    await resend.emails.send({
-      from: `Shalom Edu <${EMAIL_FROM}>`,
-      to: [sessionData.email],
+    await brevo.transactionalEmails.sendTransacEmail({
+      sender: { name: "Shalom Edu", email: EMAIL_FROM },
+      to: [{ email: sessionData.email }],
       subject: `🔐 Nuevo código de verificación 2FA: ${newCode}`,
-      html,
+      htmlContent: html,
     });
   } catch (err) {
     console.error("[2FA] Error al reenviar correo:", err);
