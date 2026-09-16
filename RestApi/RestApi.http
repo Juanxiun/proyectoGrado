@@ -1,6 +1,58 @@
 @RestApi_HostAddress = http://localhost:5141
+@Token = Bearer reemplazar-jwt
 
-GET {{RestApi_HostAddress}}/weatherforecast/
+### Health
+GET {{RestApi_HostAddress}}/health
 Accept: application/json
 
+### Periodos
+GET {{RestApi_HostAddress}}/api/periodos?page=1&limit=20
+Authorization: {{Token}}
+
 ###
+POST {{RestApi_HostAddress}}/api/periodos
+Authorization: {{Token}}
+Content-Type: application/json
+
+{
+  "anio": 2026,
+  "nombre": "Gestión 2026",
+  "fechaInicio": "2026-02-01",
+  "fechaFin": "2026-11-30",
+  "activo": true
+}
+
+### Cursos
+GET {{RestApi_HostAddress}}/api/cursos
+Authorization: {{Token}}
+
+###
+POST {{RestApi_HostAddress}}/api/cursos
+Authorization: {{Token}}
+Content-Type: application/json
+
+{
+  "nivel": "primaria",
+  "grado": "5to",
+  "paralelo": "A",
+  "capacidadMaxima": 30
+}
+
+### Materias
+GET {{RestApi_HostAddress}}/api/materias
+Authorization: {{Token}}
+
+###
+POST {{RestApi_HostAddress}}/api/materias
+Authorization: {{Token}}
+Content-Type: application/json
+
+{
+  "codigo": "MAT-01",
+  "nombre": "Matemática",
+  "descripcion": "Álgebra y geometría"
+}
+
+### Cursos por periodo
+GET {{RestApi_HostAddress}}/api/cursos-periodo
+Authorization: {{Token}}

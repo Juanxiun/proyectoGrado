@@ -19,8 +19,10 @@ import {
 } from "./Controller/auth/session.ts";
 import { requireAuth, getClaimsFromToken } from "./middleware/auth.ts";
 import { addClient } from "./services/websocket.service.ts";
+import { handleWebhookEvent } from "./Controller/webhookHandler.ts";
 
-const PORT = Number(Deno.env.get("PORT") ?? 8000);
+// Rango reservado para microservicios: 8880–8883.
+const PORT = Number(Deno.env.get("PORT") ?? 8880);
 
 const app = new Application();
 const rt = new Router();
@@ -42,9 +44,10 @@ app.use(async (ctx, next) => {
 
 // Rutas de Usuarios (CRUD)
 rt.get("/usuarios", requireAuth(["director", "control", "profesor"]), getUsuarios);
-rt.get("/usuarios/:id", requireAuth(["director", "control", "profesor"]), getUsuario);
+// La autorización fina (propio perfil o jerarquía de gestión) se realiza en el controlador.
+rt.get("/usuarios/:id", requireAuth(), getUsuario);
 rt.post("/usuarios", requireAuth(["director", "control"]), createUsuario);
-rt.put("/usuarios/:id", requireAuth(["director", "control"]), updateUsuario);
+rt.put("/usuarios/:id", requireAuth(), updateUsuario);
 rt.patch("/usuarios/:id/baja", requireAuth(["director", "control"]), bajaUsuario);
 rt.delete("/usuarios/:id", requireAuth(["director", "control"]), deleteUsuario);
 
@@ -58,6 +61,8 @@ rt.post("/auth/logout", requireAuth(), logout);
 rt.get("/auth/sessions/me", requireAuth(), getMySessions);
 rt.get("/auth/sessions/user/:id", requireAuth(["director", "control", "profesor"]), getUserSessionsById);
 rt.delete("/auth/sessions/:sessionId", requireAuth(["director", "control"]), revokeSession);
+
+rt.post("/webhook", handleWebhookEvent);
 
 rt.get("/ws", async (ctx) => {
   const token = ctx.request.url.searchParams.get("token");
@@ -91,9 +96,7 @@ app.use((ctx) => {
   ctx.response.body = { error: "Ruta no encontrada" };
 });
 
-console.log(`\n======================================================`);
-console.log(`🚀 ServiceUser corriendo en http://localhost:${PORT}`);
-console.log(`======================================================`);
+console.log(`ServiceUser corriendo en http://localhost:${PORT}`);
 console.log(`   Rutas disponibles:`);
 console.log(`   POST   /auth/login`);
 console.log(`   POST   /auth/verify-2fa`);
@@ -108,7 +111,7 @@ console.log(`   POST   /usuarios`);
 console.log(`   PUT    /usuarios/:id`);
 console.log(`   PATCH  /usuarios/:id/baja`);
 console.log(`   DELETE /usuarios/:id`);
+console.log(`   POST   /webhook`);
 console.log(`   GET    /health`);
-console.log(`======================================================\n`);
 
 await app.listen({ port: PORT });

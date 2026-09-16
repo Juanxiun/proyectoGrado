@@ -9,6 +9,8 @@ interface DocumentInputProps {
   requiredTypes?: string[];
   title?: string;
   showRequiredBadge?: boolean;
+  /** Errores de validación por tipo de documento; se muestran bajo su campo. */
+  fieldErrors?: Record<string, string | undefined>;
 }
 
 export function DocumentInput({
@@ -17,6 +19,7 @@ export function DocumentInput({
   requiredTypes = [],
   title = 'Documentos',
   showRequiredBadge = false,
+  fieldErrors = {},
 }: DocumentInputProps) {
   const isCriticalDoc = (tipoDoc: string) => {
     const t = (tipoDoc || '').trim().toUpperCase();
@@ -159,6 +162,11 @@ export function DocumentInput({
                   placeholder="Número / Código *"
                   className="bg-gray-100 rounded-lg px-2.5 py-2 text-xs text-gray-800 border border-gray-200"
                 />
+                {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`] && (
+                  <Text className="text-xs text-red-600 mt-1">
+                    {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`]}
+                  </Text>
+                )}
               </View>
 
               {/* Botón selector de archivo */}

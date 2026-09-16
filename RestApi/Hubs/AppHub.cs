@@ -20,25 +20,23 @@ public sealed class AppHub : Hub
         {
             await Clients.Caller.SendAsync("ReceiveResponse", new
             {
-                requestId = requestId,
+                requestId,
                 status = 400,
                 error = "requestId no proporcionado"
             });
             return;
         }
 
-        // Registrar la solicitud pendiente vinculando requestId -> ConnectionId
         _tracker.Register(requestId, Context.ConnectionId);
 
-        // Despachar evento webhook asíncrono al backend
-        var dispatched = await _webhookDispatcher.DispatchToUserServiceAsync(requestId, action, payload);
+        var dispatched = await _webhookDispatcher.DispatchAsync(requestId, action, payload);
 
         if (!dispatched)
         {
             _tracker.TryGetAndRemove(requestId, out _);
             await Clients.Caller.SendAsync("ReceiveResponse", new
             {
-                requestId = requestId,
+                requestId,
                 status = 502,
                 error = "No se pudo entregar el Webhook al servicio Backend"
             });

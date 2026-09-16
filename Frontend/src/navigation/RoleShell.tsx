@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../displays/layouts/AppLayout';
 import { ProfileScreen } from '../displays/screens/ProfileScreen';
@@ -9,6 +9,14 @@ import type { NavItem } from '../displays/components/Sidebar';
 import { DocentesManagementScreen } from '../features/usuarios/screens/DocentesManagementScreen';
 import { EstudiantesManagementScreen } from '../features/usuarios/screens/EstudiantesManagementScreen';
 import { AdministrativoManagementScreen } from '../features/usuarios/screens/AdministrativoManagementScreen';
+import { AcademicServicesScreen } from '../features/academico/screens/AcademicServicesScreen';
+import { MaestroCursosScreen } from '../features/maestros/screens/MaestroCursosScreen';
+import { MaestroMateriasScreen } from '../features/maestros/screens/MaestroMateriasScreen';
+import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroEvaluacionesScreen';
+import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteCursosScreen';
+import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
+import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
+import { HorariosPlaceholderScreen } from '../displays/screens/HorariosPlaceholderScreen';
 
 interface RoleShellProps {
   navItems: NavItem[];
@@ -25,6 +33,10 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
   const userName = getFullName(user.nombre, user.apellidoPaterno);
   const userEmail = user.email;
 
+  const roleName = user.rol.toLowerCase();
+  const isTeacher = roleName.includes('maestro') || roleName.includes('profesor') || roleName.includes('docente');
+  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno') || roleName.includes('padre');
+
   const renderContent = () => {
     switch (activeRoute) {
       case 'Dashboard':
@@ -38,21 +50,31 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
       case 'Administrativo':
         return <AdministrativoManagementScreen />;
       case 'Estructura':
-        return <PlaceholderScreen title="Materias" />;
+        return <AcademicServicesScreen area="academic" />;
       case 'Inscripciones':
-        return <PlaceholderScreen title="Materias" />;
+        return <AcademicServicesScreen area="enrollment" />;
       case 'Evaluaciones':
-        return <PlaceholderScreen title="Evaluaciones" />;
+        if (isTeacher) return <MaestroEvaluacionesScreen />;
+        if (isStudent) return <EstudianteEvaluacionesScreen />;
+        return <AcademicServicesScreen area="learning" />;
       case 'Tesoreria':
         return <PlaceholderScreen title="Económico" />;
       case 'Cursos':
-        return <PlaceholderScreen title="Materias" />;
+        if (isTeacher) return <MaestroCursosScreen />;
+        if (isStudent) return <EstudianteCursosScreen />;
+        return <AcademicServicesScreen area="learning" />;
       case 'Calificaciones':
-        return <PlaceholderScreen title="Evaluaciones" />;
+        if (isStudent) return <EstudianteEvaluacionesScreen />;
+        return <AcademicServicesScreen area="learning" />;
+      case 'Materias':
+        if (isTeacher) return <MaestroMateriasScreen />;
+        if (isStudent) return <EstudianteMateriasScreen />;
+        return <AcademicServicesScreen area="learning" />;
       case 'Pagos':
         return <PlaceholderScreen title="Económico" />;
+      case 'Horarios':
       case 'Horario':
-        return <PlaceholderScreen title="Horario" />;
+        return <HorariosPlaceholderScreen rolName={user.rol} />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />

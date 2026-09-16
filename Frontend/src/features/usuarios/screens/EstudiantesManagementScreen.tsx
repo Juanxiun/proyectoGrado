@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -14,6 +14,7 @@ import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { getFullName } from '../../../utils/validation';
+import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
   CreateUsuarioPayload,
   EstadoUsuario,
@@ -58,18 +59,41 @@ const emptyStudentForm = {
   referencia: '',
 };
 
+function InlineInput({ error, className = '', ...props }: ComponentProps<typeof TextInput> & { error?: string }) {
+  return (
+    <View className="flex-1 min-w-[150px]">
+      <TextInput {...props} className={`bg-white rounded-xl px-3 py-2.5 border text-sm ${error ? 'border-red-500' : 'border-gray-200'} ${className}`} />
+      {error ? <Text className="text-xs text-red-600 mt-1">{error}</Text> : null}
+    </View>
+  );
+}
+
 export function EstudiantesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = userRol === 'director' || userRol === 'control' || userRol === 'gerencia';
+  // "editor" es el nombre de rol usado por algunas instalaciones; conserva los
+  // permisos de los roles institucionales que ya podían gestionar estudiantes.
+  const canEdit = ['director', 'control', 'gerencia', 'editor'].includes(userRol);
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EstadoUsuario | undefined>(undefined);
   const [showModal, setShowModal] = useState(false);
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingStudent, setEditingStudent] = useState<Usuario | null>(null);
+  const [editingTutorId, setEditingTutorId] = useState<string | null>(null);
+  const [editTab, setEditTab] = useState<'student' | 'tutor'>('student');
+  const [studentsListTab, setStudentsListTab] = useState<'enabled' | 'disabled'>('enabled');
+
+  // Estado para el Paso 3: Inscripción de estudiante
+  const [cursosPeriodoActivos, setCursosPeriodoActivos] = useState<Array<any>>([]);
+  const [nivelInscripcion, setNivelInscripcion] = useState<'primaria' | 'secundaria'>('primaria');
+  const [selectedCursoPeriodoId, setSelectedCursoPeriodoId] = useState<string>('');
+  const [fechaInscripcion, setFechaInscripcion] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [tipoObservacion, setTipoObservacion] = useState<'Sin observación' | 'Debe entregar documentos' | 'Otros'>('Sin observación');
+  const [observacionManual, setObservacionManual] = useState<string>('');
 
   const [tutorForm, setTutorForm] = useState(emptyTutorForm);
   const [tutorDocs, setTutorDocs] = useState<UsuarioDoc[]>([{ tipoDoc: 'CI', numeroDoc: '' }]);
@@ -84,8 +108,24 @@ export function EstudiantesManagementScreen() {
   ]);
   const [studentPhoto, setStudentPhoto] = useState<string | undefined>(undefined);
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<Usuario | null>(null);
+  const [selectedTutorDetail, setSelectedTutorDetail] = useState<Usuario | null>(null);
+  const [loadingStudentDetail, setLoadingStudentDetail] = useState(false);
   const [bajaTarget, setBajaTarget] = useState<Usuario | null>(null);
   const [bajaLoading, setBajaLoading] = useState(false);
+
+  // Cargar cursos del periodo activo cuando se abre el modal
+  useEffect(() => {
+    if (!showModal) return;
+    academicServicesApi.list('cursos-periodo', { estado: 'activo' })
+      .then((res) => {
+        const rows = res.data ?? [];
+        // Filtrar aquellos cuyo periodo esté activo
+        const activos = rows.filter((r: any) => r.periodo?.activo === true || r.periodo?.activo === undefined);
+        setCursosPeriodoActivos(activos);
+      })
+      .catch((err) => console.warn('No se pudieron cargar los cursos del periodo activo:', err));
+  }, [showModal]);
+
 
   const refresh = () => {
     fetchList({ buscar: search, estado: statusFilter, limit: 100 }).catch(() => undefined);
@@ -97,8 +137,11 @@ export function EstudiantesManagementScreen() {
   }, [search, statusFilter]);
 
   const resetForms = () => {
+    setFieldErrors({});
     setStep(1);
     setEditingStudent(null);
+    setEditingTutorId(null);
+    setEditTab('student');
     setCreatedTutorId(null);
     setTutorSummary(null);
     setTutorForm(emptyTutorForm);
@@ -110,6 +153,65 @@ export function EstudiantesManagementScreen() {
       { tipoDoc: 'RUDE', numeroDoc: '' },
     ]);
     setStudentPhoto(undefined);
+    setSelectedCursoPeriodoId('');
+    setNivelInscripcion('primaria');
+    setFechaInscripcion(new Date().toISOString().slice(0, 10));
+    setTipoObservacion('Sin observación');
+    setObservacionManual('');
+  };
+
+  const clearFieldError = (field: string) => setFieldErrors((current) => {
+    const { [field]: _, ...remaining } = current;
+    return remaining;
+  });
+
+  const validateStudent = () => {
+    const errors: Record<string, string> = {};
+    if (!studentForm.nombre.trim()) errors.studentNombre = 'El nombre es obligatorio.';
+    if (!studentForm.apellidoPaterno.trim()) errors.studentApellidoPaterno = 'El apellido paterno es obligatorio.';
+    if (!studentForm.apellidoMaterno.trim()) errors.studentApellidoMaterno = 'El apellido materno es obligatorio.';
+    if (!studentForm.nacimiento) errors.studentNacimiento = 'La fecha de nacimiento es obligatoria.';
+    const ci = studentDocs.find((doc) => doc.tipoDoc.toUpperCase() === 'CI');
+    const rude = studentDocs.find((doc) => doc.tipoDoc.toUpperCase() === 'RUDE');
+    if (!ci?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
+    if (!rude?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    if (!editingStudent) {
+      if (!studentForm.username.trim()) errors.studentUsername = 'El usuario es obligatorio.';
+      if (!studentForm.email.trim()) errors.studentEmail = 'El correo institucional es obligatorio.';
+      else if (!/^\S+@\S+\.\S+$/.test(studentForm.email)) errors.studentEmail = 'Ingrese un correo válido.';
+      if (!studentForm.password) errors.studentPassword = 'La contraseña es obligatoria.';
+      else if (studentForm.password.length < 8) errors.studentPassword = 'Debe tener al menos 8 caracteres.';
+    }
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const validateTutor = () => {
+    const errors: Record<string, string> = {};
+    if (!tutorForm.nombre.trim()) errors.tutorNombre = 'El nombre es obligatorio.';
+    if (!tutorForm.apellidoPaterno.trim()) errors.tutorApellidoPaterno = 'El apellido paterno es obligatorio.';
+    if (!tutorForm.apellidoMaterno.trim()) errors.tutorApellidoMaterno = 'El apellido materno es obligatorio.';
+    if (!tutorForm.nacimiento) errors.tutorNacimiento = 'La fecha de nacimiento es obligatoria.';
+    if (!tutorDocs.find((doc) => doc.tipoDoc.toUpperCase() === 'CI')?.numeroDoc?.trim()) {
+      errors['documento:CI'] = 'El CI es obligatorio.';
+    }
+    if (!editingTutorId && !tutorPhoto) errors.tutorPhoto = 'La fotografía del tutor es obligatoria.';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const applyServerFieldErrors = (err: unknown, prefix: 'student' | 'tutor') => {
+    const message = err instanceof Error ? err.message : 'No se pudo guardar la información.';
+    const normalized = message.toLowerCase();
+    const errors: Record<string, string> = {};
+    if (/username|usuario/.test(normalized)) {
+      if (prefix === 'student') errors.studentUsername = 'Este nombre de usuario ya está registrado.';
+      else errors['documento:CI'] = 'No se pudo registrar el tutor porque ya existe una cuenta generada con estos datos. Revise el CI.';
+    }
+    if (/email|correo/.test(normalized)) errors[`${prefix}Email`] = 'Este correo ya está registrado.';
+    if (/numero_doc|número de documento|numero de documento|documento/.test(normalized)) errors['documento:CI'] = 'Este número de documento ya está registrado.';
+    if (Object.keys(errors).length) setFieldErrors(errors);
+    return { message, handled: Object.keys(errors).length > 0 };
   };
 
   // Autogenerar username al cambiar datos del estudiante si es nuevo
@@ -132,19 +234,8 @@ export function EstudiantesManagementScreen() {
   };
 
   const handleSaveTutor = async () => {
-    if (!tutorForm.nombre || !tutorForm.apellidoPaterno || !tutorForm.apellidoMaterno || !tutorForm.nacimiento) {
-      Alert.alert('Datos incompletos', 'Complete los datos obligatorios del Tutor (Nombre, Apellidos, Nacimiento).');
-      return;
-    }
+    if (!validateTutor()) return;
     const ciDoc = tutorDocs.find((d) => d.tipoDoc === 'CI');
-    if (!ciDoc?.numeroDoc) {
-      Alert.alert('Documento requerido', 'El Carnet de Identidad (CI) es obligatorio para el tutor.');
-      return;
-    }
-    if (!tutorPhoto) {
-      Alert.alert('Foto requerida', 'Debe subir la foto de perfil del tutor (PNG/JPG).');
-      return;
-    }
 
     setSaving(true);
     try {
@@ -170,7 +261,7 @@ export function EstudiantesManagementScreen() {
 
       const res = await usuariosApi.createWithFiles(payload, tutorPhoto);
       setCreatedTutorId(res.id);
-      setTutorSummary(`${tutorForm.nombre} ${tutorForm.apellidoPaterno} (CI: ${ciDoc.numeroDoc})`);
+      setTutorSummary(`${tutorForm.nombre} ${tutorForm.apellidoPaterno} (CI: ${ciDoc?.numeroDoc ?? ''})`);
 
       setStudentForm((prev) => ({
         ...prev,
@@ -184,46 +275,109 @@ export function EstudiantesManagementScreen() {
 
       setStep(2);
     } catch (err) {
-      Alert.alert('Error al registrar tutor', err instanceof Error ? err.message : 'No se pudo guardar el tutor');
+      const result = applyServerFieldErrors(err, 'tutor');
+      if (!result.handled) Alert.alert('Error al registrar tutor', result.message);
     } finally {
       setSaving(false);
     }
   };
 
   const handleSaveStudent = async () => {
-    if (!studentForm.nombre || !studentForm.apellidoPaterno || !studentForm.apellidoMaterno || !studentForm.nacimiento) {
-      Alert.alert('Datos incompletos', 'Complete los datos personales obligatorios del estudiante.');
-      return;
-    }
+    if (!validateStudent()) return;
     const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
     const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
-    if (!ciDoc?.numeroDoc || !rudeDoc?.numeroDoc) {
-      Alert.alert('Documentos requeridos', 'El CI y el RUDE son obligatorios según la normativa de Bolivia.');
-      return;
-    }
-    if (!editingStudent && (!studentForm.username || !studentForm.email || !studentForm.password)) {
-      Alert.alert('Cuenta de acceso', 'Ingrese las credenciales de acceso para la cuenta del estudiante.');
-      return;
-    }
     if (!editingStudent && !studentPhoto) {
       Alert.alert('Foto requerida', 'Debe subir la foto de perfil del estudiante (PNG/JPG).');
       return;
     }
 
-    const hasCiFile = Boolean(ciDoc.fileUri || ciDoc.docUrl);
+    const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
     if (!hasCiFile) {
       Alert.alert(
         '⚠️ Archivo Crítico CI Faltante',
         'No se ha adjuntado el archivo digital en PDF para la Cédula de Identidad (CI).\n\nEste documento es de archivo crítico para la institución. ¿Desea guardarlo sin archivo digital o prefiere adjuntarlo ahora?',
         [
           { text: 'Adjuntar ahora', style: 'cancel' },
-          { text: 'Guardar sin archivo', style: 'destructive', onPress: () => executeSaveStudent() },
+          {
+            text: 'Continuar sin archivo',
+            style: 'destructive',
+            onPress: () => {
+              if (editingStudent) executeSaveStudent();
+              else setStep(3);
+            },
+          },
         ],
       );
       return;
     }
 
-    await executeSaveStudent();
+    if (editingStudent) {
+      await executeSaveStudent();
+    } else {
+      setStep(3);
+    }
+  };
+
+  const handleFinalizeRegistration = async () => {
+    if (!selectedCursoPeriodoId) {
+      Alert.alert('Curso requerido', 'Por favor seleccione el curso para la inscripción del estudiante.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // 1. Crear el usuario estudiante
+      const createPayload: CreateUsuarioPayload = {
+        rolId: '3',
+        nombre: studentForm.nombre,
+        apellidoPaterno: studentForm.apellidoPaterno,
+        apellidoMaterno: studentForm.apellidoMaterno,
+        nacimiento: studentForm.nacimiento,
+        genero: studentForm.genero,
+        cuenta: {
+          username: studentForm.username,
+          email: studentForm.email,
+          password: studentForm.password,
+        },
+        documentos: studentDocs,
+        direccion: studentForm.zona
+          ? {
+              zona: studentForm.zona,
+              distrito: studentForm.distrito || undefined,
+              calle: studentForm.calle || undefined,
+              numero: studentForm.numero || undefined,
+              referencia: studentForm.referencia || undefined,
+            }
+          : undefined,
+        apoderadoId: createdTutorId || undefined,
+        parentesco: tutorForm.parentesco,
+      };
+
+      const newStudent = await usuariosApi.createWithFiles(createPayload, studentPhoto);
+
+      // 2. Crear la inscripción en el período activo
+      const finalObservacion = tipoObservacion === 'Otros'
+        ? (observacionManual.trim() || 'Otros')
+        : tipoObservacion;
+
+      await academicServicesApi.create('inscripciones', {
+        estudianteId: newStudent.id,
+        cursoPeriodoId: selectedCursoPeriodoId,
+        fechaInscripcion: fechaInscripcion || new Date().toISOString().slice(0, 10),
+        observacion: finalObservacion,
+        estado: 'activo',
+      });
+
+      Alert.alert('Éxito', 'Estudiante registrado y matriculado correctamente en el período activo.');
+      setShowModal(false);
+      resetForms();
+      refresh();
+    } catch (err) {
+      const result = applyServerFieldErrors(err, 'student');
+      if (!result.handled) Alert.alert('Error', result.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const executeSaveStudent = async () => {
@@ -258,66 +412,42 @@ export function EstudiantesManagementScreen() {
 
         await usuariosApi.updateWithFiles(editingStudent.id, updatePayload, studentPhoto);
         Alert.alert('Éxito', 'Información del estudiante actualizada correctamente.');
-      } else {
-        const createPayload: CreateUsuarioPayload = {
-          rolId: '3',
-          nombre: studentForm.nombre,
-          apellidoPaterno: studentForm.apellidoPaterno,
-          apellidoMaterno: studentForm.apellidoMaterno,
-          nacimiento: studentForm.nacimiento,
-          genero: studentForm.genero,
-          cuenta: {
-            username: studentForm.username,
-            email: studentForm.email,
-            password: studentForm.password,
-          },
-          documentos: studentDocs,
-          direccion: studentForm.zona
-            ? {
-                zona: studentForm.zona,
-                distrito: studentForm.distrito || undefined,
-                calle: studentForm.calle || undefined,
-                numero: studentForm.numero || undefined,
-                referencia: studentForm.referencia || undefined,
-              }
-            : undefined,
-          apoderadoId: createdTutorId || undefined,
-          parentesco: tutorForm.parentesco,
-        };
-
-        await usuariosApi.createWithFiles(createPayload, studentPhoto);
-        Alert.alert('Éxito', 'Estudiante registrado y vinculado correctamente al Tutor.');
       }
 
       setShowModal(false);
       resetForms();
       refresh();
     } catch (err) {
-      Alert.alert('Error', err instanceof Error ? err.message : 'No se pudo guardar el estudiante');
+      const result = applyServerFieldErrors(err, 'student');
+      if (!result.handled) Alert.alert('Error', result.message);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleEdit = (u: Usuario) => {
-    setEditingStudent(u);
-    const docs = u.documentos ?? [];
-    const nac = u.nacimiento ? String(u.nacimiento).slice(0, 10) : '';
 
-    setStudentForm({
-      nombre: u.nombre ?? '',
-      apellidoPaterno: u.apellidoPaterno || (u as any).apellido_paterno || '',
-      apellidoMaterno: u.apellidoMaterno || (u as any).apellido_materno || '',
+  const handleEdit = async (u: Usuario) => {
+    try {
+      // La lista contiene un resumen; se cargan ambas fichas completas antes de editar.
+      const student = await usuariosApi.getById(u.id);
+      setEditingStudent(student);
+      const docs = student.documentos ?? [];
+      const nac = student.nacimiento ? String(student.nacimiento).slice(0, 10) : '';
+
+      setStudentForm({
+      nombre: student.nombre ?? '',
+      apellidoPaterno: student.apellidoPaterno || (student as any).apellido_paterno || '',
+      apellidoMaterno: student.apellidoMaterno || (student as any).apellido_materno || '',
       nacimiento: nac,
-      genero: (u.genero as any) ?? 'masculino',
-      username: u.username ?? (u as any).cuenta?.username ?? '',
-      email: u.email ?? (u as any).cuenta?.email ?? '',
+      genero: (student.genero as any) ?? 'masculino',
+      username: student.username ?? (student as any).cuenta?.username ?? '',
+      email: student.email ?? (student as any).cuenta?.email ?? '',
       password: '',
-      zona: u.direccion?.zona ?? '',
-      distrito: u.direccion?.distrito ?? '',
-      calle: u.direccion?.calle ?? '',
-      numero: u.direccion?.numero ?? '',
-      referencia: u.direccion?.referencia ?? '',
+      zona: student.direccion?.zona ?? '',
+      distrito: student.direccion?.distrito ?? '',
+      calle: student.direccion?.calle ?? '',
+      numero: student.direccion?.numero ?? '',
+      referencia: student.direccion?.referencia ?? '',
     });
 
     const mappedDocs: UsuarioDoc[] = docs.map((d) => ({
@@ -335,10 +465,65 @@ export function EstudiantesManagementScreen() {
       mappedDocs.push({ tipoDoc: 'RUDE', numeroDoc: '' });
     }
     setStudentDocs(mappedDocs);
-    setStudentPhoto(u.fotoUrl ?? undefined);
+      setStudentPhoto(student.fotoUrl ?? undefined);
 
-    setStep(2);
-    setShowModal(true);
+      const tutorLink = student.apoderados?.[0];
+      if (tutorLink) {
+        const tutor = await usuariosApi.getById(tutorLink.apoderadoId);
+        const tutorCi = tutor.documentos?.map((doc) => ({ ...doc, fileUri: undefined, fileName: undefined })) ?? [];
+        setEditingTutorId(tutor.id);
+        setTutorForm({
+          nombre: tutor.nombre ?? '', apellidoPaterno: tutor.apellidoPaterno ?? '', apellidoMaterno: tutor.apellidoMaterno ?? '',
+          nacimiento: tutor.nacimiento ? String(tutor.nacimiento).slice(0, 10) : '', genero: (tutor.genero as any) ?? 'masculino',
+          ci: tutorCi.find((doc) => doc.tipoDoc === 'CI')?.numeroDoc ?? '',
+          celular: tutor.contactos?.find((contacto) => contacto.tipo === 'Celular')?.contenido ?? '',
+          email: tutor.cuenta?.email ?? tutor.email ?? '', zona: tutor.direccion?.zona ?? '', distrito: tutor.direccion?.distrito ?? '',
+          calle: tutor.direccion?.calle ?? '', numero: tutor.direccion?.numero ?? '', referencia: tutor.direccion?.referencia ?? '',
+          parentesco: tutorLink.parentesco ?? 'Tutor',
+        });
+        setTutorDocs(tutorCi);
+        setTutorPhoto(tutor.fotoUrl ?? undefined);
+        setTutorSummary(`${tutor.nombre} ${tutor.apellidoPaterno} (${tutorLink.parentesco})`);
+      } else {
+        setEditingTutorId(null);
+        setTutorSummary(null);
+      }
+
+      setStep(2);
+      setEditTab('student');
+      setShowModal(true);
+    } catch (err) {
+      Alert.alert('Error al cargar', err instanceof Error ? err.message : 'No se pudo cargar la ficha del estudiante.');
+    }
+  };
+
+  const handleUpdateTutor = async () => {
+    if (!editingTutorId) return;
+    if (!validateTutor()) return;
+    setSaving(true);
+    try {
+      await usuariosApi.updateWithFiles(editingTutorId, {
+        nombre: tutorForm.nombre,
+        apellidoPaterno: tutorForm.apellidoPaterno,
+        apellidoMaterno: tutorForm.apellidoMaterno,
+        nacimiento: tutorForm.nacimiento,
+        genero: tutorForm.genero,
+        cuenta: tutorForm.email ? { email: tutorForm.email } : undefined,
+        documentos: tutorDocs,
+        contactos: tutorForm.celular ? [{ tipo: 'Celular', contenido: tutorForm.celular }] : [],
+        direccion: tutorForm.zona ? {
+          zona: tutorForm.zona, distrito: tutorForm.distrito || undefined, calle: tutorForm.calle || undefined,
+          numero: tutorForm.numero || undefined, referencia: tutorForm.referencia || undefined,
+        } : undefined,
+      }, tutorPhoto);
+      Alert.alert('Éxito', 'Datos del tutor actualizados correctamente.');
+      refresh();
+    } catch (err) {
+      const result = applyServerFieldErrors(err, 'tutor');
+      if (!result.handled) Alert.alert('Error', result.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleToggleState = (u: Usuario) => {
@@ -379,17 +564,32 @@ export function EstudiantesManagementScreen() {
     }
   };
 
+  const handleViewStudent = async (summary: Usuario) => {
+    setLoadingStudentDetail(true);
+    setSelectedTutorDetail(null);
+    try {
+      const student = await usuariosApi.getById(summary.id);
+      setSelectedStudentDetail(student);
+      const tutorId = student.apoderados?.[0]?.apoderadoId;
+      if (tutorId) setSelectedTutorDetail(await usuariosApi.getById(tutorId));
+    } catch (err) {
+      Alert.alert('Error al cargar', err instanceof Error ? err.message : 'No se pudo cargar la ficha del estudiante.');
+    } finally {
+      setLoadingStudentDetail(false);
+    }
+  };
+
   const estudiantesList = (data?.data ?? []).filter((u) => {
     const r = (u.rol || '').toLowerCase();
     return r === 'estudiante' || String(u.rolId) === '3';
   });
 
   const habilitados = useMemo(
-    () => estudiantesList.filter((u) => u.estado === 1),
+    () => estudiantesList.filter((u) => u.estado === 1 || u.estado === 'activo'),
     [estudiantesList]
   );
   const deshabilitados = useMemo(
-    () => estudiantesList.filter((u) => u.estado === 0),
+    () => estudiantesList.filter((u) => u.estado === 0 || u.estado === 'inactivo' || u.estado === 'bloqueado'),
     [estudiantesList]
   );
 
@@ -451,7 +651,9 @@ export function EstudiantesManagementScreen() {
                 {editingStudent ? 'Editar Estudiante' : 'Registro de Estudiante y Tutor'}
               </Text>
               <Text className="text-xs text-gray-500">
-                {step === 1 ? 'Paso 1 de 2: Registrar Tutor Apoderado' : 'Paso 2 de 2: Datos del Estudiante y Documentación'}
+                {editingStudent
+                  ? (editTab === 'student' ? 'Datos del estudiante y documentación' : 'Datos completos del tutor o apoderado')
+                  : (step === 1 ? 'Paso 1 de 3: Registrar Tutor Apoderado' : step === 2 ? 'Paso 2 de 3: Datos del Estudiante y Documentación' : 'Paso 3 de 3: Inscripción en Período Activo')}
               </Text>
             </View>
             <TouchableOpacity
@@ -466,19 +668,46 @@ export function EstudiantesManagementScreen() {
           </View>
 
           {!editingStudent && (
-            <View className="flex-row items-center justify-center gap-4 mb-5">
+            <View className="flex-row items-center justify-center gap-2 mb-5 flex-wrap">
               <TouchableOpacity
                 onPress={() => setStep(1)}
-                className={`flex-row items-center px-4 py-2 rounded-xl gap-2 ${step === 1 ? 'bg-maroon' : 'bg-gray-100'}`}
+                className={`flex-row items-center px-3 py-2 rounded-xl gap-1.5 ${step === 1 ? 'bg-maroon' : 'bg-gray-100'}`}
               >
-                <Text className={`font-bold text-xs ${step === 1 ? 'text-white' : 'text-gray-600'}`}>1. Tutor Apoderado</Text>
+                <Text className={`font-bold text-xs ${step === 1 ? 'text-white' : 'text-gray-600'}`}>1. Tutor</Text>
               </TouchableOpacity>
-              <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+              <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
               <TouchableOpacity
                 onPress={() => createdTutorId && setStep(2)}
-                className={`flex-row items-center px-4 py-2 rounded-xl gap-2 ${step === 2 ? 'bg-maroon' : 'bg-gray-100'}`}
+                className={`flex-row items-center px-3 py-2 rounded-xl gap-1.5 ${step === 2 ? 'bg-maroon' : 'bg-gray-100'}`}
               >
                 <Text className={`font-bold text-xs ${step === 2 ? 'text-white' : 'text-gray-600'}`}>2. Estudiante</Text>
+              </TouchableOpacity>
+              <Ionicons name="chevron-forward" size={14} color="#9CA3AF" />
+              <TouchableOpacity
+                onPress={() => createdTutorId && studentForm.nombre && setStep(3)}
+                className={`flex-row items-center px-3 py-2 rounded-xl gap-1.5 ${step === 3 ? 'bg-maroon' : 'bg-gray-100'}`}
+              >
+                <Text className={`font-bold text-xs ${step === 3 ? 'text-white' : 'text-gray-600'}`}>3. Inscripción</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {editingStudent && (
+            <View className="flex-row items-center gap-2 mb-5 p-1.5 rounded-xl bg-gray-100 self-start">
+              <TouchableOpacity
+                onPress={() => setEditTab('student')}
+                className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${editTab === 'student' ? 'bg-maroon' : ''}`}
+              >
+                <Ionicons name="school-outline" size={16} color={editTab === 'student' ? '#FFF' : '#4B5563'} />
+                <Text className={`text-xs font-bold ${editTab === 'student' ? 'text-white' : 'text-gray-600'}`}>Datos del estudiante</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => editingTutorId && setEditTab('tutor')}
+                disabled={!editingTutorId}
+                className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${editTab === 'tutor' ? 'bg-maroon' : ''} ${!editingTutorId ? 'opacity-50' : ''}`}
+              >
+                <Ionicons name="people-outline" size={16} color={editTab === 'tutor' ? '#FFF' : '#4B5563'} />
+                <Text className={`text-xs font-bold ${editTab === 'tutor' ? 'text-white' : 'text-gray-600'}`}>Datos tutor - estudiante</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -488,31 +717,36 @@ export function EstudiantesManagementScreen() {
               <BentoCard className="p-4 bg-cream/40 border border-gold/30">
                 <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Tutor (MinIO)</Text>
                 <ProfilePhotoPicker photoUri={tutorPhoto} onChange={setTutorPhoto} required={true} />
+                {fieldErrors.tutorPhoto ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.tutorPhoto}</Text> : null}
               </BentoCard>
 
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                 <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos del Tutor o Apoderado</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  <TextInput
+                  <InlineInput
                     value={tutorForm.nombre}
-                    onChangeText={(v) => setTutorForm((f) => ({ ...f, nombre: v }))}
+                    onChangeText={(v) => { clearFieldError('tutorNombre'); setTutorForm((f) => ({ ...f, nombre: v })); }}
                     placeholder="Nombre del Tutor *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    className="min-w-[170px]"
+                    error={fieldErrors.tutorNombre}
                   />
-                  <TextInput
+                  <InlineInput
                     value={tutorForm.apellidoPaterno}
-                    onChangeText={(v) => setTutorForm((f) => ({ ...f, apellidoPaterno: v }))}
+                    onChangeText={(v) => { clearFieldError('tutorApellidoPaterno'); setTutorForm((f) => ({ ...f, apellidoPaterno: v })); }}
                     placeholder="Apellido Paterno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    className="min-w-[170px]"
+                    error={fieldErrors.tutorApellidoPaterno}
                   />
-                  <TextInput
+                  <InlineInput
                     value={tutorForm.apellidoMaterno}
-                    onChangeText={(v) => setTutorForm((f) => ({ ...f, apellidoMaterno: v }))}
+                    onChangeText={(v) => { clearFieldError('tutorApellidoMaterno'); setTutorForm((f) => ({ ...f, apellidoMaterno: v })); }}
                     placeholder="Apellido Materno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    className="min-w-[170px]"
+                    error={fieldErrors.tutorApellidoMaterno}
                   />
                   <BirthDatePicker value={tutorForm.nacimiento} onChange={(v) => setTutorForm((f) => ({ ...f, nacimiento: v }))} />
                 </View>
+                {fieldErrors.tutorNacimiento ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.tutorNacimiento}</Text> : null}
               </BentoCard>
 
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -522,6 +756,7 @@ export function EstudiantesManagementScreen() {
                   requiredTypes={TUTOR_REQUIRED_DOCS}
                   title="Documentos del Tutor (CI Obligatorio)"
                   showRequiredBadge={true}
+                  fieldErrors={fieldErrors}
                 />
               </BentoCard>
 
@@ -567,7 +802,48 @@ export function EstudiantesManagementScreen() {
             </View>
           )}
 
-          {(step === 2 || editingStudent) && (
+          {editingStudent && editTab === 'tutor' && (
+            <View className="gap-4">
+              <BentoCard className="p-4 bg-cream/40 border border-gold/30">
+                <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Tutor (MinIO)</Text>
+                <ProfilePhotoPicker photoUri={tutorPhoto} onChange={setTutorPhoto} required={false} />
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos personales del tutor o apoderado</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  <InlineInput value={tutorForm.nombre} onChangeText={(v) => { clearFieldError('tutorNombre'); setTutorForm((f) => ({ ...f, nombre: v })); }} placeholder="Nombre *" className="min-w-[170px]" error={fieldErrors.tutorNombre} />
+                  <InlineInput value={tutorForm.apellidoPaterno} onChangeText={(v) => { clearFieldError('tutorApellidoPaterno'); setTutorForm((f) => ({ ...f, apellidoPaterno: v })); }} placeholder="Apellido paterno *" className="min-w-[170px]" error={fieldErrors.tutorApellidoPaterno} />
+                  <InlineInput value={tutorForm.apellidoMaterno} onChangeText={(v) => { clearFieldError('tutorApellidoMaterno'); setTutorForm((f) => ({ ...f, apellidoMaterno: v })); }} placeholder="Apellido materno *" className="min-w-[170px]" error={fieldErrors.tutorApellidoMaterno} />
+                  <BirthDatePicker value={tutorForm.nacimiento} onChange={(v) => setTutorForm((f) => ({ ...f, nacimiento: v }))} />
+                </View>
+                {fieldErrors.tutorNacimiento ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.tutorNacimiento}</Text> : null}
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <DocumentInput documents={tutorDocs} onChange={setTutorDocs} requiredTypes={TUTOR_REQUIRED_DOCS} title="Documentos del Tutor (CI obligatorio)" showRequiredBadge fieldErrors={fieldErrors} />
+              </BentoCard>
+
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Contacto y domicilio del tutor</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  <InlineInput value={tutorForm.email} onChangeText={(v) => { clearFieldError('tutorEmail'); setTutorForm((f) => ({ ...f, email: v })); }} placeholder="Correo electrónico" keyboardType="email-address" error={fieldErrors.tutorEmail} />
+                  <TextInput value={tutorForm.celular} onChangeText={(v) => setTutorForm((f) => ({ ...f, celular: v }))} placeholder="Celular" keyboardType="phone-pad" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.zona} onChangeText={(v) => setTutorForm((f) => ({ ...f, zona: v }))} placeholder="Zona" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.distrito} onChangeText={(v) => setTutorForm((f) => ({ ...f, distrito: v }))} placeholder="Distrito" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.calle} onChangeText={(v) => setTutorForm((f) => ({ ...f, calle: v }))} placeholder="Calle" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.numero} onChangeText={(v) => setTutorForm((f) => ({ ...f, numero: v }))} placeholder="Número" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                  <TextInput value={tutorForm.referencia} onChangeText={(v) => setTutorForm((f) => ({ ...f, referencia: v }))} placeholder="Referencia" className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm" />
+                </View>
+              </BentoCard>
+
+              <TouchableOpacity onPress={handleUpdateTutor} disabled={saving} className="bg-maroon rounded-xl py-3.5 items-center flex-row justify-center gap-2 shadow">
+                {saving ? <ActivityIndicator color="#FFF" /> : <><Ionicons name="save-outline" size={18} color="#FFF" /><Text className="text-white font-bold text-sm">Guardar datos del tutor</Text></>}
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {(step === 2 || editingStudent) && (!editingStudent || editTab === 'student') && (
             <View className="gap-4">
               {tutorSummary && (
                 <View className="bg-gold/15 border border-gold/40 rounded-xl p-3 flex-row items-center justify-between">
@@ -587,35 +863,38 @@ export function EstudiantesManagementScreen() {
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                 <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos Personales del Estudiante</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  <TextInput
+                  <InlineInput
                     value={studentForm.nombre}
                     onChangeText={(v) => {
+                      clearFieldError('studentNombre');
                       setStudentForm((f) => ({ ...f, nombre: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(v, studentForm.apellidoPaterno, studentForm.apellidoMaterno, ciDoc);
                     }}
                     placeholder="Nombre *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentNombre}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.apellidoPaterno}
                     onChangeText={(v) => {
+                      clearFieldError('studentApellidoPaterno');
                       setStudentForm((f) => ({ ...f, apellidoPaterno: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(studentForm.nombre, v, studentForm.apellidoMaterno, ciDoc);
                     }}
                     placeholder="Apellido Paterno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentApellidoPaterno}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.apellidoMaterno}
                     onChangeText={(v) => {
+                      clearFieldError('studentApellidoMaterno');
                       setStudentForm((f) => ({ ...f, apellidoMaterno: v }));
                       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI')?.numeroDoc ?? '';
                       handleAutoFillStudentUsername(studentForm.nombre, studentForm.apellidoPaterno, v, ciDoc);
                     }}
                     placeholder="Apellido Materno *"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentApellidoMaterno}
                   />
                   <BirthDatePicker value={studentForm.nacimiento} onChange={(v) => setStudentForm((f) => ({ ...f, nacimiento: v }))} />
                 </View>
@@ -632,33 +911,34 @@ export function EstudiantesManagementScreen() {
                   requiredTypes={STUDENT_REQUIRED_DOCS}
                   title="Documentos del Estudiante (CI y RUDE en PDF)"
                   showRequiredBadge={true}
+                  fieldErrors={fieldErrors}
                 />
               </BentoCard>
 
               <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                 <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Cuenta Institucional del Estudiante</Text>
                 <View className="flex-row flex-wrap gap-2">
-                  <TextInput
+                  <InlineInput
                     value={studentForm.username}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, username: v }))}
+                    onChangeText={(v) => { clearFieldError('studentUsername'); setStudentForm((f) => ({ ...f, username: v })); }}
                     placeholder="Nombre de Usuario *"
                     autoCapitalize="none"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentUsername}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.email}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, email: v }))}
+                    onChangeText={(v) => { clearFieldError('studentEmail'); setStudentForm((f) => ({ ...f, email: v })); }}
                     placeholder="Correo institucional *"
                     keyboardType="email-address"
                     autoCapitalize="none"
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentEmail}
                   />
-                  <TextInput
+                  <InlineInput
                     value={studentForm.password}
-                    onChangeText={(v) => setStudentForm((f) => ({ ...f, password: v }))}
+                    onChangeText={(v) => { clearFieldError('studentPassword'); setStudentForm((f) => ({ ...f, password: v })); }}
                     placeholder={editingStudent ? 'Nueva Contraseña (Opcional)' : 'Contraseña (Mín. 8 caract.) *'}
                     secureTextEntry
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
+                    error={fieldErrors.studentPassword}
                   />
                 </View>
               </BentoCard>
@@ -672,20 +952,203 @@ export function EstudiantesManagementScreen() {
                   <ActivityIndicator color="#FFF" />
                 ) : (
                   <>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                    <Ionicons name={editingStudent ? "checkmark-circle-outline" : "arrow-forward"} size={18} color="#FFF" />
                     <Text className="text-white font-bold text-sm">
-                      {editingStudent ? 'Guardar Cambios' : 'Finalizar Registro de Estudiante'}
+                      {editingStudent ? 'Guardar Cambios' : 'Continuar a Inscripción (Paso 3)'}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
             </View>
           )}
+
+          {step === 3 && !editingStudent && (
+            <View className="gap-4">
+              <View className="bg-gold/15 border border-gold/40 rounded-xl p-3">
+                <Text className="text-xs font-bold text-maroon">Estudiante a inscribir:</Text>
+                <Text className="text-sm font-bold text-gray-800">
+                  {studentForm.nombre} {studentForm.apellidoPaterno} {studentForm.apellidoMaterno}
+                </Text>
+                <Text className="text-[11px] text-gray-500 mt-0.5">
+                  Tutor asignado: {tutorSummary ?? 'Sin tutor vinculado'}
+                </Text>
+              </View>
+
+              {/* Selector de Nivel Educativo y Cursos del Período Activo */}
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <View className="flex-row items-center justify-between mb-3">
+                  <Text className="text-xs font-bold text-gray-700 uppercase">Seleccionar Curso (Período Activo)</Text>
+                  <View className="flex-row items-center bg-white rounded-lg p-0.5 border border-gray-200">
+                    <TouchableOpacity
+                      onPress={() => setNivelInscripcion('primaria')}
+                      className={`px-3 py-1.5 rounded-md ${nivelInscripcion === 'primaria' ? 'bg-maroon' : ''}`}
+                    >
+                      <Text className={`text-xs font-bold ${nivelInscripcion === 'primaria' ? 'text-white' : 'text-gray-600'}`}>Primaria</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setNivelInscripcion('secundaria')}
+                      className={`px-3 py-1.5 rounded-md ${nivelInscripcion === 'secundaria' ? 'bg-maroon' : ''}`}
+                    >
+                      <Text className={`text-xs font-bold ${nivelInscripcion === 'secundaria' ? 'text-white' : 'text-gray-600'}`}>Secundaria</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View className="flex-row flex-wrap gap-2">
+                  {(() => {
+                    const filteredCursos = cursosPeriodoActivos.filter((cp) => {
+                      const nivel = String(cp.curso?.nivel ?? '').trim().toLowerCase();
+                      return nivel === nivelInscripcion;
+                    });
+
+                    if (!filteredCursos.length) {
+                      return (
+                        <Text className="text-xs text-gray-500 py-3">
+                          No hay cursos habilitados en el período activo para el nivel {nivelInscripcion}.
+                        </Text>
+                      );
+                    }
+
+                    return filteredCursos.map((cp) => {
+                      const isSelected = selectedCursoPeriodoId === String(cp.id);
+                      const nivelLabel = cp.curso?.nivel ? cp.curso.nivel.charAt(0).toUpperCase() + cp.curso.nivel.slice(1) : '';
+                      const periodoAnio = cp.periodo?.anio ?? cp.periodo?.nombre ?? '';
+                      const label = `${cp.curso?.grado ?? ''} ${cp.curso?.paralelo ?? ''} ${nivelLabel} - Período ${periodoAnio}`.trim();
+
+                      return (
+                        <TouchableOpacity
+                          key={cp.id}
+                          onPress={() => setSelectedCursoPeriodoId(String(cp.id))}
+                          className={`px-3.5 py-2.5 rounded-xl border flex-row items-center gap-2 ${
+                            isSelected ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'
+                          }`}
+                        >
+                          <Ionicons
+                            name={isSelected ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={16}
+                            color={isSelected ? '#FFF' : '#801529'}
+                          />
+                          <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    });
+                  })()}
+                </View>
+              </BentoCard>
+
+              {/* Parámetros de Inscripción: Fecha, Estado y Observaciones */}
+              <BentoCard className="p-4 bg-gray-50 border border-gray-200">
+                <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Detalles de Matrícula</Text>
+                <View className="flex-row flex-wrap gap-3">
+                  <View className="flex-1 min-w-[160px]">
+                    <Text className="text-xs font-semibold text-gray-600 mb-1">Fecha de Inscripción *</Text>
+                    <BirthDatePicker
+                      value={fechaInscripcion}
+                      onChange={(v) => setFechaInscripcion(v)}
+                      placeholder="Fecha de inscripción"
+                      minYear={2020}
+                      maxYear={2100}
+                    />
+                    <Text className="text-[10px] text-gray-400 mt-1">Autocompletada con fecha actual</Text>
+                  </View>
+
+                  <View className="flex-1 min-w-[160px]">
+                    <Text className="text-xs font-semibold text-gray-600 mb-1">Estado de Inscripción</Text>
+                    <View className="bg-green-100 rounded-xl px-3 py-3 flex-row items-center gap-2">
+                      <Ionicons name="checkmark-circle" size={16} color="#16A34A" />
+                      <Text className="text-xs font-bold text-green-800">Activo (Por defecto)</Text>
+                    </View>
+                    <Text className="text-[10px] text-gray-400 mt-1">Fecha de retiro solo disponible en edición</Text>
+                  </View>
+                </View>
+
+                {/* Preconfiguración de Observaciones */}
+                <View className="mt-4">
+                  <Text className="text-xs font-semibold text-gray-600 mb-1.5">Observaciones de Inscripción</Text>
+                  <View className="flex-row flex-wrap gap-2 mb-2">
+                    {(['Sin observación', 'Debe entregar documentos', 'Otros'] as const).map((obs) => {
+                      const isChosen = tipoObservacion === obs;
+                      return (
+                        <TouchableOpacity
+                          key={obs}
+                          onPress={() => setTipoObservacion(obs)}
+                          className={`px-3 py-2 rounded-xl border ${
+                            isChosen ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'
+                          }`}
+                        >
+                          <Text className={`text-xs font-semibold ${isChosen ? 'text-white' : 'text-gray-700'}`}>
+                            {obs}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {tipoObservacion === 'Otros' && (
+                    <TextInput
+                      value={observacionManual}
+                      onChangeText={setObservacionManual}
+                      placeholder="Especifique la observación manualmente..."
+                      className="bg-white rounded-xl px-3 py-2.5 border border-gray-300 text-sm text-gray-800 mt-1"
+                    />
+                  )}
+                </View>
+              </BentoCard>
+
+              {/* Botones de Navegación del Paso 3 */}
+              <View className="flex-row gap-2 mt-2">
+                <TouchableOpacity
+                  onPress={() => setStep(2)}
+                  className="bg-gray-100 rounded-xl py-3.5 px-4 items-center justify-center flex-row gap-1"
+                >
+                  <Ionicons name="arrow-back" size={16} color="#4B5563" />
+                  <Text className="text-gray-700 font-bold text-sm">Atrás</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleFinalizeRegistration}
+                  disabled={saving}
+                  className="flex-1 bg-maroon rounded-xl py-3.5 items-center flex-row justify-center gap-2 shadow"
+                >
+                  {saving ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-done-circle" size={20} color="#FFF" />
+                      <Text className="text-white font-bold text-sm">
+                        Finalizar Registro e Inscripción
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
         </BentoCard>
       )}
 
+
+      {/* Separación de listados para no mezclar estudiantes con estados distintos. */}
+      <View className="flex-row items-center gap-2 p-1.5 rounded-xl bg-gray-100 self-start">
+        <TouchableOpacity
+          onPress={() => setStudentsListTab('enabled')}
+          className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${studentsListTab === 'enabled' ? 'bg-maroon' : ''}`}
+        >
+          <Ionicons name="checkmark-circle-outline" size={16} color={studentsListTab === 'enabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${studentsListTab === 'enabled' ? 'text-white' : 'text-gray-600'}`}>Habilitados ({habilitados.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setStudentsListTab('disabled')}
+          className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${studentsListTab === 'disabled' ? 'bg-maroon' : ''}`}
+        >
+          <Ionicons name="close-circle-outline" size={16} color={studentsListTab === 'disabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${studentsListTab === 'disabled' ? 'text-white' : 'text-gray-600'}`}>Deshabilitados ({deshabilitados.length})</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* GRID DE CARTAS BENTO PARA ESTUDIANTES - HABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {studentsListTab === 'enabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
@@ -803,7 +1266,7 @@ export function EstudiantesManagementScreen() {
                       </>
                     ) : (
                       <TouchableOpacity
-                        onPress={() => setSelectedStudentDetail(st)}
+                        onPress={() => handleViewStudent(st)}
                         className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                       >
                         <Ionicons name="eye-outline" size={16} color="#7A1F3D" />
@@ -821,10 +1284,10 @@ export function EstudiantesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay estudiantes habilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* GRID DE CARTAS BENTO PARA ESTUDIANTES - DESHABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {studentsListTab === 'disabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="close-circle" size={20} color="#DC2626" />
@@ -939,7 +1402,7 @@ export function EstudiantesManagementScreen() {
                       </>
                     ) : (
                       <TouchableOpacity
-                        onPress={() => setSelectedStudentDetail(st)}
+                        onPress={() => handleViewStudent(st)}
                         className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                       >
                         <Ionicons name="eye-outline" size={16} color="#7A1F3D" />
@@ -957,7 +1420,7 @@ export function EstudiantesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay estudiantes deshabilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* Ficha rápida de consulta para roles sin permisos de edición */}
       {selectedStudentDetail && (
@@ -968,6 +1431,7 @@ export function EstudiantesManagementScreen() {
               <Ionicons name="close" size={22} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
+          {loadingStudentDetail ? <ActivityIndicator color="#7A1F3D" /> : <>
           <Text className="font-bold text-gray-800">
             {getFullName(
               selectedStudentDetail.nombre,
@@ -983,6 +1447,19 @@ export function EstudiantesManagementScreen() {
               • {d.tipoDoc || (d as any).tipo_doc}: {d.numeroDoc || (d as any).numero_doc}
             </Text>
           ))}
+          <View className="mt-4 pt-3 border-t border-gray-100">
+            <Text className="text-xs font-bold text-maroon uppercase">Datos del tutor o apoderado</Text>
+            {selectedTutorDetail ? (
+              <>
+                <Text className="font-semibold text-gray-800 mt-2">{getFullName(selectedTutorDetail.nombre, selectedTutorDetail.apellidoPaterno, selectedTutorDetail.apellidoMaterno)}</Text>
+                <Text className="text-xs text-gray-600">Correo: {selectedTutorDetail.email ?? selectedTutorDetail.cuenta?.email ?? 'No registrado'}</Text>
+                <Text className="text-xs text-gray-600">Celular: {selectedTutorDetail.contactos?.find((contact) => contact.tipo === 'Celular')?.contenido ?? 'No registrado'}</Text>
+                <Text className="text-xs text-gray-600">Dirección: {[selectedTutorDetail.direccion?.zona, selectedTutorDetail.direccion?.calle, selectedTutorDetail.direccion?.numero].filter(Boolean).join(', ') || 'No registrada'}</Text>
+                {(selectedTutorDetail.documentos ?? []).map((d, i) => <Text key={`tutor-${i}`} className="text-xs text-gray-500 ml-2">• {d.tipoDoc || (d as any).tipo_doc}: {d.numeroDoc || (d as any).numero_doc}</Text>)}
+              </>
+            ) : <Text className="text-xs text-gray-500 mt-1">Este estudiante no tiene un tutor o apoderado vinculado.</Text>}
+          </View>
+          </>}
         </BentoCard>
       )}
       <BajaConfirmModal

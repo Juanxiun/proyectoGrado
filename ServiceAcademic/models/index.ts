@@ -1,0 +1,15 @@
+export {
+  type CreateCursoInput,
+  type CreateMateriaInput,
+  type CreatePeriodoInput,
+  type Curso,
+  type Materia,
+  NIVELES,
+  type NivelEducativo,
+  type PaginatedResult,
+  type PaginationQuery,
+  type PeriodoAcademico,
+  type UpdateCursoInput,
+  type UpdateMateriaInput,
+  type UpdatePeriodoInput,
+} from "./academic.ts";

@@ -5,10 +5,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useUsuarioDetail, useUsuarioUpdate } from '../../hooks/useUsuarios';
+import { usuariosApi } from '../../api/usuarios.api';
 import { BentoCard } from '../components/BentoCard';
 import { BirthDatePicker } from '../../features/usuarios/components/BirthDatePicker';
 import { DocumentInput } from '../../features/usuarios/components/DocumentInput';
 import { ProfilePhotoPicker } from '../../features/usuarios/components/ProfilePhotoPicker';
+import { NotificationsInboxCard } from '../../features/usuarios/components/NotificationsInboxCard';
 import type { Genero, UsuarioCont, UsuarioDoc, Usuario } from '../../types';
 
 const GENEROS: Genero[] = ['masculino', 'femenino', 'otro'];
@@ -37,6 +39,8 @@ export function ProfileScreen() {
   const [editMode, setEditMode] = useState(false);
   const [documents, setDocuments] = useState<UsuarioDoc[]>([]);
   const [showCompleteAlert, setShowCompleteAlert] = useState(false);
+  const [tutors, setTutors] = useState<Usuario[]>([]);
+  const isStudent = ['estudiante', 'padre', 'padres', 'apoderado'].includes(user?.rol?.toLowerCase() ?? '');
 
   const setField = (key: keyof typeof form) => (value: string) =>
     setForm((old) => ({ ...old, [key]: value }));
@@ -83,8 +87,20 @@ export function ProfileScreen() {
       password: '',
     });
     setDocuments(initialDocs);
-    setShowCompleteAlert(!editMode && initialDocs.length === 0 && user?.rol?.toLowerCase() !== 'estudiante');
-  }, [usuario]);
+    setShowCompleteAlert(!editMode && initialDocs.length === 0 && !isStudent);
+  }, [usuario, isStudent, editMode]);
+
+  useEffect(() => {
+    if (!isStudent || !usuario?.apoderados?.length) {
+      setTutors([]);
+      return;
+    }
+    let active = true;
+    void Promise.all(usuario.apoderados.map((tutor) => usuariosApi.getById(tutor.apoderadoId)))
+      .then((details) => active && setTutors(details))
+      .catch(() => active && setTutors([]));
+    return () => { active = false; };
+  }, [isStudent, usuario?.apoderados]);
 
   const missing = useMemo(() => {
     const base = [
@@ -96,11 +112,11 @@ export function ProfileScreen() {
       !form.celular && 'Celular',
       !form.zona && 'Dirección (zona)',
     ].filter(Boolean) as string[];
-    if (user?.rol?.toLowerCase() !== 'estudiante' && documents.length === 0) {
+    if (!isStudent && documents.length === 0) {
       base.push('Documento de identidad');
     }
     return base;
-  }, [form, documents, user?.rol]);
+  }, [form, documents, isStudent]);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -114,7 +130,7 @@ export function ProfileScreen() {
 
   const handleSave = async () => {
     if (!user?.id) return;
-    if (missing.length > 0) {
+    if (!isStudent && missing.length > 0) {
       Alert.alert('Campos incompletos', `Complete: ${missing.join(', ')}`);
       return;
     }
@@ -124,7 +140,18 @@ export function ProfileScreen() {
       { tipo: 'Whatsapp' as const, contenido: form.whatsapp },
     ].filter((c) => c.contenido);
 
-    const payload = {
+    const payload = isStudent ? {
+      cuenta: form.password ? { password: form.password } : undefined,
+      contactos,
+      direccion: form.zona
+        ? {
+            zona: form.zona,
+            distrito: form.distrito || null,
+            calle: form.calle || null,
+            referencia: form.referencia || null,
+          }
+        : undefined,
+    } : {
       nombre: form.nombre,
       apellidoPaterno: form.apellidoPaterno,
       apellidoMaterno: form.apellidoMaterno,
@@ -148,16 +175,18 @@ export function ProfileScreen() {
     };
 
     try {
-      const result = fotoUri || documents.some((d) => d.fileUri)
+      const result = fotoUri || (!isStudent && documents.some((d) => d.fileUri))
         ? await updateWithFiles(user.id, payload as any, fotoUri || undefined)
         : await update(user.id, payload as any);
 
       updateLocalUser({
-        nombre: form.nombre,
-        apellidoPaterno: form.apellidoPaterno,
-        apellidoMaterno: form.apellidoMaterno,
-        username: form.username,
-        email: form.email,
+        ...(isStudent ? {} : {
+          nombre: form.nombre,
+          apellidoPaterno: form.apellidoPaterno,
+          apellidoMaterno: form.apellidoMaterno,
+          username: form.username,
+          email: form.email,
+        }),
         fotoUrl: result.fotoUrl ?? user.fotoUrl,
       });
       setFotoUri(null);
@@ -172,7 +201,7 @@ export function ProfileScreen() {
     }
   };
 
-  const canEditDocuments = user?.rol?.toLowerCase() !== 'estudiante';
+  const canEditDocuments = !isStudent;
 
   if (loadingDetail && !usuario) {
     return (
@@ -183,6 +212,7 @@ export function ProfileScreen() {
   }
 
   const photo = fotoUri ?? usuario?.fotoUrl ?? user?.fotoUrl;
+  const apoderados = usuario?.apoderados ?? [];
 
   return (
     <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-4 p-4 pb-8">
@@ -210,14 +240,19 @@ export function ProfileScreen() {
         </BentoCard>
       )}
 
-      <View className="gap-4 md:flex-row">
-        <BentoCard className="p-5 md:flex-1 bg-maroon">
+      <View className="gap-4 md:flex-row md:items-start">
+        <View className="gap-4 md:w-[32%] md:self-start">
+          <BentoCard className="p-5 bg-maroon">
           <View className="items-center">
-            <TouchableOpacity onPress={pickImage} className="relative">
+            <TouchableOpacity onPress={pickImage} disabled={!editMode} className="relative w-full">
               {photo ? (
-                <Image source={{ uri: photo }} className="w-28 h-28 rounded-full border-4 border-white/30" />
+                <Image
+                  source={{ uri: photo }}
+                  className="w-full h-56 rounded-2xl bg-white/10 border border-white/20"
+                  resizeMode="contain"
+                />
               ) : (
-                <View className="w-28 h-28 rounded-full bg-white/15 items-center justify-center">
+                <View className="w-full h-56 rounded-2xl bg-white/15 items-center justify-center">
                   <Text className="text-white text-4xl font-bold">
                     {form.nombre?.charAt(0) || user?.nombre?.charAt(0) || 'U'}
                   </Text>
@@ -239,9 +274,12 @@ export function ProfileScreen() {
               {usuario?.rol ?? user?.rol ?? 'Usuario'} · ID {user?.id}
             </Text>
           </View>
-        </BentoCard>
+          </BentoCard>
 
-        <BentoCard className="p-5 md:flex-[2]">
+          <NotificationsInboxCard />
+        </View>
+
+        <BentoCard className="p-5 md:flex-1">
           <View className="flex-row items-center gap-3 mb-4">
             <View className={`w-10 h-10 rounded-xl items-center justify-center ${missing.length ? 'bg-amber-100' : 'bg-green-100'}`}>
               <Ionicons name={missing.length ? 'alert-circle' : 'checkmark-circle'} size={23} color={missing.length ? '#B45309' : '#16A34A'} />
@@ -268,14 +306,14 @@ export function ProfileScreen() {
           {editMode ? (
             <>
               <View className="gap-4 md:flex-row md:flex-wrap mb-4">
-                <Field label="Nombre" value={form.nombre} onChangeText={setField('nombre')} container="md:w-[31%]" required />
-                <Field label="Apellido paterno" value={form.apellidoPaterno} onChangeText={setField('apellidoPaterno')} container="md:w-[31%]" required />
-                <Field label="Apellido materno" value={form.apellidoMaterno} onChangeText={setField('apellidoMaterno')} container="md:w-[31%]" required />
+                <Field label="Nombre" value={form.nombre} onChangeText={setField('nombre')} container="md:w-[31%]" required editable={!isStudent} />
+                <Field label="Apellido paterno" value={form.apellidoPaterno} onChangeText={setField('apellidoPaterno')} container="md:w-[31%]" required editable={!isStudent} />
+                <Field label="Apellido materno" value={form.apellidoMaterno} onChangeText={setField('apellidoMaterno')} container="md:w-[31%]" required editable={!isStudent} />
                 <View className="md:w-[31%]">
   <Text className="text-xs font-semibold text-gray-500 uppercase mb-1.5 flex-row items-center gap-1">
     Fecha de nacimiento <Text className="text-red-500">*</Text>
   </Text>
-  <BirthDatePicker value={form.nacimiento} onChange={setField('nacimiento')} placeholder="Fecha nacimiento *" />
+  {isStudent ? <InfoRow label="Fecha de nacimiento" value={form.nacimiento || '—'} /> : <BirthDatePicker value={form.nacimiento} onChange={setField('nacimiento')} placeholder="Fecha nacimiento *" />}
 </View>
               </View>
 
@@ -285,7 +323,8 @@ export function ProfileScreen() {
                   {GENEROS.map((item) => (
                     <TouchableOpacity
                       key={item}
-                      onPress={() => setForm((old) => ({ ...old, genero: item }))}
+                      onPress={() => !isStudent && setForm((old) => ({ ...old, genero: item }))}
+                      disabled={isStudent}
                       className={`flex-1 rounded-xl py-3 items-center ${form.genero === item ? 'bg-maroon' : 'bg-gray-100'}`}
                     >
                       <Text className={`text-xs font-semibold capitalize ${form.genero === item ? 'text-white' : 'text-gray-600'}`}>
@@ -313,8 +352,8 @@ export function ProfileScreen() {
             </View>
             {editMode ? (
               <View className="gap-3 md:flex-row md:flex-wrap">
-                <Field label="Usuario" value={form.username} onChangeText={setField('username')} container="md:w-1/2" required />
-                <Field label="Correo electrónico" value={form.email} onChangeText={setField('email')} keyboardType="email-address" container="md:w-1/2" required />
+                <Field label="Usuario" value={form.username} onChangeText={setField('username')} container="md:w-1/2" required editable={!isStudent} />
+                <Field label="Correo electrónico" value={form.email} onChangeText={setField('email')} keyboardType="email-address" container="md:w-1/2" required editable={!isStudent} />
                 <Field label="Celular" value={form.celular} onChangeText={setField('celular')} keyboardType="phone-pad" container="md:w-1/2" required />
                 <Field label="WhatsApp" value={form.whatsapp} onChangeText={setField('whatsapp')} keyboardType="phone-pad" container="md:w-1/2" />
                 <Field label="Nueva contraseña (opcional)" value={form.password} onChangeText={setField('password')} secureTextEntry placeholder="Mínimo 8 caracteres" container="md:w-1/2" />
@@ -350,6 +389,26 @@ export function ProfileScreen() {
               </View>
             )}
           </BentoCard>
+
+          {isStudent && <BentoCard className="p-4 mt-4 bg-gray-50">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="document-text-outline" size={20} color="#7A1F3D" />
+                <Text className="text-lg font-bold text-gray-900">Documentos registrados</Text>
+              </View>
+            </View>
+            {documents.length > 0 ? (
+              documents.map((doc) => (
+                <View key={doc.id ?? doc.numeroDoc} className="flex-row items-center gap-3 bg-white rounded-xl p-3 mb-2 border border-gray-200">
+                  <Ionicons name="document-text-outline" size={21} color="#7A1F3D" />
+                  <View className="flex-1">
+                    <Text className="font-semibold text-gray-800">{doc.tipoDoc}</Text>
+                    <Text className="text-sm text-gray-500">{doc.numeroDoc}</Text>
+                  </View>
+                </View>
+              ))
+            ) : <Text className="text-gray-500 bg-white p-3 rounded-xl text-center">No tienes documentos registrados.</Text>}
+          </BentoCard>}
 
           {canEditDocuments && (
             <BentoCard className="p-4 mt-4 bg-gray-50">
@@ -400,13 +459,13 @@ export function ProfileScreen() {
             </BentoCard>
           )}
 
-          {usuario?.apoderados?.length && (
+          {apoderados.length > 0 && (
             <BentoCard className="p-4 mt-4 bg-gray-50">
               <View className="flex-row items-center gap-2 mb-3">
                 <Ionicons name="people-outline" size={20} color="#7A1F3D" />
                 <Text className="text-lg font-bold text-gray-900">Apoderados registrados</Text>
               </View>
-              {usuario.apoderados.map((apoderado) => (
+              {apoderados.map((apoderado) => (
                 <View key={apoderado.apoderadoId} className="flex-row items-center gap-3 bg-white rounded-xl p-3 mb-2 border border-gray-200">
                   <Ionicons name="person-outline" size={21} color="#7A1F3D" />
                   <View className="flex-1">
@@ -422,9 +481,31 @@ export function ProfileScreen() {
             </BentoCard>
           )}
 
-          <TouchableOpacity onPress={handleSave} disabled={saving || !editMode} className="bg-maroon rounded-2xl py-4 items-center mt-4">
-            {saving ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-bold">Guardar cambios</Text>}
-          </TouchableOpacity>
+          {editMode && (
+            <TouchableOpacity onPress={handleSave} disabled={saving} className="bg-maroon rounded-2xl py-4 items-center mt-4">
+              {saving ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-bold">Guardar cambios</Text>}
+            </TouchableOpacity>
+          )}
+
+          {isStudent && tutors.map((tutor) => {
+            const celular = tutor.contactos?.find((contacto) => contacto.tipo === 'Celular')?.contenido ?? '—';
+            return (
+              <BentoCard key={tutor.id} className="p-4 mt-4 bg-gray-50">
+                <View className="flex-row items-center gap-2 mb-3">
+                  <Ionicons name="people-outline" size={20} color="#7A1F3D" />
+                  <Text className="text-lg font-bold text-gray-900">Datos del tutor o apoderado</Text>
+                </View>
+                <View className="gap-3 md:grid md:grid-cols-2">
+                  <InfoRow label="Nombre completo" value={`${tutor.nombre} ${tutor.apellidoPaterno} ${tutor.apellidoMaterno}`.trim()} />
+                  <InfoRow label="Fecha de nacimiento" value={tutor.nacimiento || '—'} />
+                  <InfoRow label="Correo" value={tutor.cuenta?.email ?? tutor.email ?? '—'} />
+                  <InfoRow label="Celular" value={celular} />
+                  <InfoRow label="Zona" value={tutor.direccion?.zona ?? '—'} />
+                  <InfoRow label="Dirección" value={[tutor.direccion?.calle, tutor.direccion?.numero, tutor.direccion?.referencia].filter(Boolean).join(' · ') || '—'} />
+                </View>
+              </BentoCard>
+            );
+          })}
         </BentoCard>
       </View>
 
@@ -454,6 +535,7 @@ function Field({
   placeholder,
   container = '',
   required = false,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -463,6 +545,7 @@ function Field({
   placeholder?: string;
   container?: string;
   required?: boolean;
+  editable?: boolean;
 }) {
   return (
     <View className={container}>
@@ -476,6 +559,7 @@ function Field({
         onChangeText={onChangeText}
         keyboardType={keyboardType}
         secureTextEntry={secureTextEntry}
+        editable={editable}
         placeholder={placeholder}
         placeholderTextColor="#9CA3AF"
       />

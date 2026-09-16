@@ -4,6 +4,10 @@ import { jwtConfig } from "../config/jwt.config.ts";
 import { isSessionValidAndActive } from "../services/session.service.ts";
 
 const secret = new TextEncoder().encode(jwtConfig.secret);
+/**
+ * Roles operativos usados para autorizar acciones.
+ * Gerencia comparte las facultades de Control y Padres las de Estudiante.
+ */
 export type AppRole = "director" | "profesor" | "estudiante" | "control";
 
 export interface AuthClaims extends JWTPayload {
@@ -16,6 +20,8 @@ export interface AuthClaims extends JWTPayload {
 export function normalizeRole(value: unknown): AppRole | null {
   const role = String(value ?? "").trim().toLowerCase();
   if (role === "maestro" || role === "maestros" || role === "docente") return "profesor";
+  if (role === "gerencia") return "control";
+  if (role === "padre" || role === "padres" || role === "apoderado" || role === "tutor") return "estudiante";
   return ["director", "profesor", "estudiante", "control"].includes(role)
     ? role as AppRole
     : null;

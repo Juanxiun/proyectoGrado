@@ -1,8 +1,6 @@
 import { Pool } from "@db/postgres";
 import { pg } from "../../config/pg.config.ts";
 
-console.log(pg);
-
 const pool = new Pool(
   {
     hostname: pg.DB_HOST,

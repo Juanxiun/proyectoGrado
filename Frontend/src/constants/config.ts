@@ -2,10 +2,6 @@ export const API_BASE_URL = __DEV__
   ? 'http://localhost:5141'
   : 'http://localhost:5141';
 
-export const USER_SERVICE_WS_URL = __DEV__
-  ? 'ws://localhost:8000'
-  : 'wss://localhost:8000';
-
 export const APP_VERSION = 'v1.0.0';
 
 export const ROLES = {
