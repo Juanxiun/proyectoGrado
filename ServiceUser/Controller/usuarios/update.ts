@@ -296,8 +296,14 @@ export async function updateUsuario(
         vals.push(genero);
       }
       if (estado !== undefined) {
+        let estadoFinal: "activo" | "inactivo" | "bloqueado" = "activo";
+        if (estado === 0 || estado === "inactivo") {
+          estadoFinal = "inactivo";
+        } else if (estado === 2 || estado === "bloqueado") {
+          estadoFinal = "bloqueado";
+        }
         sets.push("estado = $" + p++);
-        vals.push(estado);
+        vals.push(estadoFinal);
       }
       if (rolId !== undefined) {
         sets.push("rol_id = $" + p++);
@@ -335,6 +341,7 @@ export async function updateUsuario(
           cVals.push(hash);
         }
         if (cSets.length > 0) {
+          cSets.push("fecha_actualizacion = NOW()");
           await tx.queryObject(
             "UPDATE usuario_cuenta SET " + cSets.join(", ") +
               " WHERE usuario_id = $" + cp,
@@ -346,12 +353,13 @@ export async function updateUsuario(
       if (direccion) {
         await tx.queryObject(
           `
-          INSERT INTO usuario_dir (usuario_id, zona, distrito, bloque, calle, numero, edificio, piso, referencia)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          INSERT INTO usuario_direcciones (usuario_id, zona, distrito, bloque, calle, numero, edificio, piso, referencia, fecha_actualizacion)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
           ON CONFLICT (usuario_id) DO UPDATE SET
             zona = EXCLUDED.zona, distrito = EXCLUDED.distrito, bloque = EXCLUDED.bloque,
             calle = EXCLUDED.calle, numero = EXCLUDED.numero, edificio = EXCLUDED.edificio,
-            piso = EXCLUDED.piso, referencia = EXCLUDED.referencia
+            piso = EXCLUDED.piso, referencia = EXCLUDED.referencia,
+            fecha_actualizacion = NOW()
         `,
           [
             id,
@@ -368,21 +376,34 @@ export async function updateUsuario(
       }
 
       if (Array.isArray(contactos)) {
-        await tx.queryObject("DELETE FROM usuario_cont WHERE usuario_id = $1", [
+        await tx.queryObject("DELETE FROM usuario_contactos WHERE usuario_id = $1", [
           id,
         ]);
         for (const cont of contactos) {
           await tx.queryObject(
-            "INSERT INTO usuario_cont (usuario_id, tipo, contenido) VALUES ($1, $2, $3)",
-            [id, cont.tipo, cont.contenido],
+            "INSERT INTO usuario_contactos (usuario_id, tipo, contenido, principal) VALUES ($1, $2, $3, $4)",
+            [id, cont.tipo, cont.contenido, cont.principal ?? false],
           );
         }
       }
 
       if (maestro?.especialidad !== undefined) {
         await tx.queryObject(
-          "UPDATE maestros SET especialidad = $1 WHERE usuario_id = $2",
-          [maestro.especialidad, id],
+          `INSERT INTO maestros (usuario_id, especialidad, fecha_contratacion, estado)
+           VALUES ($1, $2, CURRENT_DATE, 'activo')
+           ON CONFLICT (usuario_id) DO UPDATE SET
+             especialidad = EXCLUDED.especialidad,
+             fecha_actualizacion = NOW()`,
+          [id, maestro.especialidad],
+        );
+      }
+
+      if (datos.ocupacion !== undefined) {
+        await tx.queryObject(
+          `INSERT INTO apoderados (usuario_id, ocupacion)
+           VALUES ($1, $2)
+           ON CONFLICT (usuario_id) DO UPDATE SET ocupacion = EXCLUDED.ocupacion`,
+          [id, datos.ocupacion],
         );
       }
 
@@ -391,26 +412,26 @@ export async function updateUsuario(
           if (!doc?.tipoDoc || !doc?.numeroDoc) continue;
           if (doc.id) {
             await tx.queryObject(
-              `UPDATE usuario_doc
+              `UPDATE usuario_documentos
                SET tipo_doc = $1, numero_doc = $2, doc_url = COALESCE($3, doc_url)
                WHERE id = $4 AND usuario_id = $5`,
               [doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null, doc.id, id],
             );
           } else {
             const existing = await tx.queryObject<{ id: bigint }>(
-              `SELECT id FROM usuario_doc WHERE usuario_id = $1 AND tipo_doc = $2 LIMIT 1`,
+              `SELECT id FROM usuario_documentos WHERE usuario_id = $1 AND tipo_doc = $2 LIMIT 1`,
               [id, doc.tipoDoc],
             );
             if (existing.rows.length > 0) {
               await tx.queryObject(
-                `UPDATE usuario_doc
+                `UPDATE usuario_documentos
                  SET numero_doc = $1, doc_url = COALESCE($2, doc_url)
                  WHERE id = $3`,
                 [doc.numeroDoc, doc.docUrl ?? null, existing.rows[0].id],
               );
             } else {
               await tx.queryObject(
-                `INSERT INTO usuario_doc (usuario_id, tipo_doc, numero_doc, doc_url)
+                `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url)
                  VALUES ($1, $2, $3, $4)`,
                 [id, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null],
               );

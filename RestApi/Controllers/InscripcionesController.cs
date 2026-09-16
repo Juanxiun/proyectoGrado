@@ -1,0 +1,41 @@
+using Microsoft.AspNetCore.Mvc;
+using RestApi.Services;
+
+namespace RestApi.Controllers;
+
+[ApiController]
+[Route("api/inscripciones")]
+[Produces("application/json")]
+public sealed class InscripcionesController : ControllerBase
+{
+    private readonly EnrollmentServiceClient _client;
+
+    public InscripcionesController(EnrollmentServiceClient client) => _client = client;
+
+    [HttpGet]
+    public Task<IActionResult> GetAll()
+        => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/inscripciones{EnrollmentServiceClient.ForwardQueryString(Request)}", Request));
+
+    [HttpGet("{id:long}")]
+    public Task<IActionResult> GetOne(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/inscripciones/{id}", Request));
+
+    [HttpPost]
+    public Task<IActionResult> Create()
+        => Proxy(_client.ForwardAsync(HttpMethod.Post, "/inscripciones", Request));
+
+    [HttpPut("{id:long}")]
+    public Task<IActionResult> Update(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Put, $"/inscripciones/{id}", Request));
+
+    [HttpPatch("{id:long}/retirar")]
+    public Task<IActionResult> Retirar(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Patch, $"/inscripciones/{id}/retirar", Request));
+
+    [HttpDelete("{id:long}")]
+    public Task<IActionResult> Delete(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Delete, $"/inscripciones/{id}", Request));
+
+    private static async Task<IActionResult> Proxy(Task<HttpResponseMessage> response)
+        => await ProxyResponse.From(await response);
+}

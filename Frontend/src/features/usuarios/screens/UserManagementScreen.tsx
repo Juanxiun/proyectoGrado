@@ -1,7 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
+import { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { ActivityIndicator, Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { useUsuariosList } from '../../../hooks/useUsuarios';
@@ -19,6 +17,10 @@ const empty: CreateUsuarioPayload = {
   documentos: [{ tipoDoc: 'DNI', numeroDoc: '' }],
 };
 
+function InlineInput({ error, className = '', ...props }: ComponentProps<typeof TextInput> & { error?: string }) {
+  return <View className="flex-1 min-w-[180px]"><TextInput {...props} className={`bg-gray-100 rounded-xl px-3 py-3 border ${error ? 'border-red-500' : 'border-gray-200'} ${className}`} />{error ? <Text className="text-xs text-red-600 mt-1">{error}</Text> : null}</View>;
+}
+
 export function UserManagementScreen() {
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -28,24 +30,38 @@ export function UserManagementScreen() {
   const [saving, setSaving] = useState(false);
   const [fotoUri, setFotoUri] = useState<string | undefined>();
   const [documents, setDocuments] = useState<UsuarioDoc[]>([{ tipoDoc: 'DNI', numeroDoc: '' }]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [listTab, setListTab] = useState<'enabled' | 'disabled'>('enabled');
   const refresh = () => fetchList({ buscar: search, limit: 50 }).catch(() => undefined);
   useEffect(() => { refresh(); return connectUsersWebSocket(refresh); }, []);
 
   const currentCi = documents.find((d) => d.tipoDoc === 'CI' || d.tipoDoc === 'DNI')?.numeroDoc ?? '';
   const username = form.cuenta?.username || (form.nombre && form.apellidoPaterno
-    ? generateUsername(form.nombre, form.apellidoPaterno, form.apellidoMaterno, currentCi) : '');
+    ? generateUsername(form.nombre, form.apellidoPaterno, form.apellidoMaterno ?? '', currentCi) : '');
   const email = form.cuenta?.email || (username ? generateStudentEmail(username) : '');
   const setField = (key: keyof CreateUsuarioPayload, value: string) => setForm((f) => ({ ...f, [key]: value }));
 
-  const pickPhoto = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 });
-    if (!result.canceled) setFotoUri(result.assets[0].uri);
+  const clearFieldError = (field: string) => setFieldErrors((current) => {
+    const { [field]: _, ...remaining } = current;
+    return remaining;
+  });
+
+  const validate = () => {
+    const errors: Record<string, string> = {};
+    if (!form.nombre.trim()) errors.nombre = 'El nombre es obligatorio.';
+    if (!form.apellidoPaterno.trim()) errors.apellidoPaterno = 'El apellido paterno es obligatorio.';
+    if (!form.apellidoMaterno?.trim()) errors.apellidoMaterno = 'El apellido materno es obligatorio.';
+    if (!form.nacimiento) errors.nacimiento = 'La fecha de nacimiento es obligatoria.';
+    const ci = documents.find((doc) => ['CI', 'DNI'].includes(doc.tipoDoc.toUpperCase()));
+    if (!ci?.numeroDoc.trim()) errors[`documento:${ci?.tipoDoc?.toUpperCase() || 'CI'}`] = 'El número de documento es obligatorio.';
+    if (!editing && !form.cuenta?.password) errors.password = 'La contraseña es obligatoria.';
+    else if (!editing && (form.cuenta?.password?.length ?? 0) < 8) errors.password = 'Debe tener al menos 8 caracteres.';
+    setFieldErrors(errors);
+    return Object.keys(errors).length === 0;
   };
 
   const save = async () => {
-    if (!form.nombre || !form.apellidoPaterno || !form.apellidoMaterno || !form.nacimiento) {
-      Alert.alert('Datos incompletos', 'Complete los datos personales obligatorios.'); return;
-    }
+    if (!validate()) return;
     if (!editing && !fotoUri) {
       Alert.alert('Foto requerida', 'Debe subir la foto de perfil (PNG/JPG).'); return;
     }
@@ -74,7 +90,16 @@ export function UserManagementScreen() {
       if (editing) await usuariosApi.updateWithFiles(editing.id, datos as UpdateUsuarioPayload, fotoUri);
       else await usuariosApi.createWithFiles(datos, fotoUri);
       setForm(empty); setEditing(null); setFotoUri(undefined); setDocuments([{ tipoDoc: 'CI', numeroDoc: '' }]); setShowForm(false); refresh();
-    } catch (e) { Alert.alert('No se pudo guardar', e instanceof Error ? e.message : 'Error del servidor'); }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Error del servidor';
+      const normalized = message.toLowerCase();
+      const errors: Record<string, string> = {};
+      if (/usuario|username/.test(normalized)) errors.username = 'Este nombre de usuario ya está registrado.';
+      if (/correo|email/.test(normalized)) errors.email = 'Este correo ya está registrado.';
+      if (/documento|numero_doc/.test(normalized)) errors['documento:CI'] = 'Este documento ya está registrado.';
+      if (Object.keys(errors).length) setFieldErrors(errors);
+      else Alert.alert('No se pudo guardar', message);
+    }
     finally { setSaving(false); }
   };
 
@@ -107,6 +132,10 @@ export function UserManagementScreen() {
     { text: 'Cancelar', style: 'cancel' }, { text: 'Eliminar', style: 'destructive', onPress: async () => { await usuariosApi.delete(u.id); refresh(); } },
   ]);
 
+  const enabledUsers = useMemo(() => (data?.data ?? []).filter((u) => u.estado === 1 || u.estado === 'activo'), [data]);
+  const disabledUsers = useMemo(() => (data?.data ?? []).filter((u) => u.estado !== 1 && u.estado !== 'activo'), [data]);
+  const visibleUsers = listTab === 'enabled' ? enabledUsers : disabledUsers;
+
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
       <BentoCard className="p-5">
@@ -115,7 +144,7 @@ export function UserManagementScreen() {
             <Text className="text-2xl font-bold text-gray-900">Gestión de usuarios</Text>
             <Text className="text-gray-500 text-sm">CRUD conectado a RestApi</Text>
           </View>
-          <TouchableOpacity onPress={() => { setEditing(null); setForm(empty); setFotoUri(undefined); setDocuments([{ tipoDoc: 'DNI', numeroDoc: '' }]); setShowForm(!showForm); }} className="bg-maroon rounded-xl px-4 py-3 flex-row items-center gap-2">
+          <TouchableOpacity onPress={() => { setEditing(null); setForm(empty); setFotoUri(undefined); setDocuments([{ tipoDoc: 'DNI', numeroDoc: '' }]); setFieldErrors({}); setShowForm(!showForm); }} className="bg-maroon rounded-xl px-4 py-3 flex-row items-center gap-2">
             <Ionicons name={showForm ? 'close' : 'person-add'} color="#fff" size={18} />
             <Text className="text-white font-semibold">{showForm ? 'Cerrar' : 'Nuevo'}</Text>
           </TouchableOpacity>
@@ -134,12 +163,12 @@ export function UserManagementScreen() {
 
           <View className="flex-row flex-wrap gap-2">
             {([['nombre', 'Nombre *'], ['apellidoPaterno', 'Apellido paterno *'], ['apellidoMaterno', 'Apellido materno *']] as const).map(([key, label]) => (
-              <TextInput key={key} value={form[key] as string} onChangeText={(v) => setField(key, v)} placeholder={label} className="bg-gray-100 rounded-xl px-3 py-3 flex-1 min-w-[180px]" />
+              <InlineInput key={key} value={form[key] as string} onChangeText={(v) => { clearFieldError(key); setField(key, v); }} placeholder={label} error={fieldErrors[key]} />
             ))}
-            <BirthDatePicker value={form.nacimiento} onChange={(v) => setField('nacimiento', v)} />
-            <View className="bg-gray-100 rounded-xl px-3 py-2 flex-1 min-w-[180px]"><Text className="text-xs text-gray-500">Nombre de usuario</Text><Text className="text-gray-800">{username || 'Complete sus datos'}</Text></View>
-            <View className="bg-gray-100 rounded-xl px-3 py-2 flex-1 min-w-[180px]"><Text className="text-xs text-gray-500">Correo electrónico</Text><Text className="text-gray-800">{email || 'Complete sus datos'}</Text></View>
-            <TextInput value={form.cuenta?.password} onChangeText={(v) => setForm((f) => ({ ...f, cuenta: { username, email, password: v } }))} placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña (mínimo 8 caracteres)'} secureTextEntry className="bg-gray-100 rounded-xl px-3 py-3 flex-1 min-w-[180px]" />
+            <View className="flex-1 min-w-[180px]"><BirthDatePicker value={form.nacimiento} onChange={(v) => { clearFieldError('nacimiento'); setField('nacimiento', v); }} />{fieldErrors.nacimiento ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.nacimiento}</Text> : null}</View>
+            <View className="bg-gray-100 rounded-xl px-3 py-2 flex-1 min-w-[180px]"><Text className="text-xs text-gray-500">Nombre de usuario</Text><Text className="text-gray-800">{username || 'Complete sus datos'}</Text>{fieldErrors.username ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.username}</Text> : null}</View>
+            <View className="bg-gray-100 rounded-xl px-3 py-2 flex-1 min-w-[180px]"><Text className="text-xs text-gray-500">Correo electrónico</Text><Text className="text-gray-800">{email || 'Complete sus datos'}</Text>{fieldErrors.email ? <Text className="text-xs text-red-600 mt-1">{fieldErrors.email}</Text> : null}</View>
+            <InlineInput value={form.cuenta?.password} onChangeText={(v) => { clearFieldError('password'); setForm((f) => ({ ...f, cuenta: { username, email, password: v } })); }} placeholder={editing ? 'Nueva contraseña (opcional)' : 'Contraseña (mínimo 8 caracteres)'} secureTextEntry error={fieldErrors.password} />
           </View>
 
           <DocumentInput
@@ -148,6 +177,7 @@ export function UserManagementScreen() {
             requiredTypes={[]}
             title="Documentos (PDF)"
             showRequiredBadge={false}
+            fieldErrors={fieldErrors}
           />
 
           <TouchableOpacity onPress={save} disabled={saving} className="bg-maroon rounded-xl py-3 items-center mt-4">
@@ -157,9 +187,13 @@ export function UserManagementScreen() {
       )}
 
       <BentoCard className="p-5">
+        <View className="flex-row gap-2 mb-4 p-1 bg-gray-100 rounded-xl self-start">
+          <TouchableOpacity onPress={() => setListTab('enabled')} className={`px-4 py-2 rounded-lg ${listTab === 'enabled' ? 'bg-maroon' : ''}`}><Text className={`font-bold text-xs ${listTab === 'enabled' ? 'text-white' : 'text-gray-600'}`}>Habilitados ({enabledUsers.length})</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setListTab('disabled')} className={`px-4 py-2 rounded-lg ${listTab === 'disabled' ? 'bg-maroon' : ''}`}><Text className={`font-bold text-xs ${listTab === 'disabled' ? 'text-white' : 'text-gray-600'}`}>Deshabilitados ({disabledUsers.length})</Text></TouchableOpacity>
+        </View>
         {loading && <ActivityIndicator color="#801529" />}
         {error && <Text className="text-red-600 mb-2">{error}</Text>}
-        {(data?.data ?? []).map((u) => (
+        {visibleUsers.map((u) => (
           <View key={u.id} className="flex-row items-center py-3 border-b border-gray-100">
             <View className="w-10 h-10 rounded-full bg-maroon/10 items-center justify-center mr-3">
               <Text className="text-maroon font-bold">{u.nombre.charAt(0)}</Text>
@@ -174,7 +208,7 @@ export function UserManagementScreen() {
             </View>
           </View>
         ))}
-        {!loading && !data?.data.length && <Text className="text-gray-500 text-center py-6">No hay usuarios para mostrar.</Text>}
+        {!loading && !visibleUsers.length && <Text className="text-gray-500 text-center py-6">No hay usuarios {listTab === 'enabled' ? 'habilitados' : 'deshabilitados'} para mostrar.</Text>}
       </BentoCard>
     </ScrollView>
   );

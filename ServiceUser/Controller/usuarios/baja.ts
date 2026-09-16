@@ -4,7 +4,7 @@ import { broadcastUserEvent } from "../../services/websocket.service.ts";
 
 /**
  * PATCH /usuarios/:id/baja
- * Baja lógica: estado = 0 (Inactivo). No elimina filas ni objetos en MinIO.
+ * Baja lógica: estado = 'inactivo'. No elimina filas ni objetos en MinIO.
  */
 export async function bajaUsuario(
   ctx: RouterContext<"/usuarios/:id/baja">,
@@ -17,7 +17,7 @@ export async function bajaUsuario(
       return;
     }
 
-    const userRes = await query<{ rol: string; estado: number }>(
+    const userRes = await query<{ rol: string; estado: string | number }>(
       `SELECT r.rol, u.estado
        FROM usuarios u JOIN roles r ON r.id = u.rol_id
        WHERE u.id = $1`,
@@ -43,15 +43,27 @@ export async function bajaUsuario(
     }
 
     await query(
-      `UPDATE usuarios SET estado = 0, fecha_actualizacion = NOW() WHERE id = $1`,
+      `UPDATE usuarios SET estado = 'inactivo', fecha_actualizacion = NOW() WHERE id = $1`,
       [id],
     );
+
+    if (["profesor", "maestro", "docente"].includes(targetRole)) {
+      await query(
+        `UPDATE maestros SET estado = 'inactivo', fecha_actualizacion = NOW() WHERE usuario_id = $1`,
+        [id],
+      );
+    } else if (["estudiante", "alumno"].includes(targetRole)) {
+      await query(
+        `UPDATE estudiantes SET estado = 'retirado', fecha_actualizacion = NOW() WHERE usuario_id = $1`,
+        [id],
+      );
+    }
 
     ctx.response.status = 200;
     broadcastUserEvent({ action: "updated", userId: id });
     ctx.response.body = {
       message: `Usuario id=${id} dado de baja (estado inactivo)`,
-      estado: 0,
+      estado: "inactivo",
     };
   } catch (err) {
     console.error("[bajaUsuario]", err);

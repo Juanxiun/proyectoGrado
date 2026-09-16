@@ -20,23 +20,18 @@ export function StatusBadge({ status, label, variant }: StatusBadgeProps) {
   let badgeVariant = variant ?? 'success';
 
   if (status !== undefined) {
-    switch (status) {
-      case 1:
-        badgeLabel = 'Activo';
-        badgeVariant = 'success';
-        break;
-      case 0:
-        badgeLabel = 'Inactivo';
-        badgeVariant = 'neutral';
-        break;
-      case 2:
-        badgeLabel = 'Suspendido';
-        badgeVariant = 'danger';
-        break;
-      default:
-        badgeLabel = 'Desconocido';
-        badgeVariant = 'warning';
-        break;
+    if (status === 1 || status === 'activo') {
+      badgeLabel = 'Activo';
+      badgeVariant = 'success';
+    } else if (status === 0 || status === 'inactivo') {
+      badgeLabel = 'Inactivo';
+      badgeVariant = 'neutral';
+    } else if (status === 2 || status === 'bloqueado') {
+      badgeLabel = 'Bloqueado';
+      badgeVariant = 'danger';
+    } else {
+      badgeLabel = String(status);
+      badgeVariant = 'warning';
     }
   }
 

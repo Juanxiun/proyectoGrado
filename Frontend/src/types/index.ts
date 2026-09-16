@@ -1,5 +1,5 @@
 export type Genero = 'masculino' | 'femenino' | 'otro';
-export type EstadoUsuario = 0 | 1 | 2;
+export type EstadoUsuario = 'activo' | 'inactivo' | 'bloqueado' | 0 | 1 | 2;
 export type TipoDocumento = 'DNI' | 'Pasaporte' | 'CI' | string;
 export type TipoContacto = 'Telefono' | 'Celular' | 'Whatsapp' | string;
 
@@ -20,7 +20,7 @@ export interface AuthUsuario {
   email: string;
   nombre: string;
   apellidoPaterno: string;
-  apellidoMaterno: string;
+  apellidoMaterno?: string;
   fotoUrl: string | null;
   rol: string;
   rolId: string;
@@ -30,6 +30,9 @@ export interface AuthUsuario {
   periodoId?: string;
   anio?: number;
   cursos?: CursoProfesor[];
+  estudianteId?: string;
+  maestroId?: string;
+  cursoPeriodoId?: string;
 }
 
 export interface LoginResponse {
@@ -102,7 +105,7 @@ export interface Usuario {
   rolId: string;
   nombre: string;
   apellidoPaterno: string;
-  apellidoMaterno: string;
+  apellidoMaterno?: string;
   nacimiento: string;
   genero?: Genero | null;
   fotoUrl?: string | null;
@@ -159,7 +162,7 @@ export interface CreateUsuarioPayload {
   rolId: string;
   nombre: string;
   apellidoPaterno: string;
-  apellidoMaterno: string;
+  apellidoMaterno?: string;
   nacimiento: string;
   genero?: Genero;
   estado?: EstadoUsuario;

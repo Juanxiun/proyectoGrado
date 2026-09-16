@@ -60,6 +60,7 @@ export function AdministrativoManagementScreen() {
     { tipoDoc: 'Certificado de Egreso', numeroDoc: '' },
   ]);
   const [adminPhoto, setAdminPhoto] = useState<string | undefined>(undefined);
+  const [administrativosListTab, setAdministrativosListTab] = useState<'enabled' | 'disabled'>('enabled');
 
   const refresh = () => {
     fetchList({ buscar: search, estado: statusFilter, limit: 100 }).catch(() => undefined);
@@ -268,11 +269,11 @@ export function AdministrativoManagementScreen() {
   });
 
   const habilitados = useMemo(
-    () => adminList.filter((u) => u.estado === 1),
+    () => adminList.filter((u) => u.estado === 1 || u.estado === 'activo'),
     [adminList]
   );
   const deshabilitados = useMemo(
-    () => adminList.filter((u) => u.estado === 0),
+    () => adminList.filter((u) => u.estado === 0 || u.estado === 'inactivo' || u.estado === 'bloqueado'),
     [adminList]
   );
 
@@ -492,8 +493,19 @@ export function AdministrativoManagementScreen() {
         </BentoCard>
       )}
 
+      <View className="flex-row items-center gap-2 p-1.5 rounded-xl bg-gray-100 self-start">
+        <TouchableOpacity onPress={() => setAdministrativosListTab('enabled')} className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${administrativosListTab === 'enabled' ? 'bg-maroon' : ''}`}>
+          <Ionicons name="checkmark-circle-outline" size={16} color={administrativosListTab === 'enabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${administrativosListTab === 'enabled' ? 'text-white' : 'text-gray-600'}`}>Habilitados ({habilitados.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setAdministrativosListTab('disabled')} className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${administrativosListTab === 'disabled' ? 'bg-maroon' : ''}`}>
+          <Ionicons name="close-circle-outline" size={16} color={administrativosListTab === 'disabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${administrativosListTab === 'disabled' ? 'text-white' : 'text-gray-600'}`}>Deshabilitados ({deshabilitados.length})</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS - HABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {administrativosListTab === 'enabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
@@ -621,10 +633,10 @@ export function AdministrativoManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay personal administrativo habilitado.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS - DESHABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {administrativosListTab === 'disabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="close-circle" size={20} color="#DC2626" />
@@ -749,7 +761,7 @@ export function AdministrativoManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay personal administrativo deshabilitado.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
     </ScrollView>
   );
 }

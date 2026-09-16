@@ -48,8 +48,12 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       filterParams.push(rolId);
     }
     if (estado !== null && estado !== undefined && estado !== "") {
+      let estadoFiltro = estado;
+      if (estado === "1") estadoFiltro = "activo";
+      else if (estado === "0") estadoFiltro = "inactivo";
+      else if (estado === "2") estadoFiltro = "bloqueado";
       conditions.push(`u.estado = $${idx++}`);
-      filterParams.push(Number(estado));
+      filterParams.push(estadoFiltro);
     }
     if (buscar) {
       conditions.push(`(
@@ -106,13 +110,16 @@ export async function getUsuarios(ctx: Context): Promise<void> {
     ]);
 
     // Para cada usuario, traer sus documentos relacionados formateados
+    // deno-lint-ignore no-explicit-any
     const userIds = dataRes.rows.map((r: any) => r.id);
+    // deno-lint-ignore no-explicit-any
     let docsByUserId: Record<string, any[]> = {};
 
     if (userIds.length > 0) {
+      // deno-lint-ignore no-explicit-any
       const docsRes = await query<any>(
         `SELECT usuario_id, id, tipo_doc AS "tipoDoc", numero_doc AS "numeroDoc", doc_url AS "docUrl"
-         FROM usuario_doc WHERE usuario_id = ANY($1)`,
+         FROM usuario_documentos WHERE usuario_id = ANY($1)`,
         [userIds],
       );
       for (const d of docsRes.rows) {
@@ -127,6 +134,7 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       }
     }
 
+    // deno-lint-ignore no-explicit-any
     const formattedData = dataRes.rows.map((r: any) => ({
       ...r,
       id: String(r.id),
@@ -180,7 +188,7 @@ export async function getUsuario(
       nacimiento: Date;
       genero: string | null;
       fotoUrl: string | null;
-      estado: number;
+      estado: string | number;
       fechaCreacion: Date;
       fechaActualizacion: Date;
       rolId: bigint;
@@ -214,8 +222,11 @@ export async function getUsuario(
     const targetRole = String(user.rol).trim().toLowerCase();
     const isOwnTutor = viewerRole === "estudiante" && await query<{ exists: boolean }>(
       `SELECT EXISTS(
-         SELECT 1 FROM estudiante_apoderado
-         WHERE estudiante_id = $1 AND apoderado_id = $2
+         SELECT 1
+         FROM estudiantes e
+         JOIN estudiante_apoderado ea ON ea.estudiante_id = e.id
+         JOIN apoderados a ON a.id = ea.apoderado_id
+         WHERE e.usuario_id = $1 AND a.usuario_id = $2
        ) AS exists`,
       [ctx.state.auth?.sub, id],
     ).then((result) => Boolean(result.rows[0]?.exists));
@@ -233,34 +244,42 @@ export async function getUsuario(
     //Consultas paralelas de relaciones
     const [cuentaRes, docRes, dirRes, contRes, apodRes] = await Promise.all([
       query(
-        `SELECT id, username, email, ultimo_login AS "ultimoLogin"
+        `SELECT id, username, email, email_verificado AS "emailVerificado", ultimo_login AS "ultimoLogin"
          FROM usuario_cuenta WHERE usuario_id = $1`,
         [id],
       ),
       query(
-        `SELECT id, tipo_doc AS "tipoDoc", numero_doc AS "numeroDoc", doc_url AS "docUrl"
-         FROM usuario_doc WHERE usuario_id = $1`,
+        `SELECT id, tipo_doc AS "tipoDoc", numero_doc AS "numeroDoc", doc_url AS "docUrl", fecha_creacion AS "fechaCreacion"
+         FROM usuario_documentos WHERE usuario_id = $1`,
         [id],
       ),
       query(
         `SELECT id, zona, distrito, bloque, calle, numero,
-                edificio, piso, referencia
-         FROM usuario_dir WHERE usuario_id = $1`,
+                edificio, piso, referencia, fecha_actualizacion AS "fechaActualizacion"
+         FROM usuario_direcciones WHERE usuario_id = $1`,
         [id],
       ),
       query(
-        `SELECT id, tipo, contenido FROM usuario_cont WHERE usuario_id = $1`,
+        `SELECT id, tipo, contenido, principal, fecha_creacion AS "fechaCreacion"
+         FROM usuario_contactos WHERE usuario_id = $1`,
         [id],
       ),
       query(
         `SELECT
-           ea.apoderado_id AS "apoderadoId", ea.parentesco, ea.es_principal AS "esPrincipal",
-           u2.nombre, u2.apellido_paterno AS "apellidoPaterno", u2.apellido_materno AS "apellidoMaterno",
+           u2.id AS "apoderadoId",
+           ea.parentesco,
+           ea.es_principal AS "esPrincipal",
+           ea.autorizado_recoger AS "autorizadoRecoger",
+           u2.nombre,
+           u2.apellido_paterno AS "apellidoPaterno",
+           u2.apellido_materno AS "apellidoMaterno",
            uc2.username
-         FROM estudiante_apoderado ea
-         JOIN usuarios u2 ON u2.id = ea.apoderado_id
+         FROM estudiantes e
+         JOIN estudiante_apoderado ea ON ea.estudiante_id = e.id
+         JOIN apoderados a ON a.id = ea.apoderado_id
+         JOIN usuarios u2 ON u2.id = a.usuario_id
          LEFT JOIN usuario_cuenta uc2 ON uc2.usuario_id = u2.id
-         WHERE ea.estudiante_id = $1`,
+         WHERE e.usuario_id = $1`,
         [id],
       ),
     ]);
@@ -273,7 +292,9 @@ export async function getUsuario(
       nacimiento: user.nacimiento instanceof Date
         ? user.nacimiento.toISOString().slice(0, 10)
         : (user.nacimiento ? String(user.nacimiento).slice(0, 10) : ""),
+      // deno-lint-ignore no-explicit-any
       apellidoPaterno: user.apellidoPaterno ?? (user as any).apellido_paterno ?? "",
+      // deno-lint-ignore no-explicit-any
       apellidoMaterno: user.apellidoMaterno ?? (user as any).apellido_materno ?? "",
       cuenta: cuentaRes.rows[0] ?? null,
       documentos: docRes.rows,
@@ -287,3 +308,4 @@ export async function getUsuario(
     ctx.response.body = { error: "Error interno del servidor" };
   }
 }
+

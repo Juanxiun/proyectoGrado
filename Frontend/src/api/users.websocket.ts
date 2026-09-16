@@ -1,26 +1,49 @@
-import { USER_SERVICE_WS_URL } from '../constants/config';
-import { storage } from '../utils/storage';
+import { API_BASE_URL } from "../constants/config";
 
 export function connectUsersWebSocket(onChange: () => void): () => void {
-  const tokenPromise = storage.getToken();
   let socket: WebSocket | null = null;
-  let cancelled = false;
+  const recordSeparator = "\x1e";
+  const hubUrl = `${
+    API_BASE_URL.replace(/^http/, "ws").replace(/\/$/, "")
+  }/hub`;
 
-  tokenPromise.then((token) => {
-    if (cancelled || !token) return;
-    socket = new WebSocket(`${USER_SERVICE_WS_URL}/ws?token=${encodeURIComponent(token)}`);
+  try {
+    socket = new WebSocket(hubUrl);
+    socket.onopen = () => {
+      // Handshake requerido por SignalR cuando se usa WebSocket nativo.
+      socket?.send(
+        JSON.stringify({ protocol: "json", version: 1 }) + recordSeparator,
+      );
+    };
     socket.onmessage = (event) => {
       try {
-        const message = JSON.parse(event.data as string) as { type?: string };
-        if (message.type === 'usuarios.changed') onChange();
+        const frames = String(event.data).split(recordSeparator).filter(
+          Boolean,
+        );
+        for (const frame of frames) {
+          const message = JSON.parse(frame) as {
+            type?: number;
+            target?: string;
+            arguments?: Array<{ resource?: string }>;
+          };
+          // Las pantallas de usuarios sólo se actualizan cuando el gateway
+          // informa un cambio de ese recurso.
+          if (
+            message.type === 1 && message.target === "DataChanged" &&
+            message.arguments?.[0]?.resource === "usuarios"
+          ) {
+            onChange();
+          }
+        }
       } catch {
-        // Ignore malformed events; the HTTP API remains the source of truth.
+        // La API HTTP continúa siendo la fuente de verdad.
       }
     };
-  });
+  } catch {
+    // No se bloquea la pantalla si el hub aún está iniciando.
+  }
 
   return () => {
-    cancelled = true;
     socket?.close();
   };
 }

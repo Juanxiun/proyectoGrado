@@ -14,6 +14,7 @@ import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { getFullName } from '../../../utils/validation';
+import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
   CreateUsuarioPayload,
   EstadoUsuario,
@@ -64,6 +65,12 @@ export function DocentesManagementScreen() {
   const [bajaTarget, setBajaTarget] = useState<Usuario | null>(null);
   const [bajaLoading, setBajaLoading] = useState(false);
   const [selectedDocenteDetail, setSelectedDocenteDetail] = useState<Usuario | null>(null);
+  const [docentesListTab, setDocentesListTab] = useState<'enabled' | 'disabled'>('enabled');
+  const [materiasDisponibles, setMateriasDisponibles] = useState<Array<{ id: string; nombre: string; codigo: string }>>([]);
+  const [cursosPeriodoDisponibles, setCursosPeriodoDisponibles] = useState<Array<any>>([]);
+  const [materiasSeleccionadas, setMateriasSeleccionadas] = useState<string[]>([]);
+  const [cursosPeriodoSeleccionados, setCursosPeriodoSeleccionados] = useState<string[]>([]);
+  const [nivelFiltroCarga, setNivelFiltroCarga] = useState<'primaria' | 'secundaria' | 'todos'>('primaria');
 
   const refresh = () => {
     fetchList({ buscar: search, estado: statusFilter, limit: 100 }).catch(() => undefined);
@@ -74,6 +81,17 @@ export function DocentesManagementScreen() {
     return connectUsersWebSocket(refresh);
   }, [search, statusFilter]);
 
+  useEffect(() => {
+    if (!showModal || !canEdit) return;
+    Promise.all([
+      academicServicesApi.list('materias', { activo: 'true' }),
+      academicServicesApi.list('cursos-periodo', { estado: 'activo' }),
+    ]).then(([materias, cursosPeriodo]) => {
+      setMateriasDisponibles(materias.data as Array<{ id: string; nombre: string; codigo: string }>);
+      setCursosPeriodoDisponibles(cursosPeriodo.data);
+    }).catch(() => Alert.alert('No se pudieron cargar las asignaciones', 'Verifique que existan materias y cursos activos antes de registrar al docente.'));
+  }, [showModal, canEdit]);
+
   const resetForm = () => {
     setEditingDocente(null);
     setForm(emptyDocenteForm);
@@ -83,6 +101,8 @@ export function DocentesManagementScreen() {
       { tipoDoc: 'Certificado de Egreso', numeroDoc: '' },
     ]);
     setDocentePhoto(undefined);
+    setMateriasSeleccionadas([]);
+    setCursosPeriodoSeleccionados([]);
   };
 
   // Autogenerar username al cambiar nombre, apellidos o CI si es nuevo registro
@@ -145,6 +165,7 @@ export function DocentesManagementScreen() {
   const executeSaveDocente = async () => {
     setSaving(true);
     try {
+      let maestroUsuarioId: string;
       if (editingDocente) {
         const updatePayload: UpdateUsuarioPayload = {
           nombre: form.nombre,
@@ -152,7 +173,7 @@ export function DocentesManagementScreen() {
           apellidoMaterno: form.apellidoMaterno,
           nacimiento: form.nacimiento,
           genero: form.genero,
-          maestro: { especialidad: form.especialidad },
+          maestro: { especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
           contactos: form.celular ? [{ tipo: 'Celular', contenido: form.celular }] : undefined,
@@ -160,6 +181,7 @@ export function DocentesManagementScreen() {
         };
 
         await usuariosApi.updateWithFiles(editingDocente.id, updatePayload, docentePhoto);
+        maestroUsuarioId = editingDocente.id;
         Alert.alert('Éxito', 'Docente actualizado correctamente.');
       } else {
         const createPayload: CreateUsuarioPayload = {
@@ -169,15 +191,29 @@ export function DocentesManagementScreen() {
           apellidoMaterno: form.apellidoMaterno,
           nacimiento: form.nacimiento,
           genero: form.genero,
-          maestro: { especialidad: form.especialidad, fechaContratacion: form.fechaContratacion },
+          maestro: { especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad, fechaContratacion: form.fechaContratacion },
           cuenta: { username: form.username, email: form.email, password: form.password },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
           contactos: form.celular ? [{ tipo: 'Celular', contenido: form.celular }] : [],
         };
 
-        await usuariosApi.createWithFiles(createPayload, docentePhoto);
-        Alert.alert('Éxito', 'Docente registrado correctamente.');
+        const created = await usuariosApi.createWithFiles(createPayload, docentePhoto);
+        maestroUsuarioId = String(created.id);
+      }
+
+      // El servicio de inscripción acepta el usuario del maestro y lo resuelve
+      // a su registro interno. Se crean todas las combinaciones seleccionadas.
+      if (materiasSeleccionadas.length && cursosPeriodoSeleccionados.length) {
+        const requests = cursosPeriodoSeleccionados.flatMap((cursoPeriodoId) => materiasSeleccionadas.map((materiaId) =>
+          academicServicesApi.create('asignaciones', { maestroId: maestroUsuarioId, materiaId, cursoPeriodoId, estado: 'activo' }),
+        ));
+        const results = await Promise.allSettled(requests);
+        const failed = results.filter((result) => result.status === 'rejected').length;
+        if (failed) Alert.alert('Docente guardado', `Se registró la ficha, pero ${failed} asignación(es) ya existían o no pudieron crearse.`);
+        else Alert.alert('Éxito', `Docente guardado y asignado a ${requests.length} carga(s) académica(s).`);
+      } else {
+        Alert.alert('Éxito', editingDocente ? 'Docente actualizado correctamente.' : 'Docente registrado correctamente.');
       }
 
       setShowModal(false);
@@ -226,6 +262,10 @@ export function DocentesManagementScreen() {
     }
     setDocenteDocs(mappedDocs);
     setDocentePhoto(u.fotoUrl ?? undefined);
+    // Las asignaciones existentes se conservan; se pueden añadir nuevas desde
+    // esta misma ficha mediante materias y cursos-periodo.
+    setMateriasSeleccionadas([]);
+    setCursosPeriodoSeleccionados([]);
 
     setShowModal(true);
   };
@@ -274,11 +314,11 @@ export function DocentesManagementScreen() {
   });
 
   const habilitados = useMemo(
-    () => docentesList.filter((u) => u.estado === 1),
+    () => docentesList.filter((u) => u.estado === 1 || u.estado === 'activo'),
     [docentesList]
   );
   const deshabilitados = useMemo(
-    () => docentesList.filter((u) => u.estado === 0),
+    () => docentesList.filter((u) => u.estado === 0 || u.estado === 'inactivo' || u.estado === 'bloqueado'),
     [docentesList]
   );
 
@@ -396,14 +436,80 @@ export function DocentesManagementScreen() {
                   className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
                 />
                 <BirthDatePicker value={form.nacimiento} onChange={(v) => setForm((f) => ({ ...f, nacimiento: v }))} />
-                <TextInput
-                  value={form.especialidad}
-                  onChangeText={(v) => setForm((f) => ({ ...f, especialidad: v }))}
-                  placeholder="Especialidad / Materia Principal"
-                  className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[170px] border border-gray-200 text-sm"
-                />
               </View>
             </BentoCard>
+
+            <BentoCard className="p-4 bg-cream/40 border border-gold/30">
+              <Text className="text-xs font-bold text-maroon mb-1 uppercase">Carga académica</Text>
+              <Text className="text-xs text-gray-500 mb-3">Seleccione las materias y cursos-periodo. Al guardar, el sistema crea automáticamente las asignaciones docentes para cada combinación.</Text>
+              <View className="flex-row flex-wrap gap-2 mb-4">
+                {materiasDisponibles.length ? materiasDisponibles.map((materia) => {
+                  const selected = materiasSeleccionadas.includes(materia.id);
+                  return <TouchableOpacity key={materia.id} onPress={() => setMateriasSeleccionadas((current) => selected ? current.filter((id) => id !== materia.id) : [...current, materia.id])} className={`px-3 py-2 rounded-xl border ${selected ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'}`}><Text className={`text-xs font-bold ${selected ? 'text-white' : 'text-gray-700'}`}>{materia.nombre}</Text><Text className={`text-[10px] ${selected ? 'text-white/80' : 'text-gray-400'}`}>{materia.codigo}</Text></TouchableOpacity>;
+                }) : <Text className="text-xs text-gray-500">Primero registre materias activas en la estructura académica.</Text>}
+              </View>
+              <View className="flex-row items-center justify-between mb-2">
+                <Text className="text-xs font-bold text-gray-700">Cursos y periodos activos</Text>
+                <View className="flex-row items-center bg-white rounded-lg p-0.5 border border-gray-200">
+                  <TouchableOpacity
+                    onPress={() => setNivelFiltroCarga('primaria')}
+                    className={`px-2.5 py-1 rounded-md ${nivelFiltroCarga === 'primaria' ? 'bg-maroon' : ''}`}
+                  >
+                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'primaria' ? 'text-white' : 'text-gray-600'}`}>Primaria</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setNivelFiltroCarga('secundaria')}
+                    className={`px-2.5 py-1 rounded-md ${nivelFiltroCarga === 'secundaria' ? 'bg-maroon' : ''}`}
+                  >
+                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'secundaria' ? 'text-white' : 'text-gray-600'}`}>Secundaria</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setNivelFiltroCarga('todos')}
+                    className={`px-2 py-1 rounded-md ${nivelFiltroCarga === 'todos' ? 'bg-maroon' : ''}`}
+                  >
+                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'todos' ? 'text-white' : 'text-gray-600'}`}>Todos</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              <View className="flex-row flex-wrap gap-2 mb-4">
+                {(() => {
+                  const filteredCursos = cursosPeriodoDisponibles.filter((cp) => {
+                    if (nivelFiltroCarga === 'todos') return true;
+                    const nivel = String(cp.curso?.nivel ?? '').trim().toLowerCase();
+                    return nivel === nivelFiltroCarga;
+                  });
+
+                  if (!filteredCursos.length) {
+                    return (
+                      <Text className="text-xs text-gray-500 py-2">
+                        No hay cursos activos disponibles para el nivel {nivelFiltroCarga === 'todos' ? 'seleccionado' : nivelFiltroCarga}.
+                      </Text>
+                    );
+                  }
+
+                  return filteredCursos.map((cursoPeriodo) => {
+                    const selected = cursosPeriodoSeleccionados.includes(String(cursoPeriodo.id));
+                    const nivel = cursoPeriodo.curso?.nivel ? cursoPeriodo.curso.nivel.charAt(0).toUpperCase() + cursoPeriodo.curso.nivel.slice(1) : '';
+                    const label = `${cursoPeriodo.curso?.grado ?? ''} ${cursoPeriodo.curso?.paralelo ?? ''} ${nivel} - ${cursoPeriodo.periodo?.nombre ?? ''}`.trim();
+                    return (
+                      <TouchableOpacity
+                        key={cursoPeriodo.id}
+                        onPress={() =>
+                          setCursosPeriodoSeleccionados((current) =>
+                            selected ? current.filter((id) => id !== String(cursoPeriodo.id)) : [...current, String(cursoPeriodo.id)]
+                          )
+                        }
+                        className={`px-3 py-2 rounded-xl border ${selected ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'}`}
+                      >
+                        <Text className={`text-xs font-bold ${selected ? 'text-white' : 'text-gray-700'}`}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  });
+                })()}
+              </View>
+              <View className="flex-row flex-wrap gap-2 items-center"><BirthDatePicker value={form.fechaContratacion} onChange={(value) => setForm((current) => ({ ...current, fechaContratacion: value }))} placeholder="Fecha de contratación" minYear={2000} maxYear={2100} /><Text className="text-xs text-gray-500">{materiasSeleccionadas.length} materia(s) × {cursosPeriodoSeleccionados.length} curso(s) = {materiasSeleccionadas.length * cursosPeriodoSeleccionados.length} asignación(es)</Text></View>
+            </BentoCard>
+
 
             {/* Documentos */}
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -495,8 +601,19 @@ export function DocentesManagementScreen() {
         </BentoCard>
       )}
 
+      <View className="flex-row items-center gap-2 p-1.5 rounded-xl bg-gray-100 self-start">
+        <TouchableOpacity onPress={() => setDocentesListTab('enabled')} className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${docentesListTab === 'enabled' ? 'bg-maroon' : ''}`}>
+          <Ionicons name="checkmark-circle-outline" size={16} color={docentesListTab === 'enabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${docentesListTab === 'enabled' ? 'text-white' : 'text-gray-600'}`}>Habilitados ({habilitados.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setDocentesListTab('disabled')} className={`px-4 py-2 rounded-lg flex-row items-center gap-2 ${docentesListTab === 'disabled' ? 'bg-maroon' : ''}`}>
+          <Ionicons name="close-circle-outline" size={16} color={docentesListTab === 'disabled' ? '#FFF' : '#4B5563'} />
+          <Text className={`text-xs font-bold ${docentesListTab === 'disabled' ? 'text-white' : 'text-gray-600'}`}>Deshabilitados ({deshabilitados.length})</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* GRID DE CARTAS BENTO PARA DOCENTES - HABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {docentesListTab === 'enabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
@@ -626,10 +743,10 @@ export function DocentesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay docentes habilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       {/* GRID DE CARTAS BENTO PARA DOCENTES - DESHABILITADOS */}
-      <BentoCard className="p-5 bg-white">
+      {docentesListTab === 'disabled' && <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
             <Ionicons name="close-circle" size={20} color="#DC2626" />
@@ -766,7 +883,7 @@ export function DocentesManagementScreen() {
             <Text className="text-gray-500 text-center mt-4 text-sm">No hay docentes deshabilitados.</Text>
           </View>
         )}
-      </BentoCard>
+      </BentoCard>}
 
       <BajaConfirmModal
         user={bajaTarget}

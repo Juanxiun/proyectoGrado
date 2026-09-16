@@ -91,9 +91,9 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
     const { rolId, nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero, estado, cuenta, documentos, direccion, contactos, maestro, apoderadoId, parentesco } = datos;
 
-    if (!rolId || !nombre?.trim() || !apellidoPaterno?.trim() || !apellidoMaterno?.trim() || !nacimiento) {
+    if (!rolId || !nombre?.trim() || !apellidoPaterno?.trim() || !nacimiento) {
       ctx.response.status = 400;
-      ctx.response.body = { error: "Faltan campos obligatorios: rolId, nombre, apellidoPaterno, apellidoMaterno, nacimiento" };
+      ctx.response.body = { error: "Faltan campos obligatorios: rolId, nombre, apellidoPaterno, nacimiento" };
       return;
     }
 
@@ -109,7 +109,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
       return;
     }
 
-const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM roles WHERE id = $1`, [rolId]);
+    const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM roles WHERE id = $1`, [rolId]);
     if (rolResult.rows.length === 0) {
       ctx.response.status = 400;
       ctx.response.body = { error: "Rol con id=" + rolId + " no existe" };
@@ -127,8 +127,10 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
     const ciDoc = Array.isArray(documentos) ? documentos.find((d) => d.tipoDoc === "CI" || d.tipoDoc === "ci") : undefined;
     const ci = ciDoc?.numeroDoc ?? "";
 
+    const apellidoMaternoFinal = apellidoMaterno?.trim() || null;
+
     // Generar username, email y password automáticamente
-    const username = generateUsername(nombre, apellidoPaterno, apellidoMaterno, ci);
+    const username = generateUsername(nombre, apellidoPaterno, apellidoMaternoFinal ?? "", ci);
     const email = generateEmail(username);
     const password = generatePassword(username);
 
@@ -137,6 +139,14 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
       email,
       password,
     };
+
+    // Mapear estado al tipo VARCHAR ('activo', 'inactivo', 'bloqueado')
+    let estadoFinal: "activo" | "inactivo" | "bloqueado" = "activo";
+    if (estado === 0 || estado === "inactivo") {
+      estadoFinal = "inactivo";
+    } else if (estado === 2 || estado === "bloqueado") {
+      estadoFinal = "bloqueado";
+    }
 
     // Subir foto: nombre_apellido_rolAbr_perfil.<ext>
     const photoKey = buildPhotoKey(nombre, apellidoPaterno, rolNombre, fotoExt!);
@@ -149,7 +159,7 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
       const usuarioRes = await tx.queryObject<{ id: bigint }>(`
         INSERT INTO usuarios (rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, foto_url, estado)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
-      `, [rolId, nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero ?? null, fotoUrl, estado ?? 1]);
+      `, [rolId, nombre.trim(), apellidoPaterno.trim(), apellidoMaternoFinal, nacimiento, genero ?? null, fotoUrl, estadoFinal]);
       const uid = usuarioRes.rows[0].id;
 
       if (cuentaFinal) {
@@ -165,31 +175,63 @@ const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM 
             const docKey = buildDocKey(nombre, apellidoPaterno, rolNombre, doc.tipoDoc);
             doc.docUrl = await uploadFile(docKey, file.bytes, "application/pdf");
           }
-          await tx.queryObject(`INSERT INTO usuario_doc (usuario_id, tipo_doc, numero_doc, doc_url) VALUES ($1, $2, $3, $4)`,
+          await tx.queryObject(`INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url) VALUES ($1, $2, $3, $4)`,
             [uid, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null]);
         }
       }
 
       if (direccion) {
-        await tx.queryObject(`INSERT INTO usuario_dir (usuario_id, zona, distrito, bloque, calle, numero, edificio, piso, referencia) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        await tx.queryObject(`INSERT INTO usuario_direcciones (usuario_id, zona, distrito, bloque, calle, numero, edificio, piso, referencia) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           [uid, direccion.zona, direccion.distrito ?? null, direccion.bloque ?? null, direccion.calle ?? null, direccion.numero ?? null, direccion.edificio ?? null, direccion.piso ?? null, direccion.referencia ?? null]);
       }
 
       if (Array.isArray(contactos)) {
         for (const cont of contactos) {
-          await tx.queryObject(`INSERT INTO usuario_cont (usuario_id, tipo, contenido) VALUES ($1, $2, $3)`, [uid, cont.tipo, cont.contenido]);
+          await tx.queryObject(`INSERT INTO usuario_contactos (usuario_id, tipo, contenido, principal) VALUES ($1, $2, $3, $4)`,
+            [uid, cont.tipo, cont.contenido, cont.principal ?? false]);
         }
       }
 
-      if (apoderadoId !== undefined) {
-        await tx.queryObject(`INSERT INTO estudiante_apoderado (estudiante_id, apoderado_id, parentesco, es_principal) VALUES ($1, $2, $3, TRUE)`,
-          [uid, apoderadoId, parentesco ?? "tutor"]);
+      const hoy = new Date().toISOString().split("T")[0];
+
+      if (["estudiante", "alumno"].includes(rolNombre)) {
+        const estRes = await tx.queryObject<{ id: bigint }>(
+          `INSERT INTO estudiantes (usuario_id, fecha_ingreso, estado) VALUES ($1, $2, 'activo') RETURNING id`,
+          [uid, hoy]
+        );
+        const estudianteTableId = estRes.rows[0].id;
+
+        if (apoderadoId !== undefined && apoderadoId !== null && String(apoderadoId).trim() !== "") {
+          let apodRow = await tx.queryObject<{ id: bigint }>(
+            `SELECT id FROM apoderados WHERE usuario_id = $1`,
+            [apoderadoId]
+          );
+          if (apodRow.rows.length === 0) {
+            apodRow = await tx.queryObject<{ id: bigint }>(
+              `INSERT INTO apoderados (usuario_id) VALUES ($1) RETURNING id`,
+              [apoderadoId]
+            );
+          }
+          const apoderadoTableId = apodRow.rows[0].id;
+          await tx.queryObject(
+            `INSERT INTO estudiante_apoderado (estudiante_id, apoderado_id, parentesco, es_principal, autorizado_recoger) VALUES ($1, $2, $3, TRUE, TRUE) ON CONFLICT (estudiante_id, apoderado_id) DO NOTHING`,
+            [estudianteTableId, apoderadoTableId, parentesco ?? "Tutor Legal"]
+          );
+        }
       }
 
-      if (rolNombre === "profesor") {
-        const hoy = new Date().toISOString().split("T")[0];
-        await tx.queryObject(`INSERT INTO maestros (usuario_id, especialidad, fecha_contratacion) VALUES ($1, $2, $3)`,
-          [uid, maestro?.especialidad ?? null, maestro?.fechaContratacion ?? hoy]);
+      if (["profesor", "maestro", "docente"].includes(rolNombre)) {
+        await tx.queryObject(
+          `INSERT INTO maestros (usuario_id, especialidad, fecha_contratacion, estado) VALUES ($1, $2, $3, 'activo')`,
+          [uid, maestro?.especialidad ?? null, maestro?.fechaContratacion ?? hoy]
+        );
+      }
+
+      if (["padre", "madre", "padres", "apoderado", "tutor"].includes(rolNombre)) {
+        await tx.queryObject(
+          `INSERT INTO apoderados (usuario_id, ocupacion) VALUES ($1, $2) ON CONFLICT (usuario_id) DO NOTHING`,
+          [uid, datos.ocupacion ?? null]
+        );
       }
 
       return uid;

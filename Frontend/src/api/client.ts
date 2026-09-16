@@ -1,6 +1,6 @@
-import { API_BASE_URL } from '../constants/config';
-import { storage } from '../utils/storage';
-import type { ApiError } from '../types';
+import { API_BASE_URL } from "../constants/config";
+import { storage } from "../utils/storage";
+import type { ApiError } from "../types";
 
 export class ApiClientError extends Error {
   constructor(
@@ -8,28 +8,29 @@ export class ApiClientError extends Error {
     public status: number,
   ) {
     super(message);
-    this.name = 'ApiClientError';
+    this.name = "ApiClientError";
   }
 }
 
-type RequestOptions = Omit<RequestInit, 'body'> & {
+type RequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
   auth?: boolean;
 };
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const token = await storage.getToken();
-  return token ? { Authorization: ('Bearer ' + token) } : {};
+  return token ? { Authorization: "Bearer " + token } : {};
 }
 
 function isFormData(body: unknown): body is FormData {
-  if (!body || typeof body !== 'object') return false;
-  if (typeof FormData !== 'undefined' && body instanceof FormData) return true;
+  if (!body || typeof body !== "object") return false;
+  if (typeof FormData !== "undefined" && body instanceof FormData) return true;
   const candidate = body as FormData;
   return (
-    typeof candidate.append === 'function' &&
-    (Object.prototype.toString.call(body) === '[object FormData]' ||
-      (body as { constructor?: { name?: string } }).constructor?.name === 'FormData')
+    typeof candidate.append === "function" &&
+    (Object.prototype.toString.call(body) === "[object FormData]" ||
+      (body as { constructor?: { name?: string } }).constructor?.name ===
+        "FormData")
   );
 }
 
@@ -50,17 +51,17 @@ export async function apiRequest<T>(
   const isMultipart = isFormData(body);
 
   if (isMultipart) {
-    delete headers['Content-Type'];
-    delete headers['content-type'];
+    delete headers["Content-Type"];
+    delete headers["content-type"];
   } else if (body) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
   }
 
   let finalBody: BodyInit | undefined;
   if (isMultipart) {
     finalBody = body as FormData;
   } else if (body !== undefined && body !== null) {
-    finalBody = typeof body === 'string' ? body : JSON.stringify(body);
+    finalBody = typeof body === "string" ? body : JSON.stringify(body);
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -84,11 +85,13 @@ export async function apiRequest<T>(
   return response.json() as Promise<T>;
 }
 
-export function buildQuery(params: Record<string, string | number | undefined>): string {
+export function buildQuery(
+  params: Record<string, string | number | undefined>,
+): string {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') search.set(key, String(value));
+    if (value !== undefined && value !== "") search.set(key, String(value));
   });
   const qs = search.toString();
-  return qs ? `?${qs}` : '';
+  return qs ? `?${qs}` : "";
 }

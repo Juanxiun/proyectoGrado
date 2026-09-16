@@ -5,7 +5,7 @@ using RestApi.Services;
 
 namespace RestApi.Controllers;
 
-public sealed class UserServiceCallbackDto
+public sealed class ServiceCallbackDto
 {
     public string EventId { get; set; } = string.Empty;
     public int Status { get; set; }
@@ -27,7 +27,22 @@ public sealed class WebhooksController : ControllerBase
     }
 
     [HttpPost("user-service")]
-    public async Task<IActionResult> UserServiceCallback([FromBody] UserServiceCallbackDto callback)
+    public Task<IActionResult> UserServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
+    [HttpPost("academic-service")]
+    public Task<IActionResult> AcademicServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
+    [HttpPost("enrollment-service")]
+    public Task<IActionResult> EnrollmentServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
+    [HttpPost("homework-service")]
+    public Task<IActionResult> HomeworkServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
+    private async Task<IActionResult> CompleteCallback(ServiceCallbackDto callback)
     {
         if (string.IsNullOrWhiteSpace(callback.EventId))
         {
@@ -46,8 +61,7 @@ public sealed class WebhooksController : ControllerBase
         }
         else
         {
-            // Opcionalmente notificar a todos los clientes o loguear si la conexión ya expiró
-            Console.WriteLine($"[WebhooksController] No se encontró cliente WebSocket activo para eventId={callback.EventId}");
+            Console.WriteLine($"[WebhooksController] No hay cliente SignalR activo para eventId={callback.EventId}");
         }
 
         return Ok(new { received = true, timestamp = DateTime.UtcNow.ToString("O") });

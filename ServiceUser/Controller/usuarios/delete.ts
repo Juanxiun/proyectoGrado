@@ -1,5 +1,5 @@
 import { RouterContext } from "@oak/oak";
-import { query } from "../../connects/Database/transaction.ts";
+import { query, sTransaction } from "../../connects/Database/transaction.ts";
 import {
   deleteImage,
   getKeyFromUrl,
@@ -9,12 +9,12 @@ import { broadcastUserEvent } from "../../services/websocket.service.ts";
 /**
  * DELETE /usuarios/:id
  *
- * Elimina el usuario de la base de datos (ON DELETE CASCADE borra todas
- * las tablas relacionadas) y elimina su foto de MinIO si existe.
+ * Elimina el usuario de la base de datos (ON DELETE CASCADE borra cuenta,
+ * documentos, direcciones y contactos). Limpia previamente referencias RESTRICT en
+ * estudiantes, apoderados o maestros.
  *
  * Orden: primero BD, luego MinIO. Si la BD falla no se toca MinIO.
- * Si la BD tiene éxito pero MinIO falla, se loguea el error sin revertir
- * (la imagen queda huérfana en MinIO pero el registro ya no existe).
+ * Si la BD tiene éxito pero MinIO falla, se loguea el error sin revertir.
  */
 export async function deleteUsuario(
   ctx: RouterContext<"/usuarios/:id">,
@@ -50,8 +50,46 @@ export async function deleteUsuario(
 
     const fotoUrl = userRes.rows[0].foto_url;
 
-    //Eliminar de la BD (CASCADE borra cuenta, docs, dir, contactos, etc.)
-    await query(`DELETE FROM usuarios WHERE id = $1`, [id]);
+    //Eliminar de la BD manejando foreign keys RESTRICT en transacción
+    await sTransaction(async (tx) => {
+      // Si tiene registro en estudiantes
+      const estRes = await tx.queryObject<{ id: bigint }>(
+        `SELECT id FROM estudiantes WHERE usuario_id = $1`,
+        [id],
+      );
+      if (estRes.rows.length > 0) {
+        const estId = estRes.rows[0].id;
+        await tx.queryObject(`DELETE FROM inscripciones WHERE estudiante_id = $1`, [estId]);
+        await tx.queryObject(`DELETE FROM estudiante_apoderado WHERE estudiante_id = $1`, [estId]);
+        await tx.queryObject(`DELETE FROM estudiantes WHERE id = $1`, [estId]);
+      }
+
+      // Si tiene registro en apoderados
+      const apodRes = await tx.queryObject<{ id: bigint }>(
+        `SELECT id FROM apoderados WHERE usuario_id = $1`,
+        [id],
+      );
+      if (apodRes.rows.length > 0) {
+        const apodId = apodRes.rows[0].id;
+        await tx.queryObject(`DELETE FROM estudiante_apoderado WHERE apoderado_id = $1`, [apodId]);
+        await tx.queryObject(`DELETE FROM apoderados WHERE id = $1`, [apodId]);
+      }
+
+      // Si tiene registro en maestros
+      const maeRes = await tx.queryObject<{ id: bigint }>(
+        `SELECT id FROM maestros WHERE usuario_id = $1`,
+        [id],
+      );
+      if (maeRes.rows.length > 0) {
+        const maeId = maeRes.rows[0].id;
+        await tx.queryObject(`DELETE FROM asignaciones_docentes WHERE maestro_id = $1`, [maeId]);
+        await tx.queryObject(`DELETE FROM curso_asesor WHERE maestro_id = $1`, [maeId]);
+        await tx.queryObject(`DELETE FROM maestros WHERE id = $1`, [maeId]);
+      }
+
+      // Eliminar el usuario base
+      await tx.queryObject(`DELETE FROM usuarios WHERE id = $1`, [id]);
+    });
 
     //Eliminar imagen de MinIO
     if (fotoUrl) {

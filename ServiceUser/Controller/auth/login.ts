@@ -57,7 +57,7 @@ export async function login(ctx: Context): Promise<void> {
       apellido_paterno: string;
       apellido_materno: string;
       foto_url: string | null;
-      estado: number;
+      estado: string | number;
       rol_id: bigint;
       rol: string;
       username: string;
@@ -91,12 +91,12 @@ export async function login(ctx: Context): Promise<void> {
 
     const user = userRes.rows[0];
 
-    if (user.estado === 0) {
+    if (user.estado === "inactivo" || (user.estado as any) === 0) {
       ctx.response.status = 403;
       ctx.response.body = { error: "Cuenta inactiva" };
       return;
     }
-    if (user.estado === 2) {
+    if (user.estado === "bloqueado" || (user.estado as any) === 2) {
       ctx.response.status = 403;
       ctx.response.body = { error: "Cuenta suspendida" };
       return;
@@ -124,6 +124,8 @@ export async function login(ctx: Context): Promise<void> {
       case "estudiante": {
         // Inscripción en el periodo académico activo
         const inscRes = await query<{
+          estudiante_id: bigint;
+          curso_periodo_id: bigint;
           nivel: string;
           grado: string;
           paralelo: string;
@@ -131,15 +133,19 @@ export async function login(ctx: Context): Promise<void> {
           anio: number;
         }>(
           `SELECT
+             e.id AS estudiante_id,
+             i.curso_periodo_id,
              c.nivel,
              c.grado,
              c.paralelo,
-             i.periodo_id,
+             cp.periodo_id,
              pa.anio
-           FROM inscripciones i
-           JOIN cursos c               ON c.id  = i.curso_id
-           JOIN periodos_academicos pa ON pa.id = i.periodo_id
-           WHERE i.estudiante_id = $1
+           FROM estudiantes e
+           JOIN inscripciones i        ON i.estudiante_id = e.id
+           JOIN cursos_periodo cp      ON cp.id = i.curso_periodo_id
+           JOIN cursos c               ON c.id  = cp.curso_id
+           JOIN periodos_academicos pa ON pa.id = cp.periodo_id
+           WHERE e.usuario_id = $1
              AND pa.activo = TRUE
            LIMIT 1`,
           [user.id],
@@ -148,6 +154,8 @@ export async function login(ctx: Context): Promise<void> {
         if (inscRes.rows.length > 0) {
           const ins = inscRes.rows[0];
           extraInfo = {
+            estudianteId: String(ins.estudiante_id),
+            cursoPeriodoId: String(ins.curso_periodo_id),
             nivel: ins.nivel,
             grado: ins.grado,
             paralelo: ins.paralelo,
@@ -161,9 +169,16 @@ export async function login(ctx: Context): Promise<void> {
       case "profesor":
       case "maestro":
       case "maestros": {
+        const mRes = await query<{ id: bigint }>(
+          `SELECT id FROM maestros WHERE usuario_id = $1 LIMIT 1`,
+          [user.id],
+        );
+        const maestroId = mRes.rows[0]?.id;
+
         const cursosRes = await query<{
           asignacion_id: bigint;
           curso_id: bigint;
+          curso_periodo_id: bigint;
           nivel: string;
           grado: string;
           paralelo: string;
@@ -174,17 +189,19 @@ export async function login(ctx: Context): Promise<void> {
           `SELECT
              ad.id  AS asignacion_id,
              c.id   AS curso_id,
+             cp.id  AS curso_periodo_id,
              c.nivel,
              c.grado,
              c.paralelo,
              m.id   AS materia_id,
-             m.materia,
+             m.nombre AS materia,
              pa.anio
            FROM maestros ma
            JOIN asignaciones_docentes ad ON ad.maestro_id = ma.id
-           JOIN cursos c                 ON c.id          = ad.curso_id
-           JOIN materias m               ON m.id          = ad.materia_id
-           JOIN periodos_academicos pa   ON pa.id         = ad.periodo_id
+           JOIN cursos_periodo cp        ON cp.id = ad.curso_periodo_id
+           JOIN cursos c                 ON c.id  = cp.curso_id
+           JOIN materias m               ON m.id  = ad.materia_id
+           JOIN periodos_academicos pa   ON pa.id = cp.periodo_id
            WHERE ma.usuario_id = $1
              AND pa.activo = TRUE
            ORDER BY c.nivel, c.grado, c.paralelo`,
@@ -192,9 +209,11 @@ export async function login(ctx: Context): Promise<void> {
         );
 
         extraInfo = {
+          maestroId: maestroId ? String(maestroId) : undefined,
           cursos: cursosRes.rows.map((r) => ({
             asignacionId: String(r.asignacion_id),
             cursoId: String(r.curso_id),
+            cursoPeriodoId: String(r.curso_periodo_id),
             nivel: r.nivel,
             grado: r.grado,
             paralelo: r.paralelo,

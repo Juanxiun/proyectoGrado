@@ -1,0 +1,24 @@
+import { Pool } from "@db/postgres";
+import { pg } from "../../config/pg.config.ts";
+
+const pool = new Pool(
+  {
+    hostname: pg.DB_HOST,
+    port: pg.DB_PORT,
+    database: pg.DB_NAME,
+    user: pg.DB_USER,
+    password: pg.DB_PASS,
+    tls: {
+      enabled: pg.DB_SSL,
+      enforce: pg.DB_SSL,
+    },
+  },
+  pg.DB_SIZE || 20,
+  true,
+);
+
+async function ClosedPool(): Promise<void> {
+  await pool.end();
+}
+
+export { pool, ClosedPool };
