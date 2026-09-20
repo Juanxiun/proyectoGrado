@@ -8,9 +8,10 @@ import {
   routeParam,
 } from "../utils/http.ts";
 import * as materialService from "../services/material.service.ts";
-import { uploadMaterialFile } from "../connects/Storage/minio.ts";
+import { deleteMaterialFile, uploadMaterialFile } from "../connects/Storage/minio.ts";
 import { HttpError } from "../utils/errors.ts";
 import type { CreateMateriaMaterialInput, UpdateMateriaMaterialInput } from "../models/homework.ts";
+import { createAndDispatchNotification } from "../services/notification.service.ts";
 
 export async function listMateriales(ctx: Context): Promise<void> {
   try {
@@ -35,6 +36,12 @@ export async function getMaterial(ctx: Context): Promise<void> {
   }
 }
 
+import {
+  buildMaterialObjectKey,
+  resolveNivelFromAsignacion,
+  sanitizeLevel,
+} from "../utils/fileNaming.ts";
+
 export async function createMaterial(ctx: Context): Promise<void> {
   try {
     const contentType = ctx.request.headers.get("content-type") ?? "";
@@ -46,6 +53,7 @@ export async function createMaterial(ctx: Context): Promise<void> {
       const asignacionId = form.get("asignacionId")?.toString();
       const titulo = form.get("titulo")?.toString();
       const detalle = form.get("detalle")?.toString() ?? null;
+      const nivelPayload = form.get("nivel")?.toString();
 
       if (!asignacionId || !titulo) {
         throw new HttpError(400, "asignacionId y titulo son requeridos");
@@ -55,8 +63,10 @@ export async function createMaterial(ctx: Context): Promise<void> {
       }
 
       const fileBuffer = new Uint8Array(await file.arrayBuffer());
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const objectKey = `materiales/${asignacionId}/${Date.now()}_${safeName}`;
+      const nivel = nivelPayload
+        ? sanitizeLevel(nivelPayload)
+        : await resolveNivelFromAsignacion(asignacionId);
+      const objectKey = buildMaterialObjectKey(nivel, asignacionId, file.name);
 
       // Validación de 150MB y tipos PDF/Word/Excel en MinIO
       const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);
@@ -72,13 +82,27 @@ export async function createMaterial(ctx: Context): Promise<void> {
         activo: true,
       });
 
+      createAndDispatchNotification({
+        tipo: "material",
+        titulo: created.titulo,
+        asignacionId: created.asignacionId,
+        itemId: created.id,
+      }).catch((e) => console.warn("[Material] Error enviando notificación:", e));
+
       respond(ctx, 201, created);
       return;
     }
 
     // Creación mediante JSON estándar
     const body = await readJsonBody<CreateMateriaMaterialInput>(ctx);
-    respond(ctx, 201, await materialService.createMaterial(body));
+    const created = await materialService.createMaterial(body);
+    createAndDispatchNotification({
+      tipo: "material",
+      titulo: created.titulo,
+      asignacionId: created.asignacionId,
+      itemId: created.id,
+    }).catch((e) => console.warn("[Material] Error enviando notificación:", e));
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al subir material");
   }
@@ -87,6 +111,55 @@ export async function createMaterial(ctx: Context): Promise<void> {
 export async function updateMaterial(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
+    const contentType = ctx.request.headers.get("content-type") ?? "";
+
+    // Soporte de reemplazo de archivo por Multipart Form-Data
+    if (contentType.includes("multipart/form-data")) {
+      const form = await ctx.request.body.formData();
+      const file = form.get("file");
+      const titulo = form.get("titulo")?.toString();
+      const detalle = form.get("detalle")?.toString();
+      const nivelPayload = form.get("nivel")?.toString();
+      const asignacionId = form.get("asignacionId")?.toString();
+      const activoStr = form.get("activo")?.toString();
+
+      const metadataUpdate: UpdateMateriaMaterialInput = {};
+      if (titulo !== undefined) metadataUpdate.titulo = titulo;
+      if (detalle !== undefined) metadataUpdate.detalle = detalle;
+      if (activoStr !== undefined) metadataUpdate.activo = activoStr === "true";
+
+      // Si se adjunta un nuevo archivo, reemplazamos el antiguo en MinIO
+      if (file instanceof File) {
+        const current = await materialService.getMaterialById(id);
+        const fileBuffer = new Uint8Array(await file.arrayBuffer());
+        const nivel = nivelPayload
+          ? sanitizeLevel(nivelPayload)
+          : await resolveNivelFromAsignacion(asignacionId ?? String(current.asignacionId));
+        const objectKey = buildMaterialObjectKey(nivel, asignacionId ?? String(current.asignacionId), file.name);
+
+        // Sube nuevo archivo primero, luego borra el antiguo
+        const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);
+        if (current.archivoUrl) {
+          deleteMaterialFile(current.archivoUrl).catch((e) =>
+            console.warn("[Material] Error eliminando archivo anterior de MinIO:", e)
+          );
+        }
+
+        metadataUpdate.archivoUrl = uploaded.url;
+        metadataUpdate.nombreArchivo = file.name;
+        metadataUpdate.tipoMime = uploaded.mime;
+        metadataUpdate.tamanioBytes = uploaded.sizeBytes;
+      }
+
+      if (Object.keys(metadataUpdate).length === 0) {
+        throw new HttpError(400, "No se recibieron cambios para aplicar");
+      }
+
+      respond(ctx, 200, await materialService.updateMaterial(id, metadataUpdate));
+      return;
+    }
+
+    // Actualización mediante JSON estándar (solo metadatos)
     const body = await readJsonBody<UpdateMateriaMaterialInput>(ctx);
     respond(ctx, 200, await materialService.updateMaterial(id, body));
   } catch (err) {

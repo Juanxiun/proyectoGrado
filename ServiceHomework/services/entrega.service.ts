@@ -228,6 +228,13 @@ export async function createOrUpdateEntrega(
   claims?: AuthClaims | null,
 ): Promise<EncargoEntrega> {
   try {
+    if (!input.encargoId || !/^\d+$/.test(String(input.encargoId).trim())) {
+      throw new HttpError(400, "encargoId debe ser numérico y es requerido");
+    }
+    if (!input.archivoUrl || !String(input.archivoUrl).trim()) {
+      throw new HttpError(400, "archivoUrl es obligatorio para registrar la entrega de la tarea");
+    }
+
     // 1. Obtener encargo para validar fecha límite
     const encRes = await query<{
       id: bigint;
@@ -259,6 +266,15 @@ export async function createOrUpdateEntrega(
         throw new HttpError(400, "No se encontró el registro de estudiante para este usuario");
       }
       estudianteId = toId(eRes.rows[0].id);
+    } else {
+      const eCheck = await query<{ id: bigint }>(
+        `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
+        [estudianteId],
+      );
+      if (eCheck.rows.length === 0) {
+        throw new HttpError(404, `Estudiante id=${estudianteId} no encontrado`);
+      }
+      estudianteId = toId(eCheck.rows[0].id);
     }
 
     // 3. Comparar fecha actual del sistema con fecha_limite

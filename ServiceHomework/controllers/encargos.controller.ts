@@ -34,10 +34,20 @@ export async function getEncargo(ctx: Context): Promise<void> {
   }
 }
 
+import { createAndDispatchNotification } from "../services/notification.service.ts";
+
 export async function createEncargo(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<CreateEncargoInput>(ctx);
-    respond(ctx, 201, await encargoService.createEncargo(body));
+    const created = await encargoService.createEncargo(body);
+    createAndDispatchNotification({
+      tipo: "actividad",
+      titulo: created.titulo,
+      asignacionId: created.asignacionId,
+      itemId: created.id,
+      fechaLimite: created.fechaLimite ?? null,
+    }).catch((e) => console.warn("[Encargo] Error enviando notificación:", e));
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al crear encargo");
   }

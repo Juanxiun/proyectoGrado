@@ -9,3 +9,4 @@ export { AppLayout } from './layouts/AppLayout';
 export { NotFoundScreen, ServerErrorScreen, ErrorScreen } from './screens/ErrorScreens';
 export { ProfileScreen } from './screens/ProfileScreen';
 export { PlaceholderScreen } from './screens/PlaceholderScreen';
+export { ConfirmDeleteModal } from './components/ConfirmDeleteModal';

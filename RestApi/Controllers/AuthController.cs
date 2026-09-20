@@ -56,6 +56,16 @@ public sealed class AuthController : ControllerBase
     }
 
     /// <summary>
+    /// Permite al usuario cambiar su contraseña cumpliendo con la política de seguridad.
+    /// </summary>
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword()
+    {
+        var response = await _client.ChangePasswordAsync(Request);
+        return await ProxyResult(response);
+    }
+
+    /// <summary>
     /// Cierra la sesión activa del usuario, calcula el tiempo total conectado y audita el cierre.
     /// </summary>
     [HttpPost("logout")]

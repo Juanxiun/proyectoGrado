@@ -17,6 +17,7 @@ import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteC
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
 import { HorariosPlaceholderScreen } from '../displays/screens/HorariosPlaceholderScreen';
+import { ForcePasswordChangeModal } from '../features/usuarios/components/ForcePasswordChangeModal';
 
 interface RoleShellProps {
   navItems: NavItem[];
@@ -83,16 +84,19 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
   };
 
   return (
-    <AppLayout
-      title={panelTitle}
-      userName={userName}
-      userEmail={userEmail}
-      navItems={navItems}
-      activeRoute={activeRoute}
-      onNavigate={setActiveRoute}
-      onProfilePress={() => setActiveRoute('Profile')}
-    >
-      {renderContent()}
-    </AppLayout>
+    <>
+      <AppLayout
+        title={panelTitle}
+        userName={userName}
+        userEmail={userEmail}
+        navItems={navItems}
+        activeRoute={activeRoute}
+        onNavigate={setActiveRoute}
+        onProfilePress={() => setActiveRoute('Profile')}
+      >
+        {renderContent()}
+      </AppLayout>
+      <ForcePasswordChangeModal visible={Boolean(user.debeCambiarPassword)} />
+    </>
   );
 }

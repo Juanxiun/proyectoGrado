@@ -59,6 +59,10 @@ public sealed class UserServiceClient
     public Task<HttpResponseMessage> Resend2FAAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/resend-2fa", request);
 
+    /// <summary>POST /auth/change-password — cambio de contraseña con validación estricta de política.</summary>
+    public Task<HttpResponseMessage> ChangePasswordAsync(HttpRequest request)
+        => ForwardRequestAsync(HttpMethod.Post, "/auth/change-password", request);
+
     /// <summary>POST /auth/logout — cierra la sesión activa y calcula tiempo conectado.</summary>
     public Task<HttpResponseMessage> LogoutAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/logout", request);

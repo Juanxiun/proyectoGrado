@@ -11,6 +11,7 @@ import { getUsuario, getUsuarios } from "./Controller/usuarios/views.ts";
 
 import { login } from "./Controller/auth/login.ts";
 import { verify2FA, resend2FA } from "./Controller/auth/twoFactor.ts";
+import { changePassword } from "./Controller/auth/changePassword.ts";
 import {
   logout,
   getMySessions,
@@ -55,6 +56,7 @@ rt.delete("/usuarios/:id", requireAuth(["director", "control"]), deleteUsuario);
 rt.post("/auth/login", login);
 rt.post("/auth/verify-2fa", verify2FA);
 rt.post("/auth/resend-2fa", resend2FA);
+rt.post("/auth/change-password", requireAuth(), changePassword);
 rt.post("/auth/logout", requireAuth(), logout);
 
 // Rutas de Gestión de Sesiones y Auditoría de Dispositivos

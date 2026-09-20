@@ -33,6 +33,7 @@ export interface AuthUsuario {
   estudianteId?: string;
   maestroId?: string;
   cursoPeriodoId?: string;
+  debeCambiarPassword?: boolean;
 }
 
 export interface LoginResponse {
@@ -166,7 +167,7 @@ export interface CreateUsuarioPayload {
   nacimiento: string;
   genero?: Genero;
   estado?: EstadoUsuario;
-  cuenta?: { username: string; email: string; password: string };
+  cuenta?: { username: string; email: string; password?: string };
   documentos?: UsuarioDoc[];
   direccion?: UsuarioDir;
   contactos?: UsuarioCont[];

@@ -120,7 +120,13 @@ export async function getPresignedUrl(
   expirySeconds = PRESIGN_EXPIRY_SECONDS,
 ): Promise<string> {
   await ensureBucket();
-  return client.presignedGetObject(BUCKET, key, expirySeconds);
+  try {
+    return await client.presignedGetObject(BUCKET, key, expirySeconds, {
+      "response-content-disposition": "inline",
+    });
+  } catch (_err) {
+    return await client.presignedGetObject(BUCKET, key, expirySeconds);
+  }
 }
 
 export async function resolveMediaUrl(

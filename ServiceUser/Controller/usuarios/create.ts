@@ -13,6 +13,7 @@ import {
 import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
 import { generateUsername, generateEmail, generatePassword } from "../../utils/username.ts";
+import { sendWelcomeCredentialsEmail } from "../../services/credentialsEmail.service.ts";
 
 /**
  * POST /usuarios
@@ -237,6 +238,22 @@ export async function createUsuario(ctx: Context): Promise<void> {
       return uid;
     });
 
+    // Enviar credenciales institucionales por correo electrónico (Brevo)
+    if (cuentaFinal) {
+      const targetEmail = Array.isArray(contactos)
+        ? contactos.find((c: any) => c.tipo?.toLowerCase() === "email" || c.tipo?.toLowerCase() === "correo")?.contenido
+        : undefined;
+
+      sendWelcomeCredentialsEmail({
+        nombre: `${nombre} ${apellidoPaterno}`.trim(),
+        username: cuentaFinal.username,
+        email: cuentaFinal.email,
+        passwordTemporal: password,
+        rol: rolNombre,
+        targetEmail: targetEmail || cuentaFinal.email,
+      }).catch((e) => console.warn("[createUsuario] Error en envío de credenciales:", e));
+    }
+
     ctx.response.status = 201;
     broadcastUserEvent({ action: "created", userId: String(usuarioId) });
     ctx.response.body = serialize({ message: "Usuario creado correctamente", id: usuarioId, username: cuentaFinal?.username ?? null, email: cuentaFinal?.email ?? null, fotoUrl: await resolveMediaUrl(fotoUrl) });
@@ -244,9 +261,21 @@ export async function createUsuario(ctx: Context): Promise<void> {
     const msg = (err as Error)?.message ?? "";
     const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
     console.error("[createUsuario]", err);
-    if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate")) {
+    if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate") || constraint.length > 0) {
+      let field = "general";
+      let error = "Ya existe un registro con esos datos únicos";
+      if (constraint.includes("username") || msg.includes("username") || msg.includes("uq_usuario_username")) {
+        field = "username";
+        error = "El nombre de usuario ya se encuentra registrado";
+      } else if (constraint.includes("email") || msg.includes("email") || msg.includes("uq_usuario_email")) {
+        field = "email";
+        error = "El correo electrónico ya se encuentra registrado";
+      } else if (constraint.includes("numero_doc") || msg.includes("numero_doc") || msg.includes("documentos")) {
+        field = "numeroDoc";
+        error = "El número de documento ya está registrado para otro usuario";
+      }
       ctx.response.status = 409;
-      ctx.response.body = { error: constraint.includes("username") ? "El username ya está registrado" : constraint.includes("email") ? "El email ya está registrado" : constraint.includes("numero_doc") ? "El número de documento ya está registrado" : "Ya existe un usuario con ese username, email o número de documento" };
+      ctx.response.body = { error, message: error, field };
       return;
     }
     ctx.response.status = 500;

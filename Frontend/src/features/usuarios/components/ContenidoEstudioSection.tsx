@@ -1,9 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Linking,
-  Modal,
-  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -12,6 +9,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { InAppDocumentViewerModal } from '../../../displays/components/InAppDocumentViewerModal';
+import { connectUsersWebSocket } from '../../../api/users.websocket';
 
 interface MaterialItem {
   id: string;
@@ -36,113 +35,109 @@ export function ContenidoEstudioSection({
   const [loading, setLoading] = useState(true);
   const [materiales, setMateriales] = useState<MaterialItem[]>([]);
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialItem | null>(null);
-  const [iframeModalOpen, setIframeModalOpen] = useState(false);
+  const [viewerModalOpen, setViewerModalOpen] = useState(false);
 
-  // Carga Diferida / Fetch Independiente
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchMateriales() {
-      try {
-        setLoading(true);
-        const res = await academicServicesApi.list('materiales', {
-          asignacionId,
-          limit: 100,
-        });
-        if (isMounted) {
-          setMateriales(res.data as any[]);
-        }
-      } catch (err) {
-        console.error('Error al cargar contenido de estudio:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+  const fetchMateriales = async () => {
+    try {
+      setLoading(true);
+      const res = await academicServicesApi.list('materiales', {
+        asignacionId,
+        limit: 100,
+      });
+      setMateriales(res.data as any[]);
+    } catch (err) {
+      console.error('Error al cargar contenido de estudio:', err);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchMateriales();
+    // Suscripción WebSocket en tiempo real para nuevos materiales
+    const unsub = connectUsersWebSocket(() => {
+      fetchMateriales();
+    });
     return () => {
-      isMounted = false;
+      if (unsub) unsub();
     };
   }, [asignacionId]);
 
   const handleOpenMaterial = (mat: MaterialItem) => {
     setSelectedMaterial(mat);
-    setIframeModalOpen(true);
+    setViewerModalOpen(true);
   };
-
-  const handleOpenExternal = (url: string) => {
-    Linking.openURL(url).catch((err) => console.error('Error abriendo enlace:', err));
-  };
-
-  if (loading) {
-    return (
-      <View className="py-12 items-center justify-center">
-        <ActivityIndicator size="large" color="#801529" />
-        <Text className="text-xs text-gray-500 mt-3 font-medium">
-          Cargando recursos pedagógicos de {materiaNombre}...
-        </Text>
-      </View>
-    );
-  }
 
   return (
-    <View className="gap-4">
+    <View className="gap-4 my-2">
+      {/* Cabecera de la Sección */}
       <View className="flex-row items-center justify-between">
-        <View>
+        <View className="flex-row items-center gap-2">
+          <View className="w-8 h-8 rounded-lg bg-gold/20 items-center justify-center">
+            <Ionicons name="library" size={18} color="#B45309" />
+          </View>
           <Text className="text-lg font-bold text-gray-900">Materiales Didácticos y de Consulta</Text>
-          <Text className="text-xs text-gray-500">
-            Documentos, diapositivas y guías de estudio provistas por el docente.
-          </Text>
         </View>
         <StatusBadge label={`${materiales.length} Recursos`} variant="info" />
       </View>
 
-      {materiales.length === 0 ? (
-        <BentoCard className="p-8 items-center text-center">
-          <Ionicons name="folder-open-outline" size={44} color="#D1D5DB" />
-          <Text className="text-base font-bold text-gray-700 mt-2">
+      {/* Contenido / Lista */}
+      {loading && materiales.length === 0 ? (
+        <View className="p-8 items-center justify-center">
+          <ActivityIndicator size="small" color="#801529" />
+          <Text className="text-xs text-gray-500 mt-2 font-medium">Cargando material educativo...</Text>
+        </View>
+      ) : materiales.length === 0 ? (
+        <BentoCard className="p-6 items-center justify-center bg-gray-50 border border-dashed border-gray-200">
+          <Ionicons name="folder-open-outline" size={32} color="#9CA3AF" />
+          <Text className="text-sm font-semibold text-gray-600 mt-2">
             No hay materiales disponibles todavía
           </Text>
-          <Text className="text-xs text-gray-400 mt-1 max-w-sm">
-            Tu profesor aún no ha compartido guías o presentaciones para esta asignatura.
+          <Text className="text-xs text-gray-400 text-center mt-1">
+            El profesor aún no ha subido recursos de apoyo para {materiaNombre}.
           </Text>
         </BentoCard>
       ) : (
-        <View className="gap-3">
+        <View className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {materiales.map((mat) => (
-            <BentoCard key={mat.id} className="p-4">
-              <View className="flex-row items-start justify-between">
-                <View className="flex-row items-center gap-3 flex-1">
-                  <View className="w-12 h-12 rounded-xl bg-gold/20 items-center justify-center">
-                    <Ionicons name="document-text" size={26} color="#B45309" />
+            <BentoCard
+              key={mat.id}
+              className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
+            >
+              <View>
+                <View className="flex-row items-start justify-between">
+                  <View className="w-9 h-9 rounded-xl bg-maroon/10 items-center justify-center">
+                    <Ionicons name="document-text-outline" size={20} color="#801529" />
                   </View>
-                  <View className="flex-1 pr-2">
-                    <Text className="text-base font-bold text-gray-900">{mat.titulo}</Text>
-                    {mat.detalle ? (
-                      <Text className="text-xs text-gray-600 mt-0.5">{mat.detalle}</Text>
-                    ) : null}
-                    <Text className="text-[11px] text-gray-400 mt-1">
-                      {mat.nombreArchivo || 'Documento'} {mat.fechaSubida ? `• Subido: ${mat.fechaSubida.slice(0, 10)}` : ''}
+                  <View className="bg-gray-100 px-2 py-0.5 rounded text-[11px]">
+                    <Text className="text-[11px] text-gray-600 font-mono">
+                      {mat.nombreArchivo?.split('.').pop()?.toUpperCase() || 'DOC'}
                     </Text>
                   </View>
                 </View>
+
+                <Text className="font-bold text-gray-800 text-sm mt-2.5" numberOfLines={1}>
+                  {mat.titulo}
+                </Text>
+
+                {mat.detalle ? (
+                  <Text className="text-xs text-gray-500 mt-1 line-clamp-2" numberOfLines={2}>
+                    {mat.detalle}
+                  </Text>
+                ) : null}
               </View>
 
-              {/* Botón para abrir directamente en el iFrame integrado */}
-              <View className="mt-4 pt-3 border-t border-gray-100 flex-row gap-2 justify-end">
-                <TouchableOpacity
-                  onPress={() => handleOpenExternal(mat.archivoUrl)}
-                  className="px-3 py-2 bg-gray-100 rounded-xl flex-row items-center gap-1.5"
-                >
-                  <Ionicons name="open-outline" size={16} color="#4B5563" />
-                  <Text className="text-xs font-semibold text-gray-700">Abrir en pestaña</Text>
-                </TouchableOpacity>
+              <View className="mt-4 pt-3 border-t border-gray-100 flex-row items-center justify-between">
+                <Text className="text-[11px] text-gray-400">
+                  {mat.fechaSubida ? mat.fechaSubida.slice(0, 10) : 'Disponible'}
+                </Text>
 
                 <TouchableOpacity
                   onPress={() => handleOpenMaterial(mat)}
-                  className="px-4 py-2 bg-maroon rounded-xl flex-row items-center gap-1.5 shadow-sm"
+                  className="bg-maroon hover:bg-maroon/90 px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 shadow-sm"
                 >
-                  <Ionicons name="eye-outline" size={16} color="#FFFFFF" />
-                  <Text className="text-xs font-bold text-white">Visualizar Material</Text>
+                  <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
+                  <Text className="text-xs font-bold text-white">Visualizar en Pantalla</Text>
                 </TouchableOpacity>
               </View>
             </BentoCard>
@@ -150,83 +145,17 @@ export function ContenidoEstudioSection({
         </View>
       )}
 
-      {/* Visualizador iFrame Modal Integrado */}
-      <Modal
-        visible={iframeModalOpen}
-        animationType="fade"
-        transparent
-        onRequestClose={() => setIframeModalOpen(false)}
-      >
-        <View className="flex-1 bg-black/60 items-center justify-center p-3">
-          <View className="bg-white rounded-2xl w-full max-w-4xl h-[90vh] overflow-hidden shadow-2xl flex-col">
-            {/* Cabecera del visualizador */}
-            <View className="p-4 bg-gray-900 text-white flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2 flex-1 mr-2">
-                <Ionicons name="document-text-outline" size={20} color="#FFD700" />
-                <View className="flex-1">
-                  <Text className="text-white font-bold text-sm truncate">
-                    {selectedMaterial?.titulo}
-                  </Text>
-                  <Text className="text-white/60 text-[11px] truncate">
-                    {selectedMaterial?.nombreArchivo || 'Visor interactivo'}
-                  </Text>
-                </View>
-              </View>
-
-              <View className="flex-row items-center gap-2">
-                {selectedMaterial?.archivoUrl ? (
-                  <TouchableOpacity
-                    onPress={() => handleOpenExternal(selectedMaterial.archivoUrl)}
-                    className="bg-gray-800 px-3 py-1.5 rounded-lg flex-row items-center gap-1"
-                  >
-                    <Ionicons name="open-outline" size={14} color="#FFFFFF" />
-                    <Text className="text-white text-xs">Descargar / Abrir</Text>
-                  </TouchableOpacity>
-                ) : null}
-
-                <TouchableOpacity
-                  onPress={() => setIframeModalOpen(false)}
-                  className="w-8 h-8 rounded-full bg-gray-800 items-center justify-center"
-                >
-                  <Ionicons name="close" size={18} color="#FFFFFF" />
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* iFrame Container */}
-            <View className="flex-1 bg-gray-100">
-              {selectedMaterial?.archivoUrl ? (
-                React.createElement('iframe', {
-                  src: selectedMaterial.archivoUrl,
-                  style: {
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                  },
-                  title: selectedMaterial.titulo || 'Visualizador iFrame',
-                })
-              ) : (
-                <View className="flex-1 items-center justify-center p-6">
-                  <Text className="text-gray-500 text-sm">URL no disponible para previsualizar</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Pie del visualizador */}
-            <View className="p-3 bg-gray-50 border-t border-gray-200 flex-row items-center justify-between">
-              <Text className="text-xs text-gray-500">
-                Visualizador de documentos integrado en plataforma
-              </Text>
-              <TouchableOpacity
-                onPress={() => setIframeModalOpen(false)}
-                className="bg-gray-200 px-4 py-1.5 rounded-lg"
-              >
-                <Text className="text-xs font-semibold text-gray-700">Cerrar Visor</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Visor In-App Modal Integrado */}
+      <InAppDocumentViewerModal
+        visible={viewerModalOpen}
+        onClose={() => setViewerModalOpen(false)}
+        title={selectedMaterial?.titulo || 'Material de Consulta'}
+        url={selectedMaterial?.archivoUrl}
+        fileName={selectedMaterial?.nombreArchivo}
+        mimeType={selectedMaterial?.tipoMime}
+        fileSize={selectedMaterial?.tamanioBytes}
+        uploadedAt={selectedMaterial?.fechaSubida}
+      />
     </View>
   );
 }
