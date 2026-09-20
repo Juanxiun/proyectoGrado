@@ -20,6 +20,11 @@ export const authApi = {
       body: { tempToken },
       auth: false,
     }),
+  changePassword: (payload: { passwordActual?: string; passwordNueva: string }) =>
+    apiRequest<{ message: string; debeCambiarPassword?: boolean }>("/api/auth/change-password", {
+      method: "POST",
+      body: payload,
+    }),
   logout: () =>
     apiRequest<{ message?: string }>("/api/auth/logout", { method: "POST" }),
 };

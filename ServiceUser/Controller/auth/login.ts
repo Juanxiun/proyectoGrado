@@ -63,6 +63,7 @@ export async function login(ctx: Context): Promise<void> {
       username: string;
       email: string;
       password_hash: string;
+      ultimo_login: Date | string | null;
     }>(
       `SELECT
          u.id,
@@ -75,7 +76,8 @@ export async function login(ctx: Context): Promise<void> {
          r.rol,
          uc.username,
          uc.email,
-         uc.password_hash
+         uc.password_hash,
+         uc.ultimo_login
        FROM usuario_cuenta uc
        JOIN usuarios u  ON u.id  = uc.usuario_id
        JOIN roles r     ON r.id  = u.rol_id
@@ -90,6 +92,7 @@ export async function login(ctx: Context): Promise<void> {
     }
 
     const user = userRes.rows[0];
+    const isFirstLogin = user.ultimo_login === null;
 
     if (user.estado === "inactivo" || (user.estado as any) === 0) {
       ctx.response.status = 403;
@@ -111,14 +114,17 @@ export async function login(ctx: Context): Promise<void> {
       return;
     }
 
-    await query(
-      `UPDATE usuario_cuenta SET ultimo_login = NOW() WHERE usuario_id = $1`,
-      [user.id],
-    );
+    if (!isFirstLogin) {
+      await query(
+        `UPDATE usuario_cuenta SET ultimo_login = NOW() WHERE usuario_id = $1`,
+        [user.id],
+      );
+    }
 
     const rolNombre = user.rol.toLowerCase();
+    const debeCambiarPassword = isFirstLogin && ["profesor", "maestro", "docente", "control", "administrativo", "director"].includes(rolNombre);
     // deno-lint-ignore no-explicit-any
-    let extraInfo: Record<string, any> = {};
+    let extraInfo: Record<string, any> = { debeCambiarPassword };
 
     switch (rolNombre) {
       case "estudiante": {

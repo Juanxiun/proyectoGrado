@@ -79,6 +79,11 @@ export const academicServicesApi = {
       method: "POST",
       body: data,
     }),
+  updateMaterialWithFile: (id: string, data: FormData) =>
+    apiRequest<Record<string, unknown>>(`${paths.materiales}/${id}`, {
+      method: "PUT",
+      body: data,
+    }),
   uploadEntrega: (data: FormData) =>
     apiRequest<Record<string, unknown>>(paths.entregas, {
       method: "POST",

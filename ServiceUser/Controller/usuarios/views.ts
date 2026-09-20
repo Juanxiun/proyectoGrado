@@ -273,7 +273,10 @@ export async function getUsuario(
            u2.nombre,
            u2.apellido_paterno AS "apellidoPaterno",
            u2.apellido_materno AS "apellidoMaterno",
-           uc2.username
+           uc2.username,
+           (SELECT numero_doc FROM usuario_documentos WHERE usuario_id = u2.id AND tipo_doc = 'CI' LIMIT 1) AS "ci",
+           (SELECT contenido FROM usuario_contactos WHERE usuario_id = u2.id AND (tipo = 'Celular' OR tipo = 'Telefono') ORDER BY principal DESC, id ASC LIMIT 1) AS "celular",
+           (SELECT contenido FROM usuario_contactos WHERE usuario_id = u2.id AND (tipo = 'Celular' OR tipo = 'Telefono') ORDER BY principal DESC, id ASC LIMIT 1) AS "telefono"
          FROM estudiantes e
          JOIN estudiante_apoderado ea ON ea.estudiante_id = e.id
          JOIN apoderados a ON a.id = ea.apoderado_id

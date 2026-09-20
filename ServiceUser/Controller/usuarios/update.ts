@@ -439,6 +439,90 @@ export async function updateUsuario(
           }
         }
       }
+
+      // Actualizar datos del tutor/apoderado si se envían para el estudiante
+      const tutorData = (datos as any).apoderado ?? (datos as any).tutor;
+      const parentescoInput = (datos as any).parentesco;
+      if (tutorData || parentescoInput !== undefined) {
+        const apodRes = await tx.queryObject<{ estudianteId: bigint; apoderadoId: bigint; usuarioId: bigint }>(
+          `SELECT ea.estudiante_id AS "estudianteId", ea.apoderado_id AS "apoderadoId", a.usuario_id AS "usuarioId"
+           FROM estudiantes e
+           JOIN estudiante_apoderado ea ON ea.estudiante_id = e.id
+           JOIN apoderados a ON a.id = ea.apoderado_id
+           WHERE e.usuario_id = $1
+           LIMIT 1`,
+          [id],
+        );
+
+        if (apodRes.rows.length > 0) {
+          const tutorUsuarioId = apodRes.rows[0].usuarioId;
+          const estudianteTableId = apodRes.rows[0].estudianteId;
+          const apoderadoTableId = apodRes.rows[0].apoderadoId;
+
+          const pFinal = (parentescoInput ?? tutorData?.parentesco)?.trim();
+          if (pFinal) {
+            await tx.queryObject(
+              `UPDATE estudiante_apoderado SET parentesco = $1 WHERE estudiante_id = $2 AND apoderado_id = $3`,
+              [pFinal, estudianteTableId, apoderadoTableId],
+            );
+          }
+
+          if (tutorData) {
+            const tNombre = tutorData.nombre?.trim();
+            const tPaterno = tutorData.apellidoPaterno?.trim();
+            const tMaterno = tutorData.apellidoMaterno?.trim();
+            if (tNombre || tPaterno || tMaterno !== undefined) {
+              await tx.queryObject(
+                `UPDATE usuarios SET
+                   nombre = COALESCE($1, nombre),
+                   apellido_paterno = COALESCE($2, apellido_paterno),
+                   apellido_materno = COALESCE($3, apellido_materno),
+                   fecha_actualizacion = NOW()
+                 WHERE id = $4`,
+                [tNombre ?? null, tPaterno ?? null, tMaterno ?? null, tutorUsuarioId],
+              );
+            }
+
+            if (tutorData.ci?.trim()) {
+              const ciVal = tutorData.ci.trim();
+              const ciCheck = await tx.queryObject<{ id: bigint }>(
+                `SELECT id FROM usuario_documentos WHERE usuario_id = $1 AND tipo_doc = 'CI' LIMIT 1`,
+                [tutorUsuarioId],
+              );
+              if (ciCheck.rows.length > 0) {
+                await tx.queryObject(
+                  `UPDATE usuario_documentos SET numero_doc = $1 WHERE id = $2`,
+                  [ciVal, ciCheck.rows[0].id],
+                );
+              } else {
+                await tx.queryObject(
+                  `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc) VALUES ($1, 'CI', $2)`,
+                  [tutorUsuarioId, ciVal],
+                );
+              }
+            }
+
+            const tCelular = tutorData.celular?.trim() ?? tutorData.telefono?.trim();
+            if (tCelular) {
+              const telCheck = await tx.queryObject<{ id: bigint }>(
+                `SELECT id FROM usuario_contactos WHERE usuario_id = $1 AND (tipo = 'Celular' OR tipo = 'Telefono') LIMIT 1`,
+                [tutorUsuarioId],
+              );
+              if (telCheck.rows.length > 0) {
+                await tx.queryObject(
+                  `UPDATE usuario_contactos SET contenido = $1 WHERE id = $2`,
+                  [tCelular, telCheck.rows[0].id],
+                );
+              } else {
+                await tx.queryObject(
+                  `INSERT INTO usuario_contactos (usuario_id, tipo, contenido, principal) VALUES ($1, 'Celular', $2, TRUE)`,
+                  [tutorUsuarioId, tCelular],
+                );
+              }
+            }
+          }
+        }
+      }
     });
 
     ctx.response.status = 200;
@@ -451,9 +535,21 @@ export async function updateUsuario(
     const msg = (err as Error)?.message?.toLowerCase() ?? "";
     const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
     console.error("[updateUsuario]", err);
-    if (msg.includes("unique") || msg.includes("duplicate")) {
+    if (msg.includes("unique") || msg.includes("duplicate") || constraint.length > 0) {
+      let field = "general";
+      let error = "Ya existe un dato registrado para otro usuario";
+      if (constraint.includes("username") || msg.includes("username") || msg.includes("uq_usuario_username")) {
+        field = "username";
+        error = "El username ya está registrado";
+      } else if (constraint.includes("email") || msg.includes("email") || msg.includes("uq_usuario_email")) {
+        field = "email";
+        error = "El correo electrónico ya está registrado";
+      } else if (constraint.includes("numero_doc") || msg.includes("numero_doc") || msg.includes("documentos")) {
+        field = "numeroDoc";
+        error = "El número de documento ya está registrado";
+      }
       ctx.response.status = 409;
-      ctx.response.body = { error: constraint.includes("username") ? "El username ya está registrado" : constraint.includes("email") ? "El email ya está registrado" : constraint.includes("numero_doc") ? "El número de documento ya está registrado" : "Ya existe un dato registrado para otro usuario" };
+      ctx.response.body = { error, message: error, field };
       return;
     }
     ctx.response.status = 500;

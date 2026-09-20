@@ -18,6 +18,7 @@ export function normalizeRole(value: unknown): AppRole | null {
   const role = String(value ?? "").trim().toLowerCase();
   if (role === "maestro" || role === "maestros" || role === "docente") return "profesor";
   if (role === "gerencia") return "control";
+  if (role === "admin" || role === "administrador") return "director";
   if (role === "padre" || role === "padres" || role === "apoderado" || role === "tutor") {
     return "estudiante";
   }

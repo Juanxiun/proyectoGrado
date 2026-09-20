@@ -42,6 +42,10 @@ import {
   getEntrega,
   listEntregas,
 } from "./controllers/entregas.controller.ts";
+import {
+  listNotificaciones,
+  readNotificacion,
+} from "./controllers/notificaciones.controller.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8883);
 
@@ -101,6 +105,10 @@ rt.post("/asistencia", requireAuth(ROLES_DOCENTES), createAsistencia);
 rt.post("/asistencia/bulk", requireAuth(ROLES_DOCENTES), bulkAsistencias);
 rt.put("/asistencia/:id", requireAuth(ROLES_DOCENTES), updateAsistencia);
 rt.delete("/asistencia/:id", requireAuth(ROLES_DOCENTES), deleteAsistencia);
+
+// ── Notificaciones en Redis (TTL 30 días + Tracking) ───────────────────────
+rt.get("/notificaciones", requireAuth(), listNotificaciones);
+rt.post("/notificaciones/:id/read", requireAuth(), readNotificacion);
 
 // ── Health Check ───────────────────────────────────────────────────────────
 rt.get("/health", (ctx: Context) => {

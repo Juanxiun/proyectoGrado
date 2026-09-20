@@ -271,7 +271,81 @@ export function generate2FABentoEmailHtml(props: TwoFactorEmailProps): string {
         <div class="footer">
             <button class="btn-verification">Cancelar o Volver al Login</button>
         </div>
-    </div >
+    </div>
+</body>
+</html>
+  `.trim();
+}
+
+export interface CredentialsEmailProps {
+  nombre: string;
+  username: string;
+  email: string;
+  passwordTemporal: string;
+  rol: string;
+}
+
+export function generateCredentialsWelcomeEmailHtml(props: CredentialsEmailProps): string {
+  const { nombre, username, email, passwordTemporal, rol } = props;
+  return `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bienvenido a Shalom SGA - Credenciales de Acceso</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 20px; background-color: #f8fafc; color: #1e293b; }
+        .container { max-width: 520px; margin: 0 auto; background: #ffffff; border-radius: 16px; padding: 32px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+        .header { text-align: center; border-bottom: 2px solid #801529; padding-bottom: 20px; margin-bottom: 24px; }
+        .title { color: #801529; font-size: 22px; font-weight: 800; margin: 8px 0 4px; }
+        .subtitle { color: #64748b; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+        .greeting { font-size: 16px; margin-bottom: 20px; }
+        .card { background: #fdf8f6; border: 1.5px dashed #801529; border-radius: 12px; padding: 20px; margin: 20px 0; }
+        .card-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; }
+        .card-row:last-child { margin-bottom: 0; }
+        .label { font-weight: 600; color: #475569; }
+        .value { font-family: monospace; font-weight: 700; color: #801529; font-size: 15px; }
+        .badge { display: inline-block; background: #801529; color: #ffffff; padding: 4px 10px; border-radius: 9999px; font-size: 12px; font-weight: 600; text-transform: uppercase; }
+        .alert-box { background: #eff6ff; border-left: 4px solid #3b82f6; padding: 14px; border-radius: 6px; margin: 20px 0; font-size: 13px; color: #1e40af; line-height: 1.5; }
+        .footer { text-align: center; margin-top: 28px; font-size: 12px; color: #94a3b8; border-top: 1px solid #e2e8f0; padding-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <span class="badge">${rol}</span>
+            <h1 class="title">Colegio Shalom</h1>
+            <p class="subtitle">Sistema de Gestión Académica</p>
+        </div>
+        
+        <p class="greeting">Estimado/a <strong>${nombre}</strong>,</p>
+        <p style="font-size: 14px; color: #475569; line-height: 1.5;">Se ha creado exitosamente tu cuenta institucional para ingresar a la plataforma. A continuación encontrarás tus credenciales de acceso inicial:</p>
+        
+        <div class="card">
+            <div class="card-row">
+                <span class="label">Nombre de Usuario:</span>
+                <span class="value">${username}</span>
+            </div>
+            <div class="card-row">
+                <span class="label">Correo Institucional:</span>
+                <span class="value">${email}</span>
+            </div>
+            <div class="card-row">
+                <span class="label">Contraseña Temporal:</span>
+                <span class="value" style="background: #ffffff; padding: 2px 6px; border-radius: 4px; border: 1px solid #cbd5e1;">${passwordTemporal}</span>
+            </div>
+        </div>
+        
+        <div class="alert-box">
+            <strong>🔒 Primer Inicio de Sesión Obligatorio:</strong><br/>
+            Por políticas de seguridad, al ingresar por primera vez se te solicitará cambiar tu contraseña. Tu nueva contraseña debe tener un mínimo de <strong>8 caracteres</strong>, incluir al menos <strong>una mayúscula</strong>, <strong>un número</strong> y un carácter especial entre <strong>(@, #, $, &)</strong>.
+        </div>
+        
+        <div class="footer">
+            <p>Este es un mensaje automático generado por el Sistema Académico Shalom. Por favor no respondas a este correo.</p>
+        </div>
+    </div>
 </body>
 </html>
   `.trim();

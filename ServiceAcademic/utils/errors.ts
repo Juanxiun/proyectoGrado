@@ -20,8 +20,15 @@ export function isForeignKeyViolation(err: unknown): boolean {
 
 export function mapDbError(err: unknown, fallback: string): HttpError {
   if (err instanceof HttpError) return err;
+  const e = err as { code?: string; constraint?: string; message?: string; fields?: { code?: string; constraint?: string } };
+  const constraint = (e.constraint || e.fields?.constraint || e.message || "").toLowerCase();
+
   if (isUniqueViolation(err)) {
-    return new HttpError(409, "Ya existe un registro con esos datos únicos");
+    let msg = "Ya existe un registro con esos datos únicos";
+    if (constraint.includes("codigo")) msg = "El código ya se encuentra registrado";
+    else if (constraint.includes("nombre")) msg = "El nombre ya se encuentra registrado";
+    else if (constraint.includes("curso")) msg = "Ese curso ya está registrado";
+    return new HttpError(409, msg);
   }
   if (isForeignKeyViolation(err)) {
     return new HttpError(409, "No se puede completar la operación: hay registros relacionados");

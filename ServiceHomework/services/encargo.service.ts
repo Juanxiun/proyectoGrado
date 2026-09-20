@@ -206,7 +206,20 @@ export async function getEncargoById(id: string): Promise<Encargo> {
 }
 
 export async function createEncargo(input: CreateEncargoInput): Promise<Encargo> {
-  const asigId = String(input.asignacionId ?? "").trim();
+  let asigId = String(input.asignacionId ?? "").trim();
+  if (!asigId && (input as any).cursoPeriodoId && (input as any).materiaId) {
+    const cpId = String((input as any).cursoPeriodoId).trim();
+    const mId = String((input as any).materiaId).trim();
+    const found = await query<{ id: bigint }>(
+      `SELECT id FROM asignaciones_docentes WHERE curso_periodo_id = $1 AND materia_id = $2 LIMIT 1`,
+      [cpId, mId],
+    );
+    if (found.rows.length > 0) {
+      asigId = toId(found.rows[0].id);
+    }
+  }
+
+  if (!asigId) throw new HttpError(400, "asignacionId es obligatorio para asignar la tarea al curso");
   if (!/^\d+$/.test(asigId)) throw new HttpError(400, "asignacionId debe ser numérico");
   if (!input.titulo?.trim()) throw new HttpError(400, "titulo es obligatorio");
   if (!input.tipo?.trim()) throw new HttpError(400, "tipo es obligatorio (ej: tarea, examen, proyecto)");
@@ -226,6 +239,11 @@ export async function createEncargo(input: CreateEncargoInput): Promise<Encargo>
   }
   if (input.fechaLimite && !isIsoDateTime(input.fechaLimite)) {
     throw new HttpError(400, "fechaLimite debe tener formato de fecha/hora válido");
+  }
+  if (input.fechaPublicacion && input.fechaLimite) {
+    if (new Date(input.fechaLimite).getTime() < new Date(input.fechaPublicacion).getTime()) {
+      throw new HttpError(400, "La fecha límite no puede ser anterior a la fecha de publicación");
+    }
   }
 
   const asigRes = await query<{ id: bigint }>(
@@ -362,6 +380,7 @@ export async function deleteEncargo(id: string): Promise<void> {
   try {
     await sTransaction(async (client) => {
       await client.queryObject(`DELETE FROM encargo_materiales WHERE encargo_id = $1`, [id]);
+      await client.queryObject(`DELETE FROM encargo_entregas WHERE encargo_id = $1`, [id]);
       await client.queryObject(`DELETE FROM calificaciones WHERE encargo_id = $1`, [id]);
       await client.queryObject(`DELETE FROM encargos WHERE id = $1`, [id]);
     });

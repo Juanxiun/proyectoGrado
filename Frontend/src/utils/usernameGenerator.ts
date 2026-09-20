@@ -6,8 +6,13 @@ function cleanText(value: string): string {
     .toLowerCase();
 }
 
-function getFirstTwo(value: string): string {
-  return cleanText(value).slice(0, 2).padEnd(2, 'x');
+function getTwoOrFallback(value: string, fallback: string = ''): string {
+  const clean = cleanText(value);
+  if (clean.length >= 2) return clean.slice(0, 2);
+  if (clean.length === 1) return clean + (cleanText(fallback).slice(0, 1) || 'a');
+  const fb = cleanText(fallback);
+  if (fb.length >= 2) return fb.slice(0, 2);
+  return 'sh';
 }
 
 function reduceToSingleDigit(sum: number): number {
@@ -22,43 +27,60 @@ function reduceToSingleDigit(sum: number): number {
 }
 
 /**
- * Genera un nombre de usuario autogenerado siguiendo la fórmula institucional:
- *   - Primeras 2 letras del Apellido Paterno
- *   - Primeras 2 letras del Apellido Materno
- *   - Primeras 2 letras del Nombre
- *   - Primeros 2 dígitos del CI
- *   - Últimos 2 dígitos del CI
- *   - Suma de estos dígitos reducida a 1 único dígito (ej. 12 -> 1 + 2 = 3)
+ * Genera un nombre de usuario autogenerado siguiendo la fórmula institucional limpia:
+ *   - 2 letras de Apellido Paterno
+ *   - 2 letras de Apellido Materno (o fallback elegante)
+ *   - 2 letras de Nombre
+ *   - 2 primeros y 2 últimos dígitos de CI con suma de verificación
  */
 export function generateUsername(
   nombre: string,
   apellidoPaterno: string,
-  apellidoMaterno: string,
-  ci: string,
+  apellidoMaterno?: string | null,
+  ci?: string | null,
 ): string {
   if (!nombre && !apellidoPaterno) return '';
-  const apPat = getFirstTwo(apellidoPaterno);
-  const apMat = getFirstTwo(apellidoMaterno);
-  const nom = getFirstTwo(nombre);
+
+  const cleanNom = cleanText(nombre);
+  const cleanPat = cleanText(apellidoPaterno);
+  const cleanMat = cleanText(apellidoMaterno ?? '');
+
+  const apPat = getTwoOrFallback(cleanPat, cleanNom);
+  const apMat = cleanMat.length >= 2 ? cleanMat.slice(0, 2) : (cleanPat.length > 2 ? cleanPat.slice(2, 4) : 'sh');
+  const nom = getTwoOrFallback(cleanNom, cleanPat);
 
   const ciDigits = (ci || '').replace(/\D/g, '');
-  const ciFirstTwo = ciDigits.slice(0, 2).padEnd(2, '0');
-  const ciLastTwo = (ciDigits.length >= 2 ? ciDigits.slice(-2) : ciDigits).padStart(2, '0');
+  let ciFirstTwo = '10';
+  let ciLastTwo = '25';
+  let checksum = 7;
 
-  const d1 = Number(ciFirstTwo[0]) || 0;
-  const d2 = Number(ciFirstTwo[1]) || 0;
-  const d3 = Number(ciLastTwo[0]) || 0;
-  const d4 = Number(ciLastTwo[1]) || 0;
-  const checksum = reduceToSingleDigit(d1 + d2 + d3 + d4);
+  if (ciDigits.length >= 4) {
+    ciFirstTwo = ciDigits.slice(0, 2);
+    ciLastTwo = ciDigits.slice(-2);
+    const d1 = Number(ciFirstTwo[0]) || 0;
+    const d2 = Number(ciFirstTwo[1]) || 0;
+    const d3 = Number(ciLastTwo[0]) || 0;
+    const d4 = Number(ciLastTwo[1]) || 0;
+    checksum = reduceToSingleDigit(d1 + d2 + d3 + d4);
+  } else if (ciDigits.length > 0) {
+    ciFirstTwo = ciDigits.padEnd(2, '1');
+    ciLastTwo = ciDigits.padStart(2, '2');
+    checksum = reduceToSingleDigit(Number(ciFirstTwo[0]) + Number(ciLastTwo[0]));
+  } else {
+    const hashNum = (cleanNom.length * 13 + cleanPat.length * 7 + (cleanMat.length || 3)) % 90 + 10;
+    ciFirstTwo = String(hashNum);
+    ciLastTwo = String(99 - hashNum);
+    checksum = reduceToSingleDigit(hashNum);
+  }
 
   return `${apPat}${apMat}${nom}${ciFirstTwo}${ciLastTwo}${checksum}`;
 }
 
 /**
- * Genera el correo electrónico institucional del estudiante.
+ * Genera el correo electrónico institucional.
  */
 export function generateStudentEmail(username: string): string {
-  if (!username) return 'estudiante@shalom.edu.bo';
+  if (!username) return 'usuario@shalom.edu.bo';
   const cleanUsername = username.toLowerCase().trim().replace(/[^a-z0-9_.-]/g, '');
   return `${cleanUsername}@shalom.edu.bo`;
 }

@@ -14,15 +14,15 @@ export interface AuthClaims extends JWTPayload {
   role: AppRole;
 }
 
-// La administración configura la oferta académica; únicamente el docente
-// publica o modifica contenido pedagógico y evaluaciones.
-export const ROLES_DOCENTES: AppRole[] = ["profesor"];
+// Permite a docentes y a la administración (director, control) gestionar contenido pedagógico y evaluaciones
+export const ROLES_DOCENTES: AppRole[] = ["profesor", "director", "control"];
 export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor", "estudiante"];
 
 export function normalizeRole(value: unknown): AppRole | null {
   const role = String(value ?? "").trim().toLowerCase();
   if (role === "maestro" || role === "maestros" || role === "docente") return "profesor";
   if (role === "gerencia") return "control";
+  if (role === "admin" || role === "administrador") return "director";
   if (role === "padre" || role === "padres" || role === "apoderado" || role === "tutor") {
     return "estudiante";
   }
