@@ -15,8 +15,13 @@ import {
 } from "./controllers/cursosPeriodo.controller.ts";
 import {
   createInscripcion,
+  enableInscripcion,
+  createSolicitudInscripcion,
   deleteInscripcion,
   getInscripcion,
+  listSolicitudesInscripcion,
+  approveSolicitudInscripcion,
+  rejectSolicitudInscripcion,
   listInscripciones,
   retirarInscripcion,
   updateInscripcion,
@@ -68,6 +73,11 @@ rt.delete("/cursos-periodo/:id", requireAuth(ROLES_GESTION), deleteCursoPeriodo)
 
 // ── Inscripciones (Matriculación de estudiantes por año) ───────────────────
 rt.get("/inscripciones", requireAuth(ROLES_LECTURA), listInscripciones);
+rt.post("/inscripciones/solicitud", requireAuth(), createSolicitudInscripcion);
+rt.post("/inscripciones/habilitar", requireAuth(["estudiante"]), enableInscripcion);
+rt.get("/inscripciones/solicitudes", requireAuth(), listSolicitudesInscripcion);
+rt.patch("/inscripciones/solicitudes/:id/aprobar", requireAuth(ROLES_GESTION), approveSolicitudInscripcion);
+rt.patch("/inscripciones/solicitudes/:id/rechazar", requireAuth(ROLES_GESTION), rejectSolicitudInscripcion);
 rt.get("/inscripciones/:id", requireAuth(ROLES_LECTURA), getInscripcion);
 rt.post("/inscripciones", requireAuth(ROLES_GESTION), createInscripcion);
 rt.put("/inscripciones/:id", requireAuth(ROLES_GESTION), updateInscripcion);
@@ -101,6 +111,7 @@ rt.get("/health", (ctx: Context) => {
       "Cursos por periodo académico",
       "Asignación de carga horaria y materias a docentes",
       "Asignación de asesores de curso",
+      "Solicitudes de promoción y reserva",
     ],
   };
 });

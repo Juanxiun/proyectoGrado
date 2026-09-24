@@ -12,9 +12,10 @@ import { BirthDatePicker } from '../components/BirthDatePicker';
 import { DocumentInput } from '../components/DocumentInput';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
+import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
-import { getFullName } from '../../../utils/validation';
+import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
 import type {
   CreateUsuarioPayload,
   EstadoUsuario,
@@ -45,7 +46,7 @@ const emptyAdminForm = {
 export function AdministrativoManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const isDirector = userRol === 'director';
+  const canManageAdmin = ['director', 'control', 'admin', 'administrador', 'gerencia', 'administrativo', 'secretaria', 'secretario', 'editor'].includes(userRol);
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -53,6 +54,8 @@ export function AdministrativoManagementScreen() {
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<Usuario | null>(null);
+  const [deletingAdmin, setDeletingAdmin] = useState<Usuario | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [form, setForm] = useState(emptyAdminForm);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -73,14 +76,29 @@ export function AdministrativoManagementScreen() {
     return connectUsersWebSocket(refresh);
   }, [search, statusFilter]);
 
-  if (!isDirector) {
+  const handleConfirmDeleteAdmin = async () => {
+    if (!deletingAdmin) return;
+    setDeleteLoading(true);
+    try {
+      await usuariosApi.delete(deletingAdmin.id);
+      Alert.alert('Éxito', 'Personal administrativo eliminado permanentemente.');
+      setDeletingAdmin(null);
+      refresh();
+    } catch (err: any) {
+      Alert.alert('Error al eliminar', err?.message || 'No se pudo eliminar el personal administrativo.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  if (!canManageAdmin) {
     return (
       <View className="flex-1 items-center justify-center p-6 bg-cream">
         <BentoCard className="p-6 items-center max-w-sm">
           <Ionicons name="lock-closed" size={48} color="#7A1F3D" />
           <Text className="text-xl font-bold text-maroon mt-4 text-center">Acceso Restringido</Text>
           <Text className="text-gray-500 text-xs text-center mt-2">
-            La gestión del Personal Administrativo está reservada únicamente para la Dirección General.
+            La gestión del Personal Administrativo está reservada para Dirección y Control.
           </Text>
         </BentoCard>
       </View>
@@ -119,37 +137,17 @@ export function AdministrativoManagementScreen() {
 
   const handleSaveAdmin = async () => {
     setFieldErrors({});
-    if (!form.nombre || !form.apellidoPaterno || !form.apellidoMaterno || !form.nacimiento) {
-      Alert.alert('Campos requeridos', 'Complete los datos personales obligatorios.');
+    if (!form.nombre.trim() || !form.apellidoPaterno.trim() || !form.nacimiento) {
+      Alert.alert('Campos requeridos', 'Complete los datos personales obligatorios (Nombre, Apellido Paterno y Fecha de Nacimiento).');
       return;
     }
-    const missingRequired = ADMIN_REQUIRED_DOCS.filter(
-      (req) => !adminDocs.some((d) => d.tipoDoc === req && d.numeroDoc.trim())
-    );
-    if (missingRequired.length > 0) {
-      Alert.alert('Documentación requerida', `${missingRequired.join(', ')} son obligatorios.`);
+    const ciDoc = adminDocs.find((d) => d.tipoDoc.toUpperCase() === 'CI');
+    if (!ciDoc?.numeroDoc?.trim()) {
+      Alert.alert('Cédula de Identidad requerida', 'El número de CI es obligatorio.');
       return;
     }
     if (!editingAdmin && (!form.username || !form.email)) {
       Alert.alert('Cuenta de acceso', 'Ingrese el nombre de usuario y correo para el personal administrativo.');
-      return;
-    }
-    if (!editingAdmin && !adminPhoto) {
-      Alert.alert('Foto requerida', 'Debe subir la foto de perfil (PNG/JPG).');
-      return;
-    }
-
-    const ciDoc = adminDocs.find((d) => d.tipoDoc.toUpperCase() === 'CI');
-    const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
-    if (!hasCiFile) {
-      Alert.alert(
-        '⚠️ Archivo Crítico CI Faltante',
-        'No se ha adjuntado el archivo digital en PDF para la Cédula de Identidad (CI).\n\nEste documento es crítico para el expediente administrativo. ¿Desea guardarlo sin archivo digital o prefiere adjuntarlo ahora?',
-        [
-          { text: 'Adjuntar ahora', style: 'cancel' },
-          { text: 'Guardar sin archivo', style: 'destructive', onPress: () => executeSaveAdmin() },
-        ],
-      );
       return;
     }
 
@@ -179,6 +177,7 @@ export function AdministrativoManagementScreen() {
       } else {
         const createPayload: CreateUsuarioPayload = {
           rolId: form.rolId,
+          rol: form.rolId === '1' ? 'director' : 'control',
           nombre: form.nombre,
           apellidoPaterno: form.apellidoPaterno,
           apellidoMaterno: form.apellidoMaterno,
@@ -258,8 +257,8 @@ export function AdministrativoManagementScreen() {
   };
 
   const handleToggleState = (u: Usuario) => {
-    const nuevoEstado = u.estado === 1 ? 0 : 1;
-    const accion = nuevoEstado === 0 ? 'Dar de baja' : 'Reactivar';
+    const nuevoEstado = isUsuarioActivo(u.estado) ? 'inactivo' : 'activo';
+    const accion = nuevoEstado === 'inactivo' ? 'Dar de baja' : 'Reactivar';
 
     const executeToggle = async () => {
       try {
@@ -284,7 +283,7 @@ export function AdministrativoManagementScreen() {
         { text: 'Cancelar', style: 'cancel' },
         {
           text: accion,
-          style: nuevoEstado === 0 ? 'destructive' : 'default',
+          style: nuevoEstado === 'inactivo' ? 'destructive' : 'default',
           onPress: executeToggle,
         },
       ],
@@ -293,18 +292,18 @@ export function AdministrativoManagementScreen() {
 
   const adminList = (data?.data ?? []).filter((u) => {
     const r = (u.rol || '').toLowerCase();
-    return r === 'director' || r === 'gerencia' || r === 'control' || r === 'administrativo' || String(u.rolId) === '4' || String(u.rolId) === '1';
+    return r === 'director' || r === 'admin' || r === 'administrador' || r === 'gerencia' || r === 'control' || r === 'administrativo' || r === 'secretaria' || r === 'secretario' || r === 'editor' || String(u.rolId) === '4' || String(u.rolId) === '1';
   });
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   const habilitados = useMemo(
-    () => adminList.filter((u) => u.estado === 1 || u.estado === 'activo'),
+    () => adminList.filter((u) => isUsuarioActivo(u.estado)),
     [adminList]
   );
   const deshabilitados = useMemo(
-    () => adminList.filter((u) => u.estado === 0 || u.estado === 'inactivo' || u.estado === 'bloqueado'),
+    () => adminList.filter((u) => isUsuarioInactivo(u.estado)),
     [adminList]
   );
 
@@ -397,7 +396,7 @@ export function AdministrativoManagementScreen() {
               <View className="gap-4">
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
               <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial (MinIO)</Text>
-              <ProfilePhotoPicker photoUri={adminPhoto} onChange={setAdminPhoto} required={!editingAdmin} />
+              <ProfilePhotoPicker photoUri={adminPhoto} onChange={setAdminPhoto} required={false} />
             </BentoCard>
 
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -440,7 +439,9 @@ export function AdministrativoManagementScreen() {
                 <Text className="text-xs font-bold text-gray-700 mb-1.5">Cargo / Rol en el Sistema:</Text>
                 <View className="flex-row gap-2">
                   {[
-                    { id: '1', label: 'Director' },
+                    ...(userRol === 'director' || userRol === 'admin' || userRol === 'administrador'
+                      ? [{ id: '1', label: 'Director' }]
+                      : []),
                     { id: '4', label: 'Control / Gerencia' },
                   ].map((r) => (
                     <TouchableOpacity
@@ -621,7 +622,7 @@ export function AdministrativoManagementScreen() {
                 const admFullName = getFullName(adm.nombre, apPat, apMat);
                 const cargo = adm.rol ?? `Rol ${adm.rolId}`;
                 const celular = adm.contactos?.[0]?.contenido || '';
-                const isOnline = adm.estado === 1 || adm.estado === 'activo';
+                const isOnline = isUsuarioActivo(adm.estado);
 
                 return (
                   <BentoCard
@@ -693,7 +694,7 @@ export function AdministrativoManagementScreen() {
                     </View>
 
                     {/* Acciones Bento */}
-                    <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
                       <TouchableOpacity
                         onPress={() => handleEdit(adm)}
                         className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
@@ -707,17 +708,25 @@ export function AdministrativoManagementScreen() {
                         className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                       >
                         <Ionicons
-                          name={adm.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                          name={isUsuarioActivo(adm.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                           size={16}
-                          color={adm.estado === 1 ? '#DC2626' : '#16A34A'}
+                          color={isUsuarioActivo(adm.estado) ? '#DC2626' : '#16A34A'}
                         />
                         <Text
                           className={`text-xs font-semibold ${
-                            adm.estado === 1 ? 'text-red-600' : 'text-green-600'
+                            isUsuarioActivo(adm.estado) ? 'text-red-600' : 'text-green-600'
                           }`}
                         >
-                          {adm.estado === 1 ? 'Baja' : 'Activar'}
+                          {isUsuarioActivo(adm.estado) ? 'Baja' : 'Activar'}
                         </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setDeletingAdmin(adm)}
+                        className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                        <Text className="text-xs font-bold text-red-600">Eliminar</Text>
                       </TouchableOpacity>
                     </View>
                   </BentoCard>
@@ -770,7 +779,7 @@ export function AdministrativoManagementScreen() {
                 const admFullName = getFullName(adm.nombre, apPat, apMat);
                 const cargo = adm.rol ?? `Rol ${adm.rolId}`;
                 const celular = adm.contactos?.[0]?.contenido || '';
-                const isOnline = adm.estado === 1 || adm.estado === 'activo';
+                const isOnline = isUsuarioActivo(adm.estado);
 
                 return (
                   <BentoCard
@@ -842,7 +851,7 @@ export function AdministrativoManagementScreen() {
                     </View>
 
                     {/* Acciones Bento */}
-                    <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
                       <TouchableOpacity
                         onPress={() => handleEdit(adm)}
                         className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
@@ -856,17 +865,25 @@ export function AdministrativoManagementScreen() {
                         className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                       >
                         <Ionicons
-                          name={adm.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                          name={isUsuarioActivo(adm.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                           size={16}
-                          color={adm.estado === 1 ? '#DC2626' : '#16A34A'}
+                          color={isUsuarioActivo(adm.estado) ? '#DC2626' : '#16A34A'}
                         />
                         <Text
                           className={`text-xs font-semibold ${
-                            adm.estado === 1 ? 'text-red-600' : 'text-green-600'
+                            isUsuarioActivo(adm.estado) ? 'text-red-600' : 'text-green-600'
                           }`}
                         >
-                          {adm.estado === 1 ? 'Baja' : 'Activar'}
+                          {isUsuarioActivo(adm.estado) ? 'Baja' : 'Activar'}
                         </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setDeletingAdmin(adm)}
+                        className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
+                      >
+                        <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                        <Text className="text-xs font-bold text-red-600">Eliminar</Text>
                       </TouchableOpacity>
                     </View>
                   </BentoCard>
@@ -894,6 +911,15 @@ export function AdministrativoManagementScreen() {
           </View>
         )}
       </BentoCard>}
+
+      <ConfirmDeleteModal
+        visible={Boolean(deletingAdmin)}
+        itemName={deletingAdmin ? getFullName(deletingAdmin.nombre, deletingAdmin.apellidoPaterno, deletingAdmin.apellidoMaterno) : ''}
+        loading={deleteLoading}
+        onCancel={() => setDeletingAdmin(null)}
+        onConfirm={handleConfirmDeleteAdmin}
+        warningNote="Se eliminará al personal administrativo permanentemente del sistema junto con su cuenta de acceso institucional."
+      />
     </ScrollView>
   );
 }

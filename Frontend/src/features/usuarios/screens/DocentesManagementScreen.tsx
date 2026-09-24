@@ -12,10 +12,11 @@ import { BirthDatePicker } from '../components/BirthDatePicker';
 import { DocumentInput } from '../components/DocumentInput';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
+import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { MateriaSelectorModal } from '../components/MateriaSelectorModal';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
-import { getFullName } from '../../../utils/validation';
+import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
   CreateUsuarioPayload,
@@ -48,7 +49,7 @@ const emptyDocenteForm = {
 export function DocentesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = userRol === 'director' || userRol === 'control' || userRol === 'gerencia';
+  const canEdit = ['director', 'control', 'gerencia', 'admin', 'administrador', 'administrativo', 'editor', 'secretaria', 'secretario'].includes(userRol);
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -67,13 +68,13 @@ export function DocentesManagementScreen() {
   const [docentePhoto, setDocentePhoto] = useState<string | undefined>(undefined);
   const [bajaTarget, setBajaTarget] = useState<Usuario | null>(null);
   const [bajaLoading, setBajaLoading] = useState(false);
+  const [deletingDocente, setDeletingDocente] = useState<Usuario | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [selectedDocenteDetail, setSelectedDocenteDetail] = useState<Usuario | null>(null);
   const [docentesListTab, setDocentesListTab] = useState<'enabled' | 'disabled'>('enabled');
   const [materiasDisponibles, setMateriasDisponibles] = useState<Array<{ id: string; nombre: string; codigo: string }>>([]);
-  const [cursosPeriodoDisponibles, setCursosPeriodoDisponibles] = useState<Array<any>>([]);
   const [materiasSeleccionadas, setMateriasSeleccionadas] = useState<string[]>([]);
-  const [cursosPeriodoSeleccionados, setCursosPeriodoSeleccionados] = useState<string[]>([]);
-  const [nivelFiltroCarga, setNivelFiltroCarga] = useState<'primaria' | 'secundaria' | 'todos'>('primaria');
+  const [materiasConfiguradasOriginal, setMateriasConfiguradasOriginal] = useState(false);
 
   const refresh = () => {
     fetchList({ buscar: search, estado: statusFilter, limit: 100 }).catch(() => undefined);
@@ -86,13 +87,11 @@ export function DocentesManagementScreen() {
 
   useEffect(() => {
     if (!showModal || !canEdit) return;
-    Promise.all([
-      academicServicesApi.list('materias', { activo: 'true' }),
-      academicServicesApi.list('cursos-periodo', { estado: 'activo' }),
-    ]).then(([materias, cursosPeriodo]) => {
-      setMateriasDisponibles(materias.data as Array<{ id: string; nombre: string; codigo: string }>);
-      setCursosPeriodoDisponibles(cursosPeriodo.data);
-    }).catch(() => Alert.alert('No se pudieron cargar las asignaciones', 'Verifique que existan materias y cursos activos antes de registrar al docente.'));
+    academicServicesApi.list('materias', { activo: 'true' })
+      .then((materias) => {
+        setMateriasDisponibles(materias.data as Array<{ id: string; nombre: string; codigo: string }>);
+      })
+      .catch(() => Alert.alert('No se pudieron cargar las materias', 'Verifique que existan materias activas antes de registrar al docente.'));
   }, [showModal, canEdit]);
 
   const resetForm = () => {
@@ -106,7 +105,7 @@ export function DocentesManagementScreen() {
     ]);
     setDocentePhoto(undefined);
     setMateriasSeleccionadas([]);
-    setCursosPeriodoSeleccionados([]);
+    setMateriasConfiguradasOriginal(false);
   };
 
   // Autogenerar username al cambiar nombre, apellidos o CI si es nuevo registro
@@ -128,39 +127,34 @@ export function DocentesManagementScreen() {
     }
   };
 
+  const handleConfirmDeleteDocente = async () => {
+    if (!deletingDocente) return;
+    setDeleteLoading(true);
+    try {
+      await usuariosApi.delete(deletingDocente.id);
+      Alert.alert('Éxito', 'Docente eliminado permanentemente.');
+      setDeletingDocente(null);
+      refresh();
+    } catch (err: any) {
+      Alert.alert('Error al eliminar', err?.message || 'No se pudo eliminar el docente.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const handleSaveDocente = async () => {
     setFieldErrors({});
-    if (!form.nombre || !form.apellidoPaterno || !form.apellidoMaterno || !form.nacimiento) {
-      Alert.alert('Campos requeridos', 'Ingrese los datos personales obligatorios.');
+    if (!form.nombre.trim() || !form.apellidoPaterno.trim() || !form.nacimiento) {
+      Alert.alert('Campos requeridos', 'Ingrese los datos personales obligatorios (Nombre, Apellido Paterno y Fecha de Nacimiento).');
       return;
     }
-    const missingRequired = DOCENTE_REQUIRED_DOCS.filter(
-      (req) => !docenteDocs.some((d) => d.tipoDoc === req && d.numeroDoc.trim())
-    );
-    if (missingRequired.length > 0) {
-      Alert.alert('Documentos de regularización', `${missingRequired.join(', ')} son obligatorios según la regulación de Bolivia.`);
+    const ciDoc = docenteDocs.find((d) => d.tipoDoc.toUpperCase() === 'CI');
+    if (!ciDoc?.numeroDoc?.trim()) {
+      Alert.alert('Cédula de Identidad requerida', 'El número de CI es obligatorio según la normativa de Bolivia.');
       return;
     }
     if (!editingDocente && (!form.username || !form.email)) {
       Alert.alert('Cuenta de acceso', 'Ingrese el nombre de usuario y correo para el docente.');
-      return;
-    }
-    if (!editingDocente && !docentePhoto) {
-      Alert.alert('Foto requerida', 'Debe subir la foto de perfil del docente (PNG/JPG).');
-      return;
-    }
-
-    const ciDoc = docenteDocs.find((d) => d.tipoDoc.toUpperCase() === 'CI');
-    const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
-    if (!hasCiFile) {
-      Alert.alert(
-        '⚠️ Archivo Crítico CI Faltante',
-        'No se ha adjuntado el archivo digital en PDF para la Cédula de Identidad (CI).\n\nEste documento es crítico para el registro docente. ¿Desea guardarlo sin archivo digital o prefiere adjuntarlo ahora?',
-        [
-          { text: 'Adjuntar ahora', style: 'cancel' },
-          { text: 'Guardar sin archivo', style: 'destructive', onPress: () => executeSaveDocente() },
-        ],
-      );
       return;
     }
 
@@ -171,7 +165,6 @@ export function DocentesManagementScreen() {
     setSaving(true);
     setFieldErrors({});
     try {
-      let maestroUsuarioId: string;
       if (editingDocente) {
         const updatePayload: UpdateUsuarioPayload = {
           nombre: form.nombre,
@@ -179,7 +172,12 @@ export function DocentesManagementScreen() {
           apellidoMaterno: form.apellidoMaterno,
           nacimiento: form.nacimiento,
           genero: form.genero,
-          maestro: { especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad },
+          maestro: {
+             especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad,
+             ...(materiasConfiguradasOriginal || materiasSeleccionadas.length > 0
+               ? { materias: materiasSeleccionadas }
+               : {}),
+           },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
           contactos: form.celular ? [{ tipo: 'Celular', contenido: form.celular }] : undefined,
@@ -187,40 +185,32 @@ export function DocentesManagementScreen() {
         };
 
         await usuariosApi.updateWithFiles(editingDocente.id, updatePayload, docentePhoto);
-        maestroUsuarioId = editingDocente.id;
         Alert.alert('Éxito', 'Docente actualizado correctamente.');
       } else {
         const createPayload: CreateUsuarioPayload = {
           rolId: '2',
+          rol: 'profesor',
           nombre: form.nombre,
           apellidoPaterno: form.apellidoPaterno,
           apellidoMaterno: form.apellidoMaterno,
           nacimiento: form.nacimiento,
           genero: form.genero,
-          maestro: { especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad, fechaContratacion: form.fechaContratacion },
+          maestro: { especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad, fechaContratacion: form.fechaContratacion, materias: materiasSeleccionadas },
           cuenta: { username: form.username, email: form.email, password: form.password || undefined },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
           contactos: form.celular ? [{ tipo: 'Celular', contenido: form.celular }] : [],
         };
 
-        const created = await usuariosApi.createWithFiles(createPayload, docentePhoto);
-        maestroUsuarioId = String(created.id);
+        await usuariosApi.createWithFiles(createPayload, docentePhoto);
       }
 
-      // El servicio de inscripción acepta el usuario del maestro y lo resuelve
-      // a su registro interno. Se crean todas las combinaciones seleccionadas.
-      if (materiasSeleccionadas.length && cursosPeriodoSeleccionados.length) {
-        const requests = cursosPeriodoSeleccionados.flatMap((cursoPeriodoId) => materiasSeleccionadas.map((materiaId) =>
-          academicServicesApi.create('asignaciones', { maestroId: maestroUsuarioId, materiaId, cursoPeriodoId, estado: 'activo' }),
-        ));
-        const results = await Promise.allSettled(requests);
-        const failed = results.filter((result) => result.status === 'rejected').length;
-        if (failed) Alert.alert('Docente guardado', `Se registró la ficha, pero ${failed} asignación(es) ya existían o no pudieron crearse.`);
-        else Alert.alert('Éxito', `Docente guardado y asignado a ${requests.length} carga(s) académica(s).`);
-      } else {
-        Alert.alert('Éxito', editingDocente ? 'Docente actualizado correctamente.' : 'Docente registrado correctamente. Credenciales enviadas por correo Brevo.');
-      }
+      Alert.alert(
+        'Éxito',
+        editingDocente
+          ? 'Docente actualizado correctamente. Sus materias quedan disponibles para la construcción de horarios.'
+          : 'Docente registrado correctamente. Asigna sus materias a cursos desde Construcción de horarios.',
+      );
 
       setShowModal(false);
       resetForm();
@@ -282,16 +272,17 @@ export function DocentesManagementScreen() {
     }
     setDocenteDocs(mappedDocs);
     setDocentePhoto(u.fotoUrl ?? undefined);
-    // Las asignaciones existentes se conservan; se pueden añadir nuevas desde
-    // esta misma ficha mediante materias y cursos-periodo.
-    setMateriasSeleccionadas([]);
-    setCursosPeriodoSeleccionados([]);
+    // Las materias habilitadas se conservan; el curso/paralelo se asigna
+    // posteriormente desde Construcción de horarios. Un docente legacy sin
+    // catálogo explícito no debe perder ese catálogo al editar otros datos.
+    setMateriasConfiguradasOriginal(u.materiasConfigurado === true || String(u.materiasConfigurado ?? '').toLowerCase() === 'true');
+    setMateriasSeleccionadas((u.materias ?? []).map((materia) => String(materia.id)));
 
     setShowModal(true);
   };
 
   const handleToggleState = (u: Usuario) => {
-    if (u.estado === 1) {
+    if (isUsuarioActivo(u.estado)) {
       setBajaTarget(u);
       return;
     }
@@ -339,18 +330,18 @@ export function DocentesManagementScreen() {
 
   const docentesList = (data?.data ?? []).filter((u) => {
     const r = (u.rol || '').toLowerCase();
-    return r === 'profesor' || r === 'maestro' || r === 'maestros' || String(u.rolId) === '2';
+    return r === 'profesor' || r === 'profesores' || r === 'maestro' || r === 'maestros' || r === 'docente' || String(u.rolId) === '2';
   });
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
   const habilitados = useMemo(
-    () => docentesList.filter((u) => u.estado === 1 || u.estado === 'activo'),
+    () => docentesList.filter((u) => isUsuarioActivo(u.estado)),
     [docentesList]
   );
   const deshabilitados = useMemo(
-    () => docentesList.filter((u) => u.estado === 0 || u.estado === 'inactivo' || u.estado === 'bloqueado'),
+    () => docentesList.filter((u) => isUsuarioInactivo(u.estado)),
     [docentesList]
   );
 
@@ -446,7 +437,7 @@ export function DocentesManagementScreen() {
             {/* Foto de Perfil */}
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
               <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial (MinIO)</Text>
-              <ProfilePhotoPicker photoUri={docentePhoto} onChange={setDocentePhoto} required={!editingDocente} />
+              <ProfilePhotoPicker photoUri={docentePhoto} onChange={setDocentePhoto} required={false} />
             </BentoCard>
 
             {/* Datos Personales */}
@@ -489,7 +480,12 @@ export function DocentesManagementScreen() {
 
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
               <Text className="text-xs font-bold text-maroon mb-1 uppercase">Carga académica</Text>
-              <Text className="text-xs text-gray-500 mb-3">Seleccione las materias y cursos-periodo. Al guardar, el sistema crea automáticamente las asignaciones docentes para cada combinación.</Text>
+               <Text className="text-xs text-gray-500 mb-3">Seleccione las materias que el docente podrá impartir. La asignación por curso se realiza en la construcción de horarios.</Text>
+               {editingDocente && !materiasConfiguradasOriginal && (
+                 <Text className="text-[11px] text-amber-700 mb-3">
+                   Este docente pertenece al catálogo anterior. Si no selecciona materias, se conservará su catálogo existente hasta que lo configure explícitamente.
+                 </Text>
+               )}
               <View className="mb-4">
                 <MateriaSelectorModal
                   materias={materiasDisponibles}
@@ -497,66 +493,13 @@ export function DocentesManagementScreen() {
                   onChange={setMateriasSeleccionadas}
                 />
               </View>
-              <View className="flex-row items-center justify-between mb-2">
-                <Text className="text-xs font-bold text-gray-700">Cursos y periodos activos</Text>
-                <View className="flex-row items-center bg-white rounded-lg p-0.5 border border-gray-200">
-                  <TouchableOpacity
-                    onPress={() => setNivelFiltroCarga('primaria')}
-                    className={`px-2.5 py-1 rounded-md ${nivelFiltroCarga === 'primaria' ? 'bg-maroon' : ''}`}
-                  >
-                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'primaria' ? 'text-white' : 'text-gray-600'}`}>Primaria</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setNivelFiltroCarga('secundaria')}
-                    className={`px-2.5 py-1 rounded-md ${nivelFiltroCarga === 'secundaria' ? 'bg-maroon' : ''}`}
-                  >
-                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'secundaria' ? 'text-white' : 'text-gray-600'}`}>Secundaria</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setNivelFiltroCarga('todos')}
-                    className={`px-2 py-1 rounded-md ${nivelFiltroCarga === 'todos' ? 'bg-maroon' : ''}`}
-                  >
-                    <Text className={`text-[11px] font-bold ${nivelFiltroCarga === 'todos' ? 'text-white' : 'text-gray-600'}`}>Todos</Text>
-                  </TouchableOpacity>
-                </View>
+              <View className="bg-white rounded-xl border border-gray-200 p-3">
+                <Text className="text-xs font-bold text-gray-700">Materias que impartirá</Text>
+                <Text className="text-[11px] text-gray-500 mt-1">
+                  Seleccione únicamente las materias. La asignación de cada materia a un curso se realizará en Construcción de horarios.
+                </Text>
               </View>
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {(() => {
-                  const filteredCursos = cursosPeriodoDisponibles.filter((cp) => {
-                    if (nivelFiltroCarga === 'todos') return true;
-                    const nivel = String(cp.curso?.nivel ?? '').trim().toLowerCase();
-                    return nivel === nivelFiltroCarga;
-                  });
-
-                  if (!filteredCursos.length) {
-                    return (
-                      <Text className="text-xs text-gray-500 py-2">
-                        No hay cursos activos disponibles para el nivel {nivelFiltroCarga === 'todos' ? 'seleccionado' : nivelFiltroCarga}.
-                      </Text>
-                    );
-                  }
-
-                  return filteredCursos.map((cursoPeriodo) => {
-                    const selected = cursosPeriodoSeleccionados.includes(String(cursoPeriodo.id));
-                    const nivel = cursoPeriodo.curso?.nivel ? cursoPeriodo.curso.nivel.charAt(0).toUpperCase() + cursoPeriodo.curso.nivel.slice(1) : '';
-                    const label = `${cursoPeriodo.curso?.grado ?? ''} ${cursoPeriodo.curso?.paralelo ?? ''} ${nivel} - ${cursoPeriodo.periodo?.nombre ?? ''}`.trim();
-                    return (
-                      <TouchableOpacity
-                        key={cursoPeriodo.id}
-                        onPress={() =>
-                          setCursosPeriodoSeleccionados((current) =>
-                            selected ? current.filter((id) => id !== String(cursoPeriodo.id)) : [...current, String(cursoPeriodo.id)]
-                          )
-                        }
-                        className={`px-3 py-2 rounded-xl border ${selected ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'}`}
-                      >
-                        <Text className={`text-xs font-bold ${selected ? 'text-white' : 'text-gray-700'}`}>{label}</Text>
-                      </TouchableOpacity>
-                    );
-                  });
-                })()}
-              </View>
-              <View className="flex-row flex-wrap gap-2 items-center"><BirthDatePicker value={form.fechaContratacion} onChange={(value) => setForm((current) => ({ ...current, fechaContratacion: value }))} placeholder="Fecha de contratación" minYear={2000} maxYear={2100} /><Text className="text-xs text-gray-500">{materiasSeleccionadas.length} materia(s) × {cursosPeriodoSeleccionados.length} curso(s) = {materiasSeleccionadas.length * cursosPeriodoSeleccionados.length} asignación(es)</Text></View>
+              <View className="flex-row flex-wrap gap-2 items-center"><BirthDatePicker value={form.fechaContratacion} onChange={(value) => setForm((current) => ({ ...current, fechaContratacion: value }))} placeholder="Fecha de contratación" minYear={2000} maxYear={2100} /><Text className="text-xs text-gray-500">{materiasSeleccionadas.length} materia(s) seleccionadas</Text></View>
             </BentoCard>
 
 
@@ -713,7 +656,7 @@ export function DocentesManagementScreen() {
                 const docFullName = getFullName(doc.nombre, apPat, apMat);
                 const especialidad = (doc as any).especialidad || (doc as any).maestro?.especialidad || 'Docencia';
                 const celular = doc.contactos?.[0]?.contenido || '';
-                const isOnline = doc.estado === 1 || doc.estado === 'activo';
+                const isOnline = isUsuarioActivo(doc.estado);
 
                 return (
                   <BentoCard
@@ -786,7 +729,7 @@ export function DocentesManagementScreen() {
 
                     {/* Acciones Bento */}
                     {canEdit && (
-                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
                         <TouchableOpacity
                           onPress={() => handleEdit(doc)}
                           className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
@@ -800,17 +743,25 @@ export function DocentesManagementScreen() {
                           className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                         >
                           <Ionicons
-                            name={doc.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                            name={isUsuarioActivo(doc.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                             size={16}
-                            color={doc.estado === 1 ? '#DC2626' : '#16A34A'}
+                            color={isUsuarioActivo(doc.estado) ? '#DC2626' : '#16A34A'}
                           />
                           <Text
                             className={`text-xs font-semibold ${
-                              doc.estado === 1 ? 'text-red-600' : 'text-green-600'
+                              isUsuarioActivo(doc.estado) ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
-                            {doc.estado === 1 ? 'Baja' : 'Activar'}
+                            {isUsuarioActivo(doc.estado) ? 'Baja' : 'Activar'}
                           </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setDeletingDocente(doc)}
+                          className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                          <Text className="text-xs font-bold text-red-600">Eliminar</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -864,7 +815,7 @@ export function DocentesManagementScreen() {
                 const docFullName = getFullName(doc.nombre, apPat, apMat);
                 const especialidad = (doc as any).especialidad || (doc as any).maestro?.especialidad || 'Docencia';
                 const celular = doc.contactos?.[0]?.contenido || '';
-                const isOnline = doc.estado === 1 || doc.estado === 'activo';
+                const isOnline = isUsuarioActivo(doc.estado);
 
                 return (
                   <BentoCard
@@ -937,7 +888,7 @@ export function DocentesManagementScreen() {
 
                     {/* Acciones Bento */}
                     {canEdit && (
-                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
                         <TouchableOpacity
                           onPress={() => handleEdit(doc)}
                           className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
@@ -951,17 +902,25 @@ export function DocentesManagementScreen() {
                           className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
                         >
                           <Ionicons
-                            name={doc.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                            name={isUsuarioActivo(doc.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                             size={16}
-                            color={doc.estado === 1 ? '#DC2626' : '#16A34A'}
+                            color={isUsuarioActivo(doc.estado) ? '#DC2626' : '#16A34A'}
                           />
                           <Text
                             className={`text-xs font-semibold ${
-                              doc.estado === 1 ? 'text-red-600' : 'text-green-600'
+                              isUsuarioActivo(doc.estado) ? 'text-red-600' : 'text-green-600'
                             }`}
                           >
-                            {doc.estado === 1 ? 'Baja' : 'Activar'}
+                            {isUsuarioActivo(doc.estado) ? 'Baja' : 'Activar'}
                           </Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          onPress={() => setDeletingDocente(doc)}
+                          className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
+                        >
+                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                          <Text className="text-xs font-bold text-red-600">Eliminar</Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -1007,6 +966,15 @@ export function DocentesManagementScreen() {
         loading={bajaLoading}
         onCancel={() => setBajaTarget(null)}
         onConfirm={confirmBaja}
+      />
+
+      <ConfirmDeleteModal
+        visible={Boolean(deletingDocente)}
+        itemName={deletingDocente ? getFullName(deletingDocente.nombre, deletingDocente.apellidoPaterno, deletingDocente.apellidoMaterno) : ''}
+        loading={deleteLoading}
+        onCancel={() => setDeletingDocente(null)}
+        onConfirm={handleConfirmDeleteDocente}
+        warningNote="Se eliminará al docente permanentemente, junto con sus credenciales y asignaciones académicas asociadas."
       />
     </ScrollView>
   );

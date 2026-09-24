@@ -42,9 +42,9 @@ export async function deleteUsuario(
     }
     const targetRole = userRes.rows[0].rol.trim().toLowerCase();
     if (ctx.state.auth?.role === "control" &&
-      !["profesor", "maestro", "docente", "estudiante"].includes(targetRole)) {
+      !["profesor", "profesores", "maestro", "maestros", "docente", "estudiante", "estudiantes", "alumno", "alumnos", "apoderado", "tutor", "control", "administrativo", "gerencia", "secretaria", "secretario", "editor"].includes(targetRole)) {
       ctx.response.status = 403;
-      ctx.response.body = { error: "Control solo puede gestionar profesores y estudiantes" };
+      ctx.response.body = { error: "Control puede gestionar docentes, estudiantes y personal de control" };
       return;
     }
 

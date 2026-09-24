@@ -2,6 +2,14 @@ const USERNAME_REGEX = /^[a-zA-Z0-9]+$/;
 const PASSWORD_MIN = 8;
 const PASSWORD_MAX = 50;
 
+export function isUsuarioActivo(estado: unknown): boolean {
+  return estado === 1 || estado === 'activo';
+}
+
+export function isUsuarioInactivo(estado: unknown): boolean {
+  return estado === 0 || estado === 2 || estado === 'inactivo' || estado === 'bloqueado';
+}
+
 export interface LoginValidation {
   isValid: boolean;
   usernameError: string | null;

@@ -12,21 +12,30 @@ export class WebSocketClientError extends Error {
 }
 
 interface PendingRequest {
-  // deno-lint-ignore no-explicit-any
   resolve: (value: any) => void;
   reject: (reason: any) => void;
   timer: ReturnType<typeof setTimeout>;
 }
 
+export type DataChangePayload = {
+  resource: string;
+  method: string;
+  timestamp: string;
+};
+
+export type EventCallback<T = any> = (data: T) => void;
+
 class AppWebSocketClient {
   private ws: WebSocket | null = null;
   private pendingRequests: Map<string, PendingRequest> = new Map();
+  private eventListeners: Map<string, Set<EventCallback>> = new Map();
   private isConnected = false;
   private connectionPromise: Promise<void> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private RECORD_SEP = "\x1e";
 
   private getWsUrl(): string {
-    const httpUrl = API_BASE_URL || "https://klxtqvfx-5141.brs.devtunnels.ms";
+    const httpUrl = API_BASE_URL || "http://localhost:5141";
     const wsBase = httpUrl.replace(/^http/, "ws");
     // El único punto WebSocket público es el Hub SignalR del gateway REST.
     // Los microservicios nunca se exponen directamente al cliente.
@@ -44,13 +53,9 @@ class AppWebSocketClient {
     this.connectionPromise = new Promise((resolve, reject) => {
       try {
         const url = this.getWsUrl();
-        console.log(`[WebSocketClient] Conectando a ${url}...`);
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
-          console.log(
-            "[WebSocketClient] Conexión establecida. Iniciando Handshake SignalR...",
-          );
           // Handshake protocolo SignalR JSON
           this.ws?.send(
             JSON.stringify({ protocol: "json", version: 1 }) + this.RECORD_SEP,
@@ -62,7 +67,6 @@ class AppWebSocketClient {
         };
 
         this.ws.onerror = (err) => {
-          console.error("[WebSocketClient] Error de WebSocket:", err);
           this.isConnected = false;
           this.connectionPromise = null;
           reject(
@@ -71,9 +75,9 @@ class AppWebSocketClient {
         };
 
         this.ws.onclose = () => {
-          console.log("[WebSocketClient] Conexión WebSocket cerrada.");
           this.isConnected = false;
           this.connectionPromise = null;
+          this.scheduleReconnect();
         };
       } catch (err) {
         this.connectionPromise = null;
@@ -82,6 +86,14 @@ class AppWebSocketClient {
     });
 
     return this.connectionPromise;
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect().catch(() => {});
+    }, 4000);
   }
 
   private handleMessage(
@@ -100,9 +112,6 @@ class AppWebSocketClient {
           !this.isConnected &&
           (Object.keys(msg).length === 0 || msg.type === undefined)
         ) {
-          console.log(
-            "[WebSocketClient] Handshake SignalR completado exitosamente.",
-          );
           this.isConnected = true;
           connectResolve();
           continue;
@@ -115,24 +124,43 @@ class AppWebSocketClient {
         }
 
         // Invocación devuelta desde el Servidor (type === 1)
-        if (msg.type === 1 && msg.target === "ReceiveResponse") {
-          const res = msg.arguments?.[0];
-          if (res && res.requestId) {
-            const pending = this.pendingRequests.get(res.requestId);
-            if (pending) {
-              clearTimeout(pending.timer);
-              this.pendingRequests.delete(res.requestId);
+        if (msg.type === 1) {
+          const target = msg.target;
+          const args = msg.arguments || [];
 
-              if (res.status >= 200 && res.status < 300) {
-                pending.resolve(res.data);
-              } else {
-                pending.reject(
-                  new WebSocketClientError(
-                    res.error || `Error en WebSocket (${res.status})`,
-                    res.status,
-                  ),
-                );
+          if (target === "ReceiveResponse") {
+            const res = args[0];
+            if (res && res.requestId) {
+              const pending = this.pendingRequests.get(res.requestId);
+              if (pending) {
+                clearTimeout(pending.timer);
+                this.pendingRequests.delete(res.requestId);
+
+                if (res.status >= 200 && res.status < 300) {
+                  pending.resolve(res.data);
+                } else {
+                  pending.reject(
+                    new WebSocketClientError(
+                      res.error || `Error en WebSocket (${res.status})`,
+                      res.status,
+                    ),
+                  );
+                }
               }
+            }
+          }
+
+          // Notificaciones de eventos tipo DataChanged, NotificacionNueva, etc.
+          if (target) {
+            const listeners = this.eventListeners.get(target);
+            if (listeners) {
+              listeners.forEach((cb) => {
+                try {
+                  cb(args[0]);
+                } catch (err) {
+                  console.error(`[WebSocketClient] Error en listener de ${target}:`, err);
+                }
+              });
             }
           }
         }
@@ -140,6 +168,41 @@ class AppWebSocketClient {
         console.error("[WebSocketClient] Error parseando mensaje WS:", e);
       }
     }
+  }
+
+  /**
+   * Suscribe una función callback a un evento de SignalR/Webhook (ej: DataChanged)
+   */
+  public on<T = any>(target: string, callback: EventCallback<T>): () => void {
+    if (!this.eventListeners.has(target)) {
+      this.eventListeners.set(target, new Set());
+    }
+    this.eventListeners.get(target)!.add(callback);
+    this.connect().catch(() => {});
+
+    // Retorna función para desuscribirse
+    return () => {
+      this.eventListeners.get(target)?.delete(callback);
+    };
+  }
+
+  /**
+   * Suscribe a cambios en tiempo real para un recurso específico (o '*' para todos)
+   */
+  public subscribeToDataChanges(
+    resource: string,
+    callback: (payload: DataChangePayload) => void,
+  ): () => void {
+    return this.on<DataChangePayload>("DataChanged", (payload) => {
+      if (
+        resource === "*" ||
+        !payload?.resource ||
+        payload.resource.toLowerCase() === resource.toLowerCase() ||
+        payload.resource.toLowerCase().includes(resource.toLowerCase())
+      ) {
+        callback(payload);
+      }
+    });
   }
 
   public async sendWsRequest<T>(action: string, payload?: unknown): Promise<T> {

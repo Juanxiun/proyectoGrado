@@ -1,15 +1,17 @@
 /**
- * Utilidad para generar nombres de objeto en MinIO (Bucket: Shalom_storage)
+ * Utilidad para generar nombres de objeto en MinIO (Bucket: shalom)
  * Estructura requerida:
- *   image/{estudiantes, maestros, directivos, control}/<archivo>
- *   documentos/{estudiantes, maestros, directivos, control}/<archivo>
+ *   - imagenes_estudiantes/<archivo>
+ *   - imagenes_docentes/<archivo>
+ *   - imagenes_administracion/<archivo>
+ *   - documentos_<primaria o secundaria>/<grado>/<archivo>
  */
 
 /**
- * Convierte texto a slug seguro para nombres de archivo.
+ * Convierte texto a slug seguro para nombres de archivo y carpetas.
  * Elimina acentos, espacios y caracteres especiales.
  */
-function toSlug(text: string, maxLen = 25): string {
+export function toSlug(text: string, maxLen = 30): string {
   return text
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "") // quitar acentos
@@ -20,36 +22,41 @@ function toSlug(text: string, maxLen = 25): string {
 }
 
 /**
- * Mapea el rol a la categoría de carpeta canónica en MinIO:
- * estudiantes | maestros | directivos | control
+ * Mapea el rol a la categoría de carpeta canónica de imágenes en MinIO:
+ * imagenes_estudiantes | imagenes_docentes | imagenes_administracion
  */
-export function getFolderCategory(rol: string): "estudiantes" | "maestros" | "directivos" | "control" {
+export function getImageCategory(rol: string): "imagenes_estudiantes" | "imagenes_docentes" | "imagenes_administracion" {
   const r = (rol || "").toLowerCase().trim();
-  if (r.includes("estudiante") || r.includes("alumno")) return "estudiantes";
-  if (r.includes("profesor") || r.includes("maestro") || r.includes("docente")) return "maestros";
-  if (r.includes("director") || r.includes("gerencia") || r.includes("directivo")) return "directivos";
-  return "control";
+  if (r.includes("estudiante") || r.includes("alumno")) return "imagenes_estudiantes";
+  if (r.includes("profesor") || r.includes("maestro") || r.includes("docente")) return "imagenes_docentes";
+  return "imagenes_administracion";
+}
+
+/**
+ * Compatibilidad con nombre anterior
+ */
+export function getFolderCategory(rol: string): "imagenes_estudiantes" | "imagenes_docentes" | "imagenes_administracion" {
+  return getImageCategory(rol);
 }
 
 /**
  * Devuelve la abreviatura del rol para el nombre de archivo.
  */
 export function getRolAbr(rol: string): string {
-  const cat = getFolderCategory(rol);
+  const cat = getImageCategory(rol);
   switch (cat) {
-    case "estudiantes": return "est";
-    case "maestros": return "prof";
-    case "directivos": return "dir";
-    case "control": return "con";
+    case "imagenes_estudiantes": return "est";
+    case "imagenes_docentes": return "prof";
+    case "imagenes_administracion": return "adm";
   }
 }
 
 /**
  * Genera el key (object name) de la foto de perfil en MinIO.
- * Formato: image/{categoria}/nombre_apellido_rolAbr_perfil.<ext>
+ * Formato: {imagenes_estudiantes|imagenes_docentes|imagenes_administracion}/nombre_apellido_rolAbr_perfil.<ext>
  *
  * @example buildPhotoKey("Juan", "Pérez", "estudiante", "jpg")
- *          → "image/estudiantes/juan_perez_est_perfil.jpg"
+ *          → "imagenes_estudiantes/juan_perez_est_perfil.jpg"
  */
 export function buildPhotoKey(
   nombre: string,
@@ -57,28 +64,42 @@ export function buildPhotoKey(
   rol: string,
   ext: string,
 ): string {
-  const category = getFolderCategory(rol);
+  const folder = getImageCategory(rol);
   const fileName = `${toSlug(nombre)}_${toSlug(apellido)}_${getRolAbr(rol)}_perfil.${ext}`;
-  return `image/${category}/${fileName}`;
+  return `${folder}/${fileName}`;
 }
 
 /**
  * Genera el key (object name) de un documento PDF en MinIO.
- * Formato: documentos/{categoria}/nombre_apellido_rolAbr_tipoDoc.pdf
+ * Formato para estudiantes: documentos_<primaria o secundaria>/<grado>/nombre_apellido_rolAbr_tipoDoc.pdf
+ * Formato para otros roles: documentos_docentes/... o documentos_administracion/...
  *
- * @example buildDocKey("Juan", "Pérez", "estudiante", "CI")
- *          → "documentos/estudiantes/juan_perez_est_ci.pdf"
+ * @example buildDocKey("Juan", "Pérez", "estudiante", "CI", "primaria", "1°")
+ *          → "documentos_primaria/1/juan_perez_est_ci.pdf"
  */
 export function buildDocKey(
   nombre: string,
   apellido: string,
   rol: string,
   tipoDoc: string,
+  nivel?: string | null,
+  grado?: string | null,
 ): string {
-  const category = getFolderCategory(rol);
-  const tipo = toSlug(tipoDoc, 15);
+  const r = (rol || "").toLowerCase().trim();
+  const tipo = toSlug(tipoDoc, 15) || "doc";
   const fileName = `${toSlug(nombre)}_${toSlug(apellido)}_${getRolAbr(rol)}_${tipo}.pdf`;
-  return `documentos/${category}/${fileName}`;
+
+  if (r.includes("estudiante") || r.includes("alumno")) {
+    const cleanNivel = (nivel || "").toLowerCase().includes("secundar") ? "secundaria" : "primaria";
+    const cleanGrado = grado ? toSlug(grado) : "general";
+    return `documentos_${cleanNivel}/${cleanGrado}/${fileName}`;
+  }
+
+  if (r.includes("profesor") || r.includes("maestro") || r.includes("docente")) {
+    return `documentos_docentes/${fileName}`;
+  }
+
+  return `documentos_administracion/${fileName}`;
 }
 
 /**

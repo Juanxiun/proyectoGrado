@@ -102,8 +102,13 @@ public sealed class WebhookDispatcherService
     {
         var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
         return type.StartsWith("periodos.")
+            || type.StartsWith("trimestres.")
+            || type.StartsWith("aulas.")
             || type.StartsWith("cursos.")
-            || type.StartsWith("materias.");
+            || type.StartsWith("materias.")
+            || type.StartsWith("mallas-curriculares.")
+            || type.StartsWith("horarios.")
+            || type.StartsWith("planes-pago.");
     }
 
     public static bool IsEnrollmentEvent(string eventType)

@@ -92,6 +92,7 @@ export interface Maestro {
     readonly id: bigint;
     usuarioId: bigint;
     especialidad?: string | null;
+    materias?: Array<{ id: string; codigo?: string; nombre: string }>;
     fechaContratacion: Date;
     fechaRetiro?: Date | null;
     estado: EstadoMaestro;

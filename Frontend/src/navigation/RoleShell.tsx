@@ -16,8 +16,9 @@ import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroE
 import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteCursosScreen';
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
-import { HorariosPlaceholderScreen } from '../displays/screens/HorariosPlaceholderScreen';
+import { ScheduleScreen } from '../features/academico/screens/ScheduleScreen';
 import { ForcePasswordChangeModal } from '../features/usuarios/components/ForcePasswordChangeModal';
+import { FirstLoginProfileModal } from '../features/usuarios/components/FirstLoginProfileModal';
 
 interface RoleShellProps {
   navItems: NavItem[];
@@ -28,6 +29,12 @@ interface RoleShellProps {
 export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle = 'Panel Administrativo' }: RoleShellProps) {
   const { user } = useAuth();
   const [activeRoute, setActiveRoute] = useState('Dashboard');
+  const [schedulePeriodoId, setSchedulePeriodoId] = useState('');
+
+  const handleNavigate = (route: string, params?: { periodoId?: string }) => {
+    if (route === 'Horarios' && params?.periodoId) setSchedulePeriodoId(params.periodoId);
+    setActiveRoute(route);
+  };
 
   if (!user) return null;
 
@@ -36,7 +43,7 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
 
   const roleName = user.rol.toLowerCase();
   const isTeacher = roleName.includes('maestro') || roleName.includes('profesor') || roleName.includes('docente');
-  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno') || roleName.includes('padre');
+  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno') || roleName.includes('padre') || roleName.includes('apoderado') || roleName.includes('tutor');
 
   const renderContent = () => {
     switch (activeRoute) {
@@ -51,31 +58,31 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
       case 'Administrativo':
         return <AdministrativoManagementScreen />;
       case 'Estructura':
-        return <AcademicServicesScreen area="academic" />;
+        return <AcademicServicesScreen area="academic" onNavigate={handleNavigate} />;
       case 'Inscripciones':
-        return <AcademicServicesScreen area="enrollment" />;
+        return <AcademicServicesScreen area="enrollment" onNavigate={handleNavigate} />;
       case 'Evaluaciones':
         if (isTeacher) return <MaestroEvaluacionesScreen />;
         if (isStudent) return <EstudianteEvaluacionesScreen />;
-        return <AcademicServicesScreen area="learning" />;
+        return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Tesoreria':
         return <PlaceholderScreen title="Económico" />;
       case 'Cursos':
         if (isTeacher) return <MaestroCursosScreen />;
         if (isStudent) return <EstudianteCursosScreen />;
-        return <AcademicServicesScreen area="learning" />;
+        return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Calificaciones':
         if (isStudent) return <EstudianteEvaluacionesScreen />;
-        return <AcademicServicesScreen area="learning" />;
+        return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Materias':
         if (isTeacher) return <MaestroMateriasScreen />;
         if (isStudent) return <EstudianteMateriasScreen />;
-        return <AcademicServicesScreen area="learning" />;
+        return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Pagos':
         return <PlaceholderScreen title="Económico" />;
       case 'Horarios':
       case 'Horario':
-        return <HorariosPlaceholderScreen rolName={user.rol} />;
+        return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />
@@ -97,6 +104,7 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
         {renderContent()}
       </AppLayout>
       <ForcePasswordChangeModal visible={Boolean(user.debeCambiarPassword)} />
+      <FirstLoginProfileModal visible={Boolean(user.debeCompletarPerfil && !user.debeCambiarPassword)} />
     </>
   );
 }

@@ -85,13 +85,22 @@ const SELECT = `
 `;
 
 async function resolveEstudianteId(input: string): Promise<string> {
-  const res = await query<{ id: bigint }>(
-    `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
-    [input],
-  );
+  let res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`, [input]);
+  if (!res.rows.length) {
+    res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`, [input]);
+  }
   if (res.rows.length === 0) {
     throw new HttpError(404, `Estudiante id=${input} no encontrado`);
   }
+  return toId(res.rows[0].id);
+}
+
+async function resolveEstudianteFilterId(input: string): Promise<string> {
+  let res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`, [input]);
+  if (!res.rows.length) {
+    res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`, [input]);
+  }
+  if (res.rows.length === 0) throw new HttpError(404, `Estudiante id=${input} no encontrado`);
   return toId(res.rows[0].id);
 }
 
@@ -110,9 +119,8 @@ export async function listCalificaciones(
   }
   if (filters.estudianteId) {
     if (!/^\d+$/.test(filters.estudianteId)) throw new HttpError(400, "estudianteId debe ser numérico");
-    conditions.push(`(c.estudiante_id = $${idx} OR e.usuario_id = $${idx})`);
-    params.push(filters.estudianteId);
-    idx++;
+    conditions.push(`c.estudiante_id = $${idx++}`);
+    params.push(await resolveEstudianteFilterId(filters.estudianteId));
   }
   if (filters.asignacionId) {
     if (!/^\d+$/.test(filters.asignacionId)) throw new HttpError(400, "asignacionId debe ser numérico");
@@ -252,10 +260,16 @@ export async function saveBulkCalificaciones(input: BulkCalificacionInput): Prom
         }
 
         // Resuelve estudiante_id (puede ser id o usuario_id)
-        const estRes = await client.queryObject<{ id: bigint }>(
-          `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
+        let estRes = await client.queryObject<{ id: bigint }>(
+          `SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
           [estId],
         );
+        if (!estRes.rows.length) {
+          estRes = await client.queryObject<{ id: bigint }>(
+            `SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`,
+            [estId],
+          );
+        }
         if (estRes.rows.length === 0) continue;
         const realEstId = toId(estRes.rows[0].id);
 

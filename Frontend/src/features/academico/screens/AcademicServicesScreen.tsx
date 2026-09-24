@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -11,8 +11,11 @@ import { academicServicesApi, type ServiceResource } from '../../../api/academic
 import { usuariosApi } from '../../../api/usuarios.api';
 import { useAuth } from '../../../context/AuthContext';
 import { BirthDatePicker } from '../../usuarios/components/BirthDatePicker';
+import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
+import { AcademicManagementPanel } from './AcademicManagementPanel';
+import { CoverImagePicker, getFallbackGradient } from '../components/CoverImagePicker';
 
-type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'choice';
+type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'choice' | 'image';
 type ReferenceSource = 'periodos' | 'cursos' | 'materias' | 'cursos-periodo' | 'asignaciones' | 'encargos' | 'materiales' | 'estudiantes' | 'docentes';
 type Field = { key: string; label: string; type?: FieldType; required?: boolean; options?: string[]; hint?: string; reference?: ReferenceSource; multiple?: boolean };
 type Definition = { title: string; resource: ServiceResource; fields: Field[]; management?: boolean; bulk?: boolean; withdraw?: boolean };
@@ -21,16 +24,21 @@ type Item = Record<string, any>;
 const definitions: Definition[] = [
   { title: 'Periodos académicos', resource: 'periodos', management: true, fields: [
     { key: 'anio', label: 'Año lectivo', type: 'number', required: true }, { key: 'nombre', label: 'Nombre del periodo', required: true },
-    { key: 'fechaInicio', label: 'Fecha de inicio (AAAA-MM-DD)', type: 'date', required: true }, { key: 'fechaFin', label: 'Fecha de fin (AAAA-MM-DD)', type: 'date', required: true }, { key: 'activo', label: 'Activo', type: 'boolean' },
+    { key: 'fechaInicio', label: 'Fecha de inicio (AAAA-MM-DD)', type: 'date', required: true }, { key: 'fechaFin', label: 'Fecha de fin (AAAA-MM-DD)', type: 'date', required: true },
+    { key: 'inicio1', label: 'Inicio 1er trimestre', type: 'date', required: true }, { key: 'fin1', label: 'Fin 1er trimestre', type: 'date', required: true },
+    { key: 'inicio2', label: 'Inicio 2do trimestre', type: 'date', required: true }, { key: 'fin2', label: 'Fin 2do trimestre', type: 'date', required: true },
+    { key: 'inicio3', label: 'Inicio 3er trimestre', type: 'date', required: true }, { key: 'fin3', label: 'Fin 3er trimestre', type: 'date', required: true },
+    { key: 'activo', label: 'Activo', type: 'boolean' },
   ] },
   { title: 'Cursos base', resource: 'cursos', management: true, fields: [
-    { key: 'nivel', label: 'Nivel', type: 'choice', required: true, options: ['inicial', 'primaria', 'secundaria', 'bachillerato'] }, { key: 'grado', label: 'Grado', required: true }, { key: 'paralelo', label: 'Paralelo', required: true }, { key: 'capacidadMaxima', label: 'Capacidad máxima', type: 'number' }, { key: 'activo', label: 'Activo', type: 'boolean' },
+    { key: 'nivel', label: 'Nivel', type: 'choice', required: true, options: ['inicial', 'primaria', 'secundaria', 'bachillerato'] }, { key: 'grado', label: 'Grado', required: true }, { key: 'paralelo', label: 'Paralelo', required: true }, { key: 'capacidadMaxima', label: 'Capacidad máxima', type: 'number' }, { key: 'activo', label: 'Activo', type: 'boolean' }, { key: 'caratulaUrl', label: 'Carátula / Portada', type: 'image' },
   ] },
   { title: 'Materias', resource: 'materias', management: true, fields: [
-    { key: 'codigo', label: 'Código único', required: true }, { key: 'nombre', label: 'Nombre de la materia', required: true }, { key: 'descripcion', label: 'Descripción' }, { key: 'activo', label: 'Activo', type: 'boolean' },
+    { key: 'codigo', label: 'Código único', required: true }, { key: 'nombre', label: 'Nombre de la materia', required: true }, { key: 'descripcion', label: 'Descripción' },
+    { key: 'tipoMateria', label: 'Tipo', type: 'choice', options: ['principal', 'extracurricular'] }, { key: 'cargaHorariaSemanal', label: 'Horas semanales', type: 'number' }, { key: 'pesoSintactico', label: 'Peso sintáctico', type: 'number' }, { key: 'materiaPesada', label: 'Materia pesada', type: 'boolean' }, { key: 'activo', label: 'Activo', type: 'boolean' }, { key: 'caratulaUrl', label: 'Carátula / Portada', type: 'image' },
   ] },
   { title: 'Cursos por periodo', resource: 'cursos-periodo', management: true, fields: [
-    { key: 'cursoId', label: 'Curso', required: true, reference: 'cursos' }, { key: 'periodoId', label: 'Periodo académico', required: true, reference: 'periodos' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'cerrado', 'cancelado'] },
+    { key: 'cursoId', label: 'Curso', required: true, reference: 'cursos' }, { key: 'periodoId', label: 'Periodo académico', required: true, reference: 'periodos' }, { key: 'capacidadMaxima', label: 'Capacidad máxima', type: 'number', required: true }, { key: 'turnoId', label: 'Turno (ID)', type: 'number' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'cerrado', 'cancelado'] },
   ] },
   { title: 'Inscripciones', resource: 'inscripciones', management: true, withdraw: true, fields: [
     { key: 'estudianteId', label: 'Estudiante', required: true, reference: 'estudiantes' }, { key: 'cursoPeriodoId', label: 'Curso y periodo', required: true, reference: 'cursos-periodo' }, { key: 'fechaInscripcion', label: 'Fecha de inscripción (AAAA-MM-DD)', type: 'date' }, { key: 'observacion', label: 'Observación' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'retirado', 'finalizado'] }, { key: 'fechaRetiro', label: 'Fecha de retiro (AAAA-MM-DD)', type: 'date' },
@@ -39,7 +47,7 @@ const definitions: Definition[] = [
     { key: 'maestroId', label: 'Docente', required: true, reference: 'docentes' }, { key: 'materiaId', label: 'Materia', required: true, reference: 'materias' }, { key: 'cursoPeriodoId', label: 'Curso y periodo', required: true, reference: 'cursos-periodo' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'finalizado', 'cancelado'] }, { key: 'fechaFinalizacion', label: 'Fecha de finalización (AAAA-MM-DD)', type: 'date' },
   ] },
   { title: 'Asesores de curso', resource: 'asesores', management: true, fields: [
-    { key: 'cursoPeriodoId', label: 'Curso y periodo', required: true, reference: 'cursos-periodo' }, { key: 'maestroId', label: 'Docente asesor', required: true, reference: 'docentes' }, { key: 'fechaInicio', label: 'Fecha de inicio (AAAA-MM-DD)', type: 'date', required: true }, { key: 'fechaFin', label: 'Fecha de fin (AAAA-MM-DD)', type: 'date' },
+    { key: 'cursoPeriodoId', label: 'Curso y periodo', required: true, reference: 'cursos-periodo' }, { key: 'maestroId', label: 'Docente asesor', required: true, reference: 'docentes' }, { key: 'fechaInicio', label: 'Inicio de la gestión', type: 'date' }, { key: 'fechaFin', label: 'Fin de la gestión', type: 'date' },
   ] },
   { title: 'Materiales de clase', resource: 'materiales', fields: [
     { key: 'asignacionId', label: 'Asignación docente', required: true, reference: 'asignaciones' }, { key: 'titulo', label: 'Título del material', required: true }, { key: 'detalle', label: 'Detalle' }, { key: 'activo', label: 'Activo', type: 'boolean' },
@@ -56,7 +64,7 @@ const definitions: Definition[] = [
 ];
 
 const fileTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-const managementRoles = ['director', 'gerencia', 'control', 'editor'];
+const managementRoles = ['director', 'admin', 'administrador', 'gerencia', 'control', 'editor', 'secretaria', 'secretario', 'administrativo'];
 const teachingRoles = ['profesor', 'maestro', 'maestros', 'docente'];
 
 const capitalize = (text?: string) => text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
@@ -86,13 +94,17 @@ const formatAsesor = (item: Item) => {
 
 const initialValues = (definition: Definition) => {
   const base = Object.fromEntries(definition.fields.map((field) => [field.key, field.type === 'boolean' ? true : '']));
+  if (definition.resource === 'periodos') {
+    base.activo = false;
+  }
   if (definition.resource === 'inscripciones') {
     base.fechaInscripcion = new Date().toISOString().slice(0, 10);
     base.estado = 'activo';
     base.observacion = 'Sin observación';
   }
   if (definition.resource === 'asesores') {
-    base.fechaInicio = new Date().toISOString().slice(0, 10);
+    base.fechaInicio = '';
+    base.fechaFin = '';
   }
   return base;
 };
@@ -122,10 +134,10 @@ function ReferencePicker({ field, items, value, onChange }: { field: Field; item
     else { onChange(id); setOpen(false); }
   };
   const selectedLabel = selected.length ? selected.map((id) => referenceLabel(field.reference!, items.find((item) => String(item.id) === id) ?? { id })).join(', ') : `Seleccionar ${field.label.toLowerCase()}`;
-  return <View><TouchableOpacity onPress={() => setOpen(!open)} className="bg-gray-100 rounded-xl px-3 py-3 flex-row items-center justify-between"><Text className={`flex-1 ${selected.length ? 'text-gray-800' : 'text-gray-400'}`} numberOfLines={2}>{selectedLabel}</Text><Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#801529" /></TouchableOpacity>{open && <View className="mt-1 max-h-48 rounded-xl border border-gray-200 bg-white overflow-hidden">{items.length ? <ScrollView nestedScrollEnabled>{items.map((item) => { const isSelected = selected.includes(String(item.id)); return <TouchableOpacity key={item.id} onPress={() => toggle(String(item.id))} className={`px-3 py-2.5 border-b border-gray-100 flex-row items-center ${isSelected ? 'bg-maroon/10' : ''}`}><Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={17} color="#801529" /><Text className="ml-2 text-sm text-gray-700 flex-1">{referenceLabel(field.reference!, item)}</Text></TouchableOpacity>; })}</ScrollView> : <Text className="p-3 text-sm text-gray-500">No hay registros disponibles. Complete primero el paso anterior.</Text>}</View>}</View>;
+  return <View className="min-w-0"><TouchableOpacity onPress={() => setOpen(!open)} className="bg-gray-100 rounded-xl px-3 py-3 flex-row items-center justify-between"><Text className={`flex-1 ${selected.length ? 'text-gray-800' : 'text-gray-400'}`} numberOfLines={2}>{selectedLabel}</Text><Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#801529" /></TouchableOpacity>{open && <View className="mt-1 max-h-48 rounded-xl border border-gray-200 bg-white overflow-hidden">{items.length ? <ScrollView nestedScrollEnabled>{items.map((item) => { const isSelected = selected.includes(String(item.id)); return <TouchableOpacity key={item.id} onPress={() => toggle(String(item.id))} className={`px-3 py-2.5 border-b border-gray-100 flex-row items-center ${isSelected ? 'bg-maroon/10' : ''}`}><Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={17} color="#801529" /><Text className="ml-2 text-sm text-gray-700 flex-1">{referenceLabel(field.reference!, item)}</Text></TouchableOpacity>; })}</ScrollView> : <Text className="p-3 text-sm text-gray-500">No hay registros disponibles. Complete primero el paso anterior.</Text>}</View>}</View>;
 }
 
-export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic' | 'enrollment' | 'learning' }) {
+export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area?: 'academic' | 'enrollment' | 'learning'; onNavigate?: (route: string, params?: { periodoId?: string }) => void }) {
   const { user } = useAuth();
   const role = user?.rol?.toLowerCase() ?? '';
   // Estudiantes y apoderados pueden consultar el aula; las mutaciones siguen
@@ -134,7 +146,7 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
   const canWrite = area === 'academic' || area === 'enrollment'
     ? managementRoles.includes(role)
     : teachingRoles.includes(role);
-  const available = useMemo(() => definitions.filter((d) => area === 'academic' ? ['periodos', 'cursos', 'materias'].includes(d.resource) : area === 'enrollment' ? ['cursos-periodo', 'inscripciones', 'asignaciones', 'asesores'].includes(d.resource) : ['materiales', 'encargos', 'calificaciones', 'asistencia'].includes(d.resource)), [area]);
+  const available = useMemo(() => definitions.filter((d) => area === 'academic' ? ['periodos', 'cursos', 'materias', 'asesores'].includes(d.resource) : area === 'enrollment' ? ['cursos-periodo', 'inscripciones'].includes(d.resource) : ['materiales', 'encargos', 'calificaciones', 'asistencia'].includes(d.resource)), [area]);
   const [selected, setSelected] = useState(available[0]);
   const [rows, setRows] = useState<Item[]>([]); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState(''); const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<Item | null>(null);
@@ -153,7 +165,8 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
 
   // Cursos por Periodo: Filtro de periodo (activo vs historico)
   const [periodosList, setPeriodosList] = useState<Item[]>([]);
-  const [periodoSeleccionadoFiltro, setPeriodoSeleccionadoFiltro] = useState<string>('activo'); // 'activo' o id de periodo historico
+  const [periodoSeleccionadoFiltro, setPeriodoSeleccionadoFiltro] = useState<string>('activo');
+  const [periodoGestionId, setPeriodoGestionId] = useState('');
 
   // Detalle del Curso (Estudiantes inscritos y Maestros asignados)
   const [cursoPeriodoDetalle, setCursoPeriodoDetalle] = useState<Item | null>(null);
@@ -163,6 +176,7 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
 
   // Asignaciones docentes: Segmentación de nivel educativo
   const [nivelFiltroAsignacion, setNivelFiltroAsignacion] = useState<'todos' | 'primaria' | 'secundaria'>('todos');
+  const [cursoNivelTab, setCursoNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
 
   // Paginación Estricta
   const [currentPage, setCurrentPage] = useState(1);
@@ -170,12 +184,19 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
 
   const filteredRows = useMemo(() => {
     return rows.filter((item) => {
+      if (selected.resource === 'cursos') {
+        return String(item.nivel ?? '').toLowerCase() === cursoNivelTab;
+      }
       if (selected.resource === 'asignaciones' && nivelFiltroAsignacion !== 'todos') {
         return String(item.cursoPeriodo?.curso?.nivel ?? '').toLowerCase() === nivelFiltroAsignacion;
       }
       return true;
     });
-  }, [rows, selected.resource, nivelFiltroAsignacion]);
+  }, [rows, selected.resource, nivelFiltroAsignacion, cursoNivelTab]);
+
+  const displayedPeriod = periodosList.find((period) => String(period.id) === periodoGestionId)
+    ?? periodosList.find((period) => period.activo)
+    ?? periodosList[0];
 
   const paginatedRows = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -184,13 +205,24 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selected, periodoSeleccionadoFiltro, nivelFiltroAsignacion]);
+  }, [selected, periodoSeleccionadoFiltro, nivelFiltroAsignacion, cursoNivelTab]);
 
   // Cargar lista de periodos para el selector de periodos historicos
   useEffect(() => {
-    if (selected.resource === 'cursos-periodo') {
+    if (['cursos-periodo', 'asesores', 'asignaciones'].includes(selected.resource)) {
       academicServicesApi.list('periodos', { limit: 50 })
-        .then((res) => setPeriodosList(res.data ?? []))
+        .then((res) => {
+          const items = res.data ?? [];
+          setPeriodosList(items);
+          setPeriodoGestionId((current) => {
+            if (current && items.some((item) => String(item.id) === current)) return current;
+            const currentYear = new Date().getFullYear();
+            return String(items.find((item) => item.anio === currentYear && item.activo)?.id
+              ?? items.find((item) => item.anio === currentYear)?.id
+              ?? items[0]?.id
+              ?? '');
+          });
+        })
         .catch(() => undefined);
     }
   }, [selected.resource]);
@@ -241,24 +273,25 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
     }
   };
 
-  const autogenerarPeriodo = () => {
-    const nextYear = new Date().getFullYear() + 1;
-    setValues({
-      anio: nextYear,
-      nombre: `Gestión Escolar ${nextYear}`,
-      fechaInicio: `${nextYear}-02-02`,
-      fechaFin: `${nextYear}-12-18`,
-      activo: false,
-    });
-  };
+  // Sincronización en tiempo real vía Webhooks/SignalR
+  useRealtimeResource(selected.resource, () => {
+    void load();
+  });
 
   useEffect(() => { setSelected(available[0]); }, [area]);
   useEffect(() => {
     setValues(initialValues(selected));
+    if (selected.resource === 'cursos') {
+      setValues((current) => ({ ...current, nivel: cursoNivelTab }));
+    }
     setEditing(null);
     setShowForm(false);
     setFile(null);
     setPeriodoSeleccionadoFiltro('activo');
+    setPeriodoGestionId('');
+    if (!['cursos-periodo', 'asesores', 'asignaciones'].includes(selected.resource)) {
+      setPeriodosList([]);
+    }
     setCursoPeriodoDetalle(null);
     load();
   }, [selected]);
@@ -283,16 +316,30 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
           next.estudiantes = users.filter((item) => ['estudiante', 'alumno'].includes(String(item.rol ?? '').toLowerCase()) || String(item.rolId) === '3');
           next.docentes = users.filter((item) => ['profesor', 'maestro', 'maestros', 'docente'].includes(String(item.rol ?? '').toLowerCase()) || String(item.rolId) === '2');
         } else if (source === 'cursos-periodo' && ['asignaciones', 'asesores'].includes(selected.resource)) {
-          // Asignar automáticamente al periodo activo del sistema (2026) sin selección manual de histórico
-          next['cursos-periodo'] = (items as Item[]).filter((cp) => cp.periodo?.activo === true || cp.periodo?.activo === undefined);
+          const targetPeriodoId = periodoGestionId;
+          next['cursos-periodo'] = (items as Item[]).filter((cp) =>
+            !targetPeriodoId || String(cp.periodoId ?? cp.periodo?.id ?? '') === targetPeriodoId,
+          );
         } else {
           next[source as ReferenceSource] = items as Item[];
         }
       });
       setReferences(next);
     }).catch(() => setReferences({}));
-  }, [selected]);
+  }, [selected, periodoGestionId]);
   const setValue = (key: string, value: any) => setValues((v) => ({ ...v, [key]: value }));
+  useEffect(() => {
+    if (selected.resource !== 'asesores' || !values.cursoPeriodoId) return;
+    const curso = references['cursos-periodo']?.find((item) => String(item.id) === String(values.cursoPeriodoId));
+    const periodo = curso?.periodo;
+    const inicio = periodo?.inicioGestion ?? periodo?.fechaInicio;
+    const fin = periodo?.finGestion ?? periodo?.fechaFin;
+    if (!inicio || !fin) return;
+    setValues((current) => {
+      if (current.fechaInicio === inicio && current.fechaFin === fin) return current;
+      return { ...current, fechaInicio: inicio, fechaFin: fin };
+    });
+  }, [selected.resource, values.cursoPeriodoId, references]);
   const normalized = (field: Field, value: any) => field.type === 'number' && value !== '' ? Number(value) : field.multiple ? (Array.isArray(value) ? value : []) : value === '' ? undefined : value;
   const validate = () => {
     for (const field of selected.fields) if (field.required && (values[field.key] === '' || values[field.key] === undefined)) { Alert.alert('Dato requerido', `${field.label} es obligatorio.`); return false; }
@@ -311,9 +358,19 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
     if (!validate()) return;
     setSaving(true);
     try {
-      const payload = Object.fromEntries(
+      const payload: Record<string, any> = Object.fromEntries(
         selected.fields.map((f) => [f.key, normalized(f, values[f.key])]).filter(([, v]) => v !== undefined),
       );
+      if (selected.resource === 'periodos' && !editing) {
+        payload.inicioGestion = payload.fechaInicio;
+        payload.finGestion = payload.fechaFin;
+        payload.trimestres = [
+          { numero: 1, inicio: payload.inicio1, fin: payload.fin1 },
+          { numero: 2, inicio: payload.inicio2, fin: payload.fin2 },
+          { numero: 3, inicio: payload.inicio3, fin: payload.fin3 },
+        ];
+        delete payload.inicio1; delete payload.fin1; delete payload.inicio2; delete payload.fin2; delete payload.inicio3; delete payload.fin3;
+      }
 
       if (selected.resource === 'materiales') {
         if (!editing && file) {
@@ -379,28 +436,16 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
   };
 
   if (!allowed) return <BentoCard className="p-6 items-center"><Ionicons name="lock-closed-outline" size={38} color="#801529" /><Text className="text-lg font-bold text-gray-800 mt-3">Acceso de consulta restringido</Text><Text className="text-center text-gray-500 mt-1">Su rol no tiene permisos para administrar esta sección.</Text></BentoCard>;
-  return <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
-    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones y asignaciones' : 'Aula y seguimiento'}</Text><Text className="text-sm text-gray-500 mt-1">Gestión conectada a los microservicios, con controles de acceso y validación previa.</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.resource} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.resource === d.resource ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.resource === d.resource ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
+  return <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8 min-w-0">
+    {area !== 'learning' && <AcademicManagementPanel onNavigate={onNavigate} />}
+    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones de estudiantes' : 'Aula y seguimiento'}</Text><Text className="text-sm text-gray-500 mt-1">Gestión conectada a los microservicios, con controles de acceso y validación previa.</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.resource} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.resource === d.resource ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.resource === d.resource ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
     <BentoCard className="p-4">
       <View className="flex-row gap-2">
         <TextInput value={search} onChangeText={setSearch} onSubmitEditing={load} placeholder="Buscar registros" className="flex-1 bg-gray-100 rounded-xl px-4 py-3" />
         <TouchableOpacity onPress={load} className="p-3 bg-gray-100 rounded-xl">
           <Ionicons name="search" size={20} color="#801529" />
         </TouchableOpacity>
-        {selected.resource === 'periodos' && canWrite && (
-          <TouchableOpacity
-            onPress={() => {
-              autogenerarPeriodo();
-              setEditing(null);
-              setShowForm(true);
-            }}
-            className="px-3 py-3 bg-gold/20 border border-gold/40 rounded-xl flex-row items-center gap-1"
-          >
-            <Ionicons name="sparkles" size={17} color="#B45309" />
-            <Text className="text-xs font-bold text-amber-800">Autogenerar</Text>
-          </TouchableOpacity>
-        )}
-        {canWrite && (
+        {canWrite && selected.resource !== 'periodos' && (
           <TouchableOpacity
             onPress={() => {
               setEditing(null);
@@ -414,6 +459,27 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
           </TouchableOpacity>
         )}
       </View>
+
+      {['asesores', 'asignaciones'].includes(selected.resource) && periodosList.length > 0 && (
+        <View className="mt-3 pt-3 border-t border-gray-100 gap-2">
+          <Text className="text-xs font-bold text-gray-700">Gestión de trabajo para asignaciones</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View className="flex-row gap-2">
+              {periodosList.map((periodo) => (
+                <TouchableOpacity
+                  key={String(periodo.id)}
+                  onPress={() => setPeriodoGestionId(String(periodo.id))}
+                  className={`px-3 py-1.5 rounded-lg border ${periodoGestionId === String(periodo.id) ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'}`}
+                >
+                  <Text className={`text-xs font-bold ${periodoGestionId === String(periodo.id) ? 'text-white' : 'text-gray-700'}`}>
+                    {periodo.nombre} {periodo.anio}{!periodo.activo ? ' · configuración' : ''}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      )}
 
       {/* Cursos por periodo: Filtro de Periodo Activo vs Periodos Históricos */}
       {selected.resource === 'cursos-periodo' && (
@@ -453,10 +519,33 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                       periodoSeleccionadoFiltro === String(p.id) ? 'text-white font-bold' : 'text-gray-600'
                     }`}
                   >
-                    Histórico {p.anio}
+                    {p.estado === 'configuracion' || p.estado === 'borrador' ? 'Configuración' : 'Histórico'} {p.anio}
                   </Text>
                 </TouchableOpacity>
               ))}
+          </View>
+        </View>
+      )}
+
+      {/* Cursos base: Segmentación por nivel */}
+      {selected.resource === 'cursos' && (
+        <View className="mt-3 pt-3 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
+          <Text className="text-xs font-bold text-gray-700">Nivel educativo</Text>
+          <View className="flex-row items-center bg-gray-100 rounded-lg p-0.5">
+            {(['primaria', 'secundaria'] as const).map((nivel) => (
+              <TouchableOpacity
+                key={nivel}
+                onPress={() => {
+                  setCursoNivelTab(nivel);
+                  if (!editing && selected.resource === 'cursos') setValue('nivel', nivel);
+                }}
+                className={`px-3 py-1 rounded-md ${cursoNivelTab === nivel ? 'bg-maroon' : ''}`}
+              >
+                <Text className={`text-xs font-bold ${cursoNivelTab === nivel ? 'text-white' : 'text-gray-600'}`}>
+                  {nivel.charAt(0).toUpperCase() + nivel.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
       )}
@@ -518,8 +607,8 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
             <View className="flex-row flex-wrap gap-3">
               {selected.fields
                 .filter((field) => {
+                  if (selected.resource === 'periodos' && editing && /^(inicio|fin)[123]$/.test(field.key)) return false;
                   if (selected.resource === 'inscripciones' && !editing && field.key === 'fechaRetiro') return false;
-                  if (selected.resource === 'asesores' && !editing && field.key === 'fechaFin') return false;
                   return true;
                 })
                 .map((field) => (
@@ -535,13 +624,21 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                         onChange={(value) => setValue(field.key, value)}
                       />
                     ) : field.type === 'date' ? (
-                      <BirthDatePicker
-                        value={String(values[field.key] ?? '')}
-                        onChange={(value) => setValue(field.key, value)}
-                        placeholder={field.label}
-                        minYear={2020}
-                        maxYear={2100}
-                      />
+                      selected.resource === 'asesores' ? (
+                        <View className="bg-gray-100 rounded-xl px-3 py-3 min-h-[46px] justify-center">
+                          <Text className={`text-sm ${values[field.key] ? 'text-gray-800' : 'text-gray-400'}`}>
+                            {values[field.key] ? String(values[field.key]) : 'Se completa al elegir el curso'}
+                          </Text>
+                        </View>
+                      ) : (
+                        <BirthDatePicker
+                          value={String(values[field.key] ?? '')}
+                          onChange={(value) => setValue(field.key, value)}
+                          placeholder={field.label}
+                          minYear={2020}
+                          maxYear={2100}
+                        />
+                      )
                     ) : field.type === 'boolean' ? (
                       <TouchableOpacity
                         onPress={() => setValue(field.key, !values[field.key])}
@@ -563,10 +660,18 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                           </TouchableOpacity>
                         ))}
                       </View>
+                    ) : field.type === 'image' ? (
+                      <CoverImagePicker
+                        value={values[field.key] ? String(values[field.key]) : null}
+                        onChange={(uri) => setValue(field.key, uri ?? '')}
+                        label={field.label}
+                        fallbackText={String(values.nombre ?? values.grado ?? 'Portada')}
+                        levelOrType={String(values.nivel ?? values.tipoMateria ?? values.nombre ?? '')}
+                      />
                     ) : (
                       <TextInput
                         value={String(values[field.key] ?? '')}
-                        onChangeText={(value) => setValue(field.key, value)}
+                        onChangeText={(value) => setValue(field.key, field.type === 'number' ? value.replace(/[^0-9.]/g, '') : value)}
                         placeholder={field.hint ?? field.label}
                         keyboardType={field.type === 'number' ? 'numeric' : 'default'}
                         className="bg-gray-100 rounded-xl px-3 py-3 text-gray-800 text-sm"
@@ -626,7 +731,16 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
             onChange={(value) => setValue(selected.resource === 'calificaciones' ? 'encargoId' : 'asignacionId', value)}
           />
           {selected.resource === 'asistencia' && (
-            <TextInput value={String(values.fecha ?? '')} onChangeText={(value) => setValue('fecha', value)} placeholder="Fecha AAAA-MM-DD *" className="bg-gray-100 rounded-xl px-3 py-3" />
+            <View>
+              <Text className="text-xs font-semibold text-gray-600 mb-1">Fecha de asistencia *</Text>
+              <BirthDatePicker
+                value={String(values.fecha ?? '')}
+                onChange={(value) => setValue('fecha', value)}
+                placeholder="Fecha de asistencia"
+                minYear={2020}
+                maxYear={2040}
+              />
+            </View>
           )}
           <ReferencePicker
             field={{ key: 'estudiantes', label: 'Estudiantes', reference: 'estudiantes', multiple: true, required: true }}
@@ -635,7 +749,13 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
             onChange={(value) => setBulkStudents(Array.isArray(value) ? value : [value])}
           />
           {selected.resource === 'calificaciones' ? (
-            <TextInput value={bulkValue} onChangeText={setBulkValue} keyboardType="numeric" placeholder="Nota para los estudiantes seleccionados *" className="bg-gray-100 rounded-xl px-3 py-3" />
+            <TextInput
+              value={bulkValue}
+              onChangeText={(value) => setBulkValue(value.replace(/[^0-9.]/g, ''))}
+              keyboardType="numeric"
+              placeholder="Nota para los estudiantes seleccionados *"
+              className="bg-gray-100 rounded-xl px-3 py-3"
+            />
           ) : (
             <View className="flex-row flex-wrap gap-2">
               {['presente', 'ausente', 'atraso', 'justificado'].map((state) => (
@@ -768,7 +888,9 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
           Registros ({filteredRows.length})
         </Text>
         <View className="bg-gold/20 border border-gold/40 px-3 py-1 rounded-full">
-          <Text className="text-xs font-bold text-maroon">Período Académico Activo: 2026</Text>
+          <Text className="text-xs font-bold text-maroon">
+            {displayedPeriod ? `Gestión: ${displayedPeriod.nombre} · ${displayedPeriod.anio}` : 'Gestión: 2026'}
+          </Text>
         </View>
       </View>
 
@@ -784,11 +906,11 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
           <Text className="text-xs text-gray-400 mt-1">Utilice el botón superior para registrar un nuevo elemento.</Text>
         </View>
       ) : (
-        <View className="flex-row flex-wrap -mx-2">
+        <View className="flex-row flex-wrap -mx-2 min-w-0">
           {paginatedRows.map((item) => {
             const isAsesor = selected.resource === 'asesores';
             const isCursoPeriodo = selected.resource === 'cursos-periodo';
-            const isVigente = isAsesor && (item.fechaFin === null || item.fechaFin === undefined || item.fechaFin === '');
+            const isVigente = isAsesor && (item.cursoPeriodo?.periodo?.activo === true || item.fechaFin === null || item.fechaFin === undefined || item.fechaFin === '');
             const iconName = selected.resource === 'periodos' ? 'calendar-outline'
               : selected.resource === 'cursos' ? 'school-outline'
               : selected.resource === 'materias' ? 'book-outline'
@@ -802,9 +924,34 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
               : 'checkmark-circle-outline';
 
             return (
-              <View key={item.id} className="w-full md:w-1/2 lg:w-1/3 p-2">
-                <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md">
-                  <View>
+              <View key={item.id} className="w-full md:w-1/2 lg:w-1/3 p-2 min-w-0">
+                <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md overflow-hidden">
+                  <View className="min-w-0">
+                    {/* Carátula / Portada para Cursos y Materias */}
+                    {(selected.resource === 'cursos' || selected.resource === 'materias') && (
+                      <View className="w-full h-24 rounded-2xl overflow-hidden mb-3 relative bg-gray-100 border border-gray-200 shadow-sm">
+                        {item.caratulaUrl ? (
+                          <Image
+                            source={{ uri: item.caratulaUrl }}
+                            className="w-full h-full"
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          (() => {
+                            const fallback = getFallbackGradient(item.nivel ?? item.tipoMateria ?? item.nombre);
+                            return (
+                              <View className={`w-full h-full ${fallback.bg} items-center justify-center p-2`}>
+                                <Ionicons name={fallback.icon} size={28} color="#FFFFFF" />
+                                <Text className="text-white font-bold text-xs mt-1 text-center" numberOfLines={1}>
+                                  {labelFor(item, selected.resource)}
+                                </Text>
+                              </View>
+                            );
+                          })()
+                        )}
+                      </View>
+                    )}
+
                     {/* Header de la Tarjeta Bento */}
                     <View className="flex-row items-start justify-between gap-2 mb-2.5">
                       <View className="w-10 h-10 rounded-2xl bg-maroon/10 border border-maroon/20 items-center justify-center">
@@ -830,7 +977,7 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                     </View>
 
                     {/* Título Principal */}
-                    <Text className="font-bold text-gray-900 text-sm mb-1" numberOfLines={2}>
+                    <Text className="font-bold text-gray-900 text-sm mb-1" numberOfLines={2} ellipsizeMode="tail">
                       {labelFor(item, selected.resource)}
                     </Text>
 
@@ -888,9 +1035,9 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                             const val = item[f.key];
                             if (val === undefined || val === null || val === '') return null;
                             return (
-                              <View key={f.key} className="bg-gray-100 px-2 py-1 rounded-lg border border-gray-200">
+                              <View key={f.key} className="bg-gray-100 px-2 py-1 rounded-lg border border-gray-200 max-w-full min-w-0">
                                 <Text className="text-[10px] text-gray-500 font-semibold">{f.label}:</Text>
-                                <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>
+                                <Text className="text-xs font-bold text-gray-800 flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">
                                   {Array.isArray(val) ? val.join(', ') : String(val)}
                                 </Text>
                               </View>
@@ -932,9 +1079,9 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
                   </View>
 
                   {/* Barra de Acciones */}
-                  <View className="flex-row items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
+                  <View className="flex-row flex-wrap items-center justify-between gap-2 mt-3 pt-2.5 border-t border-gray-100 min-w-0">
                     <Text className="text-[11px] text-gray-400 font-mono">ID #{item.id}</Text>
-                    <View className="flex-row items-center gap-1">
+                    <View className="flex-row flex-wrap items-center gap-1">
                       {selected.withdraw && item.estado === 'activo' && canWrite && (
                         <TouchableOpacity
                           onPress={async () => {
@@ -1005,7 +1152,11 @@ export function AcademicServicesScreen({ area = 'academic' }: { area?: 'academic
       title={`Eliminar ${selected.title.slice(0, -1) || 'registro'}`}
       itemName={deletingItem ? labelFor(deletingItem, selected.resource) : undefined}
       message={`¿Está seguro de que desea eliminar este registro de ${selected.title.toLowerCase()}?`}
-      warningNote={selected.resource === 'materiales' ? 'Se eliminará el registro y también el archivo físico de MinIO.' : undefined}
+      warningNote={selected.resource === 'materiales'
+        ? 'Se eliminará el registro y también el archivo físico de MinIO.'
+        : selected.resource === 'periodos'
+          ? 'Se eliminarán también cursos, inscripciones, datos de estudiantes, pensiones, pagos, horarios, materiales y calificaciones de esta gestión.'
+          : undefined}
       loading={deleteLoading}
       onCancel={() => setDeletingItem(null)}
       onConfirm={handleConfirmDelete}

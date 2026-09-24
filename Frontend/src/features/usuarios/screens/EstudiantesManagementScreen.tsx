@@ -20,10 +20,11 @@ import { useAuth } from '../../../context/AuthContext';
 import { BirthDatePicker } from '../components/BirthDatePicker';
 import { DocumentInput } from '../components/DocumentInput';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
+import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
-import { getFullName } from '../../../utils/validation';
+import { getFullName, isUsuarioActivo } from '../../../utils/validation';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
   CreateUsuarioPayload,
@@ -120,7 +121,7 @@ function InlineInput({
 export function EstudiantesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = ['director', 'control', 'gerencia', 'editor'].includes(userRol);
+  const canEdit = ['director', 'control', 'gerencia', 'admin', 'administrador', 'administrativo', 'editor', 'secretaria', 'secretario'].includes(userRol);
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -170,6 +171,26 @@ export function EstudiantesManagementScreen() {
   const [loadingStudentDetail, setLoadingStudentDetail] = useState(false);
   const [bajaTarget, setBajaTarget] = useState<Usuario | null>(null);
   const [bajaLoading, setBajaLoading] = useState(false);
+  const [deletingStudent, setDeletingStudent] = useState<Usuario | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleConfirmDeleteStudent = async () => {
+    if (!deletingStudent) return;
+    setDeleteLoading(true);
+    try {
+      await usuariosApi.delete(deletingStudent.id);
+      Alert.alert('Éxito', 'Estudiante eliminado permanentemente.');
+      setDeletingStudent(null);
+      if (selectedStudentDetail?.id === deletingStudent.id) {
+        setSelectedStudentDetail(null);
+      }
+      refresh();
+    } catch (err: any) {
+      Alert.alert('Error al eliminar', err?.message || 'No se pudo eliminar el estudiante.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
 
   // Cargar Cursos y Periodos para la navegación en cascada
   const loadCursosAndInscripciones = async () => {
@@ -370,6 +391,7 @@ export function EstudiantesManagementScreen() {
     try {
       const payload: CreateUsuarioPayload = {
         rolId: '5',
+        rol: 'apoderado',
         nombre: tutorForm.nombre.trim(),
         apellidoPaterno: tutorForm.apellidoPaterno.trim(),
         apellidoMaterno: tutorForm.apellidoMaterno.trim() || undefined,
@@ -414,10 +436,7 @@ export function EstudiantesManagementScreen() {
   const handleSaveStudent = async () => {
     if (!validateStudent()) return;
     const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
-    if (!editingStudent && !studentPhoto) {
-      Alert.alert('Foto requerida', 'Debe subir la foto de perfil del estudiante (PNG/JPG).');
-      return;
-    }
+
 
     if (editingStudent) {
       await executeSaveStudent();
@@ -481,6 +500,7 @@ export function EstudiantesManagementScreen() {
     try {
       const createPayload: CreateUsuarioPayload = {
         rolId: '3',
+        rol: 'estudiante',
         nombre: studentForm.nombre.trim(),
         apellidoPaterno: studentForm.apellidoPaterno.trim(),
         apellidoMaterno: studentForm.apellidoMaterno.trim() || undefined,
@@ -584,7 +604,7 @@ export function EstudiantesManagementScreen() {
   };
 
   const handleToggleState = async (st: Usuario) => {
-    if (st.estado === 1) {
+    if (isUsuarioActivo(st.estado)) {
       setBajaTarget(st);
     } else {
       try {
@@ -632,10 +652,10 @@ export function EstudiantesManagementScreen() {
   };
 
   return (
-    <ScrollView className="flex-1 bg-cream/30 p-4 md:p-6" contentContainerStyle={{ gap: 20 }}>
+    <ScrollView className="flex-1 bg-cream/30 p-4 md:p-6" contentContainerStyle={{ gap: 20, minWidth: 0 }}>
       {/* Cabecera Principal */}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
-        <View>
+        <View className="flex-1 min-w-0">
           <Text className="text-2xl font-black text-gray-900">Control Estudiantil</Text>
           <Text className="text-sm text-gray-500 mt-0.5">
             Navegación en cascada por Niveles, Cursos y Paralelos
@@ -665,7 +685,7 @@ export function EstudiantesManagementScreen() {
               setSelectedCursoPeriodoId('all');
               setCurrentPage(1);
             }}
-            className={`flex-1 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
+            className={`flex-1 min-w-0 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
               selectedLevel === 'primaria'
                 ? 'bg-maroon shadow-md'
                 : 'bg-gray-100 hover:bg-gray-200/80'
@@ -677,7 +697,9 @@ export function EstudiantesManagementScreen() {
               color={selectedLevel === 'primaria' ? '#FFFFFF' : '#4B5563'}
             />
             <Text
-              className={`font-black text-base ${
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              className={`font-black text-base min-w-0 ${
                 selectedLevel === 'primaria' ? 'text-white' : 'text-gray-700'
               }`}
             >
@@ -691,7 +713,7 @@ export function EstudiantesManagementScreen() {
               setSelectedCursoPeriodoId('all');
               setCurrentPage(1);
             }}
-            className={`flex-1 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
+            className={`flex-1 min-w-0 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
               selectedLevel === 'secundaria'
                 ? 'bg-maroon shadow-md'
                 : 'bg-gray-100 hover:bg-gray-200/80'
@@ -703,7 +725,9 @@ export function EstudiantesManagementScreen() {
               color={selectedLevel === 'secundaria' ? '#FFFFFF' : '#4B5563'}
             />
             <Text
-              className={`font-black text-base ${
+              numberOfLines={2}
+              ellipsizeMode="tail"
+              className={`font-black text-base min-w-0 ${
                 selectedLevel === 'secundaria' ? 'text-white' : 'text-gray-700'
               }`}
             >
@@ -715,8 +739,8 @@ export function EstudiantesManagementScreen() {
 
       {/* ── SEGUNDO NIVEL: LISTADO DE CURSOS Y PARALELOS REGISTRADOS ── */}
       <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm">
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
+        <View className="flex-row flex-wrap items-center justify-between gap-2 mb-3">
+          <View className="flex-row items-center gap-2 flex-1 min-w-0">
             <Ionicons name="layers-outline" size={18} color="#801529" />
             <Text className="text-sm font-bold text-gray-800 uppercase tracking-wide">
               Cursos de {selectedLevel === 'primaria' ? 'Primaria' : 'Secundaria'} ({cursosDelNivel.length})
@@ -734,14 +758,13 @@ export function EstudiantesManagementScreen() {
             <Text className="text-xs text-gray-500">No hay cursos registrados para este nivel.</Text>
           </View>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="py-1">
-            <View className="flex-row gap-2.5">
+          <View className="py-1 w-full flex-row flex-wrap gap-2.5">
               <TouchableOpacity
                 onPress={() => {
                   setSelectedCursoPeriodoId('all');
                   setCurrentPage(1);
                 }}
-                className={`px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
+                className={`flex-1 min-w-[150px] max-w-[220px] px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
                   selectedCursoPeriodoId === 'all'
                     ? 'bg-gold/20 border-gold/60'
                     : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
@@ -753,7 +776,9 @@ export function EstudiantesManagementScreen() {
                   color={selectedCursoPeriodoId === 'all' ? '#B45309' : '#6B7280'}
                 />
                 <Text
-                  className={`text-xs font-bold ${
+                  numberOfLines={2}
+                  ellipsizeMode="tail"
+                  className={`text-xs font-bold flex-1 min-w-0 ${
                     selectedCursoPeriodoId === 'all' ? 'text-maroon' : 'text-gray-700'
                   }`}
                 >
@@ -778,7 +803,7 @@ export function EstudiantesManagementScreen() {
                       setSelectedCursoPeriodoId(cpId);
                       setCurrentPage(1);
                     }}
-                    className={`px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
+                    className={`flex-1 min-w-[150px] max-w-[220px] px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
                       isSelected
                         ? 'bg-maroon text-white border-maroon shadow-sm'
                         : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
@@ -790,7 +815,9 @@ export function EstudiantesManagementScreen() {
                       color={isSelected ? '#FFFFFF' : '#6B7280'}
                     />
                     <Text
-                      className={`text-xs font-bold ${
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                      className={`text-xs font-bold flex-1 min-w-0 ${
                         isSelected ? 'text-white' : 'text-gray-700'
                       }`}
                     >
@@ -812,8 +839,7 @@ export function EstudiantesManagementScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </View>
-          </ScrollView>
+          </View>
         )}
       </BentoCard>
 
@@ -895,7 +921,7 @@ export function EstudiantesManagementScreen() {
             </Text>
           </View>
         ) : (
-          <View className="flex-row flex-wrap -mx-2">
+          <View className="flex-row flex-wrap -mx-2 min-w-0">
             {paginatedStudents.map((st) => {
               const docs = st.documentos ?? [];
               const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
@@ -905,12 +931,12 @@ export function EstudiantesManagementScreen() {
               const apPat = st.apellidoPaterno || (st as any).apellido_paterno || '';
               const apMat = st.apellidoMaterno || (st as any).apellido_materno || '';
               const stFullName = getFullName(st.nombre, apPat, apMat);
-              const isActivo = st.estado === 1;
+              const isActivo = isUsuarioActivo(st.estado);
 
               return (
-                <View key={st.id} className="w-full md:w-1/2 lg:w-1/3 p-2">
-                  <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md">
-                    <View>
+                <View key={st.id} className="w-full md:w-1/2 lg:w-1/3 p-2 min-w-0">
+                  <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md overflow-hidden">
+                    <View className="min-w-0">
                       {/* Avatar Ampliado + Indicador de Estado + Badges */}
                       <View className="flex-row items-start justify-between mb-3.5">
                         <View className="relative">
@@ -952,12 +978,12 @@ export function EstudiantesManagementScreen() {
 
                       {/* Bloque: Documentos de Identificación */}
                       <View className="flex-row flex-wrap gap-1.5 mt-3">
-                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-                          <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
+                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 max-w-full min-w-0">
+                          <Text className="text-xs text-gray-700 font-mono flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">CI: {ciDoc}</Text>
                         </View>
                         {rudeDoc && (
-                          <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
-                            <Text className="text-xs font-bold text-maroon font-mono">RUDE: {rudeDoc}</Text>
+                          <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40 max-w-full min-w-0">
+                            <Text className="text-xs font-bold text-maroon font-mono flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">RUDE: {rudeDoc}</Text>
                           </View>
                         )}
                       </View>
@@ -974,7 +1000,7 @@ export function EstudiantesManagementScreen() {
                     </View>
 
                     {/* Menú de Acciones Rápidas Bento */}
-                    <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
+                    <View className="flex-row flex-wrap items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
                       <TouchableOpacity
                         onPress={() => handleViewStudent(st)}
                         className="p-2 bg-gray-100 hover:bg-gray-200 rounded-xl flex-row items-center gap-1.5"
@@ -998,17 +1024,25 @@ export function EstudiantesManagementScreen() {
                             className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1.5"
                           >
                             <Ionicons
-                              name={st.estado === 1 ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                              name={isUsuarioActivo(st.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                               size={15}
-                              color={st.estado === 1 ? '#DC2626' : '#16A34A'}
+                              color={isUsuarioActivo(st.estado) ? '#DC2626' : '#16A34A'}
                             />
                             <Text
                               className={`text-xs font-semibold ${
-                                st.estado === 1 ? 'text-red-600' : 'text-green-600'
+                                isUsuarioActivo(st.estado) ? 'text-red-600' : 'text-green-600'
                               }`}
                             >
-                              {st.estado === 1 ? 'Baja' : 'Activar'}
+                              {isUsuarioActivo(st.estado) ? 'Baja' : 'Activar'}
                             </Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            onPress={() => setDeletingStudent(st)}
+                            className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1.5"
+                          >
+                            <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                            <Text className="text-xs font-bold text-red-600">Eliminar</Text>
                           </TouchableOpacity>
                         </>
                       )}
@@ -1151,7 +1185,9 @@ export function EstudiantesManagementScreen() {
                           color={editTab === 'student' ? '#801529' : '#6B7280'}
                         />
                         <Text
-                          className={`text-xs font-bold ${
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                          className={`text-xs font-bold flex-1 min-w-0 ${
                             editTab === 'student' ? 'text-maroon' : 'text-gray-600'
                           }`}
                         >
@@ -1171,7 +1207,9 @@ export function EstudiantesManagementScreen() {
                           color={editTab === 'tutor' ? '#801529' : '#6B7280'}
                         />
                         <Text
-                          className={`text-xs font-bold ${
+                          numberOfLines={2}
+                          ellipsizeMode="tail"
+                          className={`text-xs font-bold flex-1 min-w-0 ${
                             editTab === 'tutor' ? 'text-maroon' : 'text-gray-600'
                           }`}
                         >
@@ -1196,7 +1234,7 @@ export function EstudiantesManagementScreen() {
 
                       <BentoCard className="p-4 bg-gray-50 border border-gray-200">
                         <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Estudiante (MinIO)</Text>
-                        <ProfilePhotoPicker photoUri={studentPhoto} onChange={setStudentPhoto} required={!editingStudent} />
+                        <ProfilePhotoPicker photoUri={studentPhoto} onChange={setStudentPhoto} required={false} />
                       </BentoCard>
 
                       <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1352,21 +1390,21 @@ export function EstudiantesManagementScreen() {
                     <View className="flex-row gap-2 mb-3">
                       <TouchableOpacity
                         onPress={() => setModalNivelInscripcion('primaria')}
-                        className={`flex-1 py-2.5 rounded-xl items-center ${
+                        className={`flex-1 min-w-0 py-2.5 rounded-xl items-center ${
                           modalNivelInscripcion === 'primaria' ? 'bg-maroon' : 'bg-gray-200'
                         }`}
                       >
-                        <Text className={`text-xs font-bold ${modalNivelInscripcion === 'primaria' ? 'text-white' : 'text-gray-700'}`}>
+                        <Text className={`text-xs font-bold flex-1 min-w-0 ${modalNivelInscripcion === 'primaria' ? 'text-white' : 'text-gray-700'}`}>
                           Primaria
                         </Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => setModalNivelInscripcion('secundaria')}
-                        className={`flex-1 py-2.5 rounded-xl items-center ${
+                        className={`flex-1 min-w-0 py-2.5 rounded-xl items-center ${
                           modalNivelInscripcion === 'secundaria' ? 'bg-maroon' : 'bg-gray-200'
                         }`}
                       >
-                        <Text className={`text-xs font-bold ${modalNivelInscripcion === 'secundaria' ? 'text-white' : 'text-gray-700'}`}>
+                        <Text className={`text-xs font-bold flex-1 min-w-0 ${modalNivelInscripcion === 'secundaria' ? 'text-white' : 'text-gray-700'}`}>
                           Secundaria
                         </Text>
                       </TouchableOpacity>
@@ -1388,11 +1426,11 @@ export function EstudiantesManagementScreen() {
                             <TouchableOpacity
                               key={cp.id}
                               onPress={() => setModalSelectedCursoId(String(cp.id))}
-                              className={`p-3 rounded-xl border flex-row items-center justify-between ${
+                              className={`p-3 rounded-xl border flex-row items-center justify-between min-w-0 ${
                                 isSel ? 'bg-gold/20 border-maroon' : 'bg-white border-gray-200'
                               }`}
                             >
-                              <Text className="text-xs font-bold text-gray-800">
+                              <Text className="text-xs font-bold text-gray-800 flex-1 min-w-0" numberOfLines={2} ellipsizeMode="tail">
                                 {c.grado || cp.grado} &quot;{c.paralelo || cp.paralelo}&quot; - {c.nivel || cp.nivel}
                               </Text>
                               <Ionicons
@@ -1530,6 +1568,16 @@ export function EstudiantesManagementScreen() {
         loading={bajaLoading}
         onCancel={() => setBajaTarget(null)}
         onConfirm={confirmBaja}
+      />
+
+      {/* Modal de Confirmación de Eliminación Permanente */}
+      <ConfirmDeleteModal
+        visible={Boolean(deletingStudent)}
+        itemName={deletingStudent ? getFullName(deletingStudent.nombre, deletingStudent.apellidoPaterno, deletingStudent.apellidoMaterno) : ''}
+        loading={deleteLoading}
+        onCancel={() => setDeletingStudent(null)}
+        onConfirm={handleConfirmDeleteStudent}
+        warningNote="Se eliminarán permanentemente las inscripciones, notas, asistencias y registros vinculados del estudiante."
       />
     </ScrollView>
   );

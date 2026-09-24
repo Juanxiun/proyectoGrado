@@ -4,6 +4,7 @@ import {
   BulkAsistenciaInput,
   CreateAsistenciaInput,
   ESTADOS_ASISTENCIA,
+  EstadoAsistencia,
   PaginatedResult,
   PaginationQuery,
   UpdateAsistenciaInput,
@@ -34,7 +35,7 @@ function mapAsistencia(row: AsistenciaRow): Asistencia {
     estudianteId: toId(row.estudianteId),
     asignacionId: toId(row.asignacionId),
     fecha: asDateString(row.fecha),
-    estado: row.estado as any,
+    estado: row.estado as EstadoAsistencia,
     justificacion: row.justificacion,
     fechaRegistro: asDateTimeString(row.fechaRegistro),
     fechaActualizacion: asDateTimeString(row.fechaActualizacion),
@@ -70,13 +71,22 @@ const SELECT = `
 `;
 
 async function resolveEstudianteId(input: string): Promise<string> {
-  const res = await query<{ id: bigint }>(
-    `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
-    [input],
-  );
+  let res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`, [input]);
+  if (!res.rows.length) {
+    res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`, [input]);
+  }
   if (res.rows.length === 0) {
     throw new HttpError(404, `Estudiante id=${input} no encontrado`);
   }
+  return toId(res.rows[0].id);
+}
+
+async function resolveEstudianteFilterId(input: string): Promise<string> {
+  let res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`, [input]);
+  if (!res.rows.length) {
+    res = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`, [input]);
+  }
+  if (res.rows.length === 0) throw new HttpError(404, `Estudiante id=${input} no encontrado`);
   return toId(res.rows[0].id);
 }
 
@@ -95,9 +105,8 @@ export async function listAsistencias(
   }
   if (filters.estudianteId) {
     if (!/^\d+$/.test(filters.estudianteId)) throw new HttpError(400, "estudianteId debe ser numérico");
-    conditions.push(`(a.estudiante_id = $${idx} OR e.usuario_id = $${idx})`);
-    params.push(filters.estudianteId);
-    idx++;
+    conditions.push(`a.estudiante_id = $${idx++}`);
+    params.push(await resolveEstudianteFilterId(filters.estudianteId));
   }
   if (filters.fecha) {
     if (!isIsoDate(filters.fecha)) throw new HttpError(400, "fecha debe tener formato YYYY-MM-DD");
@@ -251,10 +260,16 @@ export async function saveBulkAsistencias(input: BulkAsistenciaInput): Promise<{
         }
         const estId = String(item.estudianteId).trim();
 
-        const estRes = await client.queryObject<{ id: bigint }>(
-          `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
+        let estRes = await client.queryObject<{ id: bigint }>(
+          `SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
           [estId],
         );
+        if (!estRes.rows.length) {
+          estRes = await client.queryObject<{ id: bigint }>(
+            `SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`,
+            [estId],
+          );
+        }
         if (estRes.rows.length === 0) continue;
         const realEstId = toId(estRes.rows[0].id);
 

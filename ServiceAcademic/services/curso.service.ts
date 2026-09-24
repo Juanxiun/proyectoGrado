@@ -18,6 +18,7 @@ interface CursoRow {
   paralelo: string;
   capacidadMaxima: number;
   activo: boolean;
+  caratulaUrl?: string | null;
 }
 
 function mapCurso(row: CursoRow): Curso {
@@ -28,6 +29,7 @@ function mapCurso(row: CursoRow): Curso {
     paralelo: row.paralelo,
     capacidadMaxima: Number(row.capacidadMaxima),
     activo: Boolean(row.activo),
+    caratulaUrl: row.caratulaUrl ?? null,
   });
 }
 
@@ -46,7 +48,8 @@ const SELECT = `
     grado,
     paralelo,
     capacidad_maxima AS "capacidadMaxima",
-    activo
+    activo,
+    caratula_url AS "caratulaUrl"
   FROM cursos
 `;
 
@@ -116,10 +119,10 @@ export async function createCurso(input: CreateCursoInput): Promise<Curso> {
 
   try {
     const res = await query<CursoRow>(
-      `INSERT INTO cursos (nivel, grado, paralelo, capacidad_maxima, activo)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo`,
-      [nivel, grado, paralelo, capacidad, input.activo !== false],
+      `INSERT INTO cursos (nivel, grado, paralelo, capacidad_maxima, activo, caratula_url)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl"`,
+      [nivel, grado, paralelo, capacidad, input.activo !== false, input.caratulaUrl ?? null],
     );
     return mapCurso(res.rows[0]);
   } catch (err) {
@@ -161,6 +164,10 @@ export async function updateCurso(id: string, input: UpdateCursoInput): Promise<
     fields.push(`activo = $${idx++}`);
     params.push(Boolean(input.activo));
   }
+  if (input.caratulaUrl !== undefined) {
+    fields.push(`caratula_url = $${idx++}`);
+    params.push(input.caratulaUrl ? String(input.caratulaUrl).trim() : null);
+  }
 
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");
 
@@ -169,7 +176,7 @@ export async function updateCurso(id: string, input: UpdateCursoInput): Promise<
     const res = await query<CursoRow>(
       `UPDATE cursos SET ${fields.join(", ")}
        WHERE id = $${idx}
-       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo`,
+       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl"`,
       params,
     );
     return mapCurso(res.rows[0]);

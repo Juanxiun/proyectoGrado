@@ -38,9 +38,9 @@ export async function getUsuarios(ctx: Context): Promise<void> {
     const viewerRole = ctx.state.auth?.role;
 
     if (viewerRole === "control") {
-      conditions.push(`LOWER(r.rol) IN ('profesor', 'maestro', 'docente', 'estudiante')`);
+      conditions.push(`LOWER(r.rol) IN ('profesor', 'profesores', 'maestro', 'maestros', 'docente', 'estudiante', 'estudiantes', 'apoderado', 'tutor', 'control', 'administrativo', 'gerencia', 'secretaria', 'secretario', 'editor')`);
     } else if (viewerRole === "profesor") {
-      conditions.push(`LOWER(r.rol) = 'estudiante'`);
+      conditions.push(`LOWER(r.rol) IN ('estudiante', 'estudiantes', 'alumno', 'alumnos')`);
     }
 
     if (rolId) {
@@ -87,7 +87,23 @@ export async function getUsuarios(ctx: Context): Promise<void> {
         r.rol,
         uc.username,
         uc.email,
-        uc.ultimo_login AS "ultimoLogin"
+        uc.primer_login AS "primerLogin",
+        uc.datos_personales_actualizados AS "datosPersonalesActualizados",
+        uc.contacto_tutor_actualizado AS "contactoTutorActualizado",
+        uc.password_actualizado AS "passwordActualizado",
+        uc.ultimo_login AS "ultimoLogin",
+        COALESCE((
+          SELECT json_agg(json_build_object(
+            'id', mm.materia_id,
+            'codigo', m.codigo,
+            'nombre', m.nombre
+          ) ORDER BY m.nombre)
+          FROM maestros ma
+          JOIN maestro_materias mm ON mm.maestro_id = ma.id
+          JOIN materias m ON m.id = mm.materia_id
+          WHERE ma.usuario_id = u.id
+        ), '[]'::json) AS "materias",
+        COALESCE((SELECT ma.materias_configuradas FROM maestros ma WHERE ma.usuario_id = u.id LIMIT 1), false) AS "materiasConfigurado"
       FROM usuarios u
       JOIN roles r ON r.id = u.rol_id
       LEFT JOIN usuario_cuenta uc ON uc.usuario_id = u.id
@@ -113,7 +129,7 @@ export async function getUsuarios(ctx: Context): Promise<void> {
     // deno-lint-ignore no-explicit-any
     const userIds = dataRes.rows.map((r: any) => r.id);
     // deno-lint-ignore no-explicit-any
-    let docsByUserId: Record<string, any[]> = {};
+    const docsByUserId: Record<string, any[]> = {};
 
     if (userIds.length > 0) {
       // deno-lint-ignore no-explicit-any
@@ -145,6 +161,8 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       apellidoPaterno: r.apellidoPaterno ?? "",
       apellidoMaterno: r.apellidoMaterno ?? "",
       documentos: docsByUserId[String(r.id)] ?? [],
+      materias: Array.isArray(r.materias) ? r.materias : [],
+      materiasConfigurado: Boolean(r.materiasConfigurado),
     }));
 
     ctx.response.status = 200;
@@ -193,6 +211,7 @@ export async function getUsuario(
       fechaActualizacion: Date;
       rolId: bigint;
       rol: string;
+      materiasConfigurado?: boolean;
     }>(
       `SELECT
          u.id, u.nombre,
@@ -203,7 +222,8 @@ export async function getUsuario(
          u.estado,
          u.fecha_creacion AS "fechaCreacion",
          u.fecha_actualizacion AS "fechaActualizacion",
-         r.id AS "rolId", r.rol
+         r.id AS "rolId", r.rol,
+         COALESCE((SELECT ma.materias_configuradas FROM maestros ma WHERE ma.usuario_id = u.id LIMIT 1), false) AS "materiasConfigurado"
        FROM usuarios u
        JOIN roles r ON r.id = u.rol_id
        WHERE u.id = $1`,
@@ -242,9 +262,14 @@ export async function getUsuario(
     }
 
     //Consultas paralelas de relaciones
-    const [cuentaRes, docRes, dirRes, contRes, apodRes] = await Promise.all([
+    const [cuentaRes, docRes, dirRes, contRes, apodRes, materiasRes] = await Promise.all([
       query(
-        `SELECT id, username, email, email_verificado AS "emailVerificado", ultimo_login AS "ultimoLogin"
+        `SELECT id, username, email, email_verificado AS "emailVerificado",
+           primer_login AS "primerLogin",
+           datos_personales_actualizados AS "datosPersonalesActualizados",
+           contacto_tutor_actualizado AS "contactoTutorActualizado",
+           password_actualizado AS "passwordActualizado",
+           ultimo_login AS "ultimoLogin"
          FROM usuario_cuenta WHERE usuario_id = $1`,
         [id],
       ),
@@ -285,6 +310,15 @@ export async function getUsuario(
          WHERE e.usuario_id = $1`,
         [id],
       ),
+      query(
+        `SELECT mm.materia_id AS id, m.codigo, m.nombre
+         FROM maestros ma
+         JOIN maestro_materias mm ON mm.maestro_id = ma.id
+         JOIN materias m ON m.id = mm.materia_id
+         WHERE ma.usuario_id = $1
+         ORDER BY m.nombre`,
+        [id],
+      ),
     ]);
 
     ctx.response.status = 200;
@@ -304,6 +338,7 @@ export async function getUsuario(
       direccion: dirRes.rows[0] ?? null,
       contactos: contRes.rows,
       apoderados: apodRes.rows,
+      materias: materiasRes.rows,
     }));
   } catch (err) {
     console.error("[getUsuario]", err);

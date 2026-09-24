@@ -20,6 +20,10 @@ public sealed class PeriodosController : ControllerBase
     public Task<IActionResult> GetOne(long id)
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/periodos/{id}", Request));
 
+    [HttpPost("{id:long}/desactivar")]
+    public Task<IActionResult> Deactivate(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/periodos/{id}/desactivar", Request));
+
     [HttpPost]
     public Task<IActionResult> Create()
         => Proxy(_client.ForwardAsync(HttpMethod.Post, "/periodos", Request));

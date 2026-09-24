@@ -17,8 +17,9 @@ export interface AuthClaims extends JWTPayload {
 export function normalizeRole(value: unknown): AppRole | null {
   const role = String(value ?? "").trim().toLowerCase();
   if (role === "maestro" || role === "maestros" || role === "docente") return "profesor";
-  if (role === "gerencia") return "control";
+  if (role === "gerencia" || role === "secretaria" || role === "secretario" || role === "administrativo" || role === "editor") return "control";
   if (role === "admin" || role === "administrador") return "director";
+  if (role === "alumno") return "estudiante";
   if (role === "padre" || role === "padres" || role === "apoderado" || role === "tutor") {
     return "estudiante";
   }
@@ -76,4 +77,4 @@ export function requireAuth(roles?: AppRole[]) {
 }
 
 export const ROLES_GESTION: AppRole[] = ["director", "control"];
-export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor"];
+export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor", "estudiante"];

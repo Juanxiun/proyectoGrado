@@ -14,7 +14,12 @@ interface MateriaRow {
   codigo: string;
   nombre: string;
   descripcion: string | null;
+  tipoMateria: "principal" | "extracurricular";
+  cargaHorariaSemanal: number;
+  pesoSintactico: number;
+  materiaPesada: boolean;
   activo: boolean;
+  caratulaUrl?: string | null;
   fechaCreacion: Date | string;
   fechaActualizacion: Date | string;
 }
@@ -25,7 +30,12 @@ function mapMateria(row: MateriaRow): Materia {
     codigo: row.codigo,
     nombre: row.nombre,
     descripcion: row.descripcion,
+    tipoMateria: row.tipoMateria,
+    cargaHorariaSemanal: Number(row.cargaHorariaSemanal),
+    pesoSintactico: Number(row.pesoSintactico),
+    materiaPesada: Boolean(row.materiaPesada),
     activo: Boolean(row.activo),
+    caratulaUrl: row.caratulaUrl ?? null,
     fechaCreacion: asDateTimeString(row.fechaCreacion),
     fechaActualizacion: asDateTimeString(row.fechaActualizacion),
   });
@@ -37,7 +47,12 @@ const SELECT = `
     codigo,
     nombre,
     descripcion,
+    tipo_materia AS "tipoMateria",
+    carga_horaria_semanal AS "cargaHorariaSemanal",
+    peso_sintactico AS "pesoSintactico",
+    materia_pesada AS "materiaPesada",
     activo,
+    caratula_url AS "caratulaUrl",
     fecha_creacion AS "fechaCreacion",
     fecha_actualizacion AS "fechaActualizacion"
   FROM materias
@@ -95,16 +110,27 @@ export async function createMateria(input: CreateMateriaInput): Promise<Materia>
   const nombre = String(input.nombre ?? "").trim();
   if (!codigo) throw new HttpError(400, "codigo es obligatorio");
   if (!nombre) throw new HttpError(400, "nombre es obligatorio");
+  const tipoMateria = input.tipoMateria ?? "principal";
+  const materiaPesada = input.materiaPesada ?? /matem[aá]tica|f[ií]sica|qu[ií]mica/i.test(nombre);
+  const carga = Number(input.cargaHorariaSemanal ?? 5);
+  const peso = Number(input.pesoSintactico ?? (tipoMateria === "extracurricular" ? 1 : 3));
+  if (tipoMateria !== "principal" && tipoMateria !== "extracurricular") throw new HttpError(400, "tipoMateria inválido");
+  if (!Number.isInteger(carga) || carga < 1 || carga > 40) throw new HttpError(400, "cargaHorariaSemanal debe estar entre 1 y 40");
+  if (!Number.isInteger(peso) || peso < 1 || peso > 100) throw new HttpError(400, "pesoSintactico debe estar entre 1 y 100");
+  if (tipoMateria === "extracurricular" && peso >= 3) throw new HttpError(400, "Las extracurriculares deben tener menor peso sintáctico");
 
   try {
     const res = await query<MateriaRow>(
-      `INSERT INTO materias (codigo, nombre, descripcion, activo)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO materias
+         (codigo, nombre, descripcion, tipo_materia, carga_horaria_semanal, peso_sintactico, materia_pesada, activo, caratula_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING
-         id, codigo, nombre, descripcion, activo,
-         fecha_creacion AS "fechaCreacion",
-         fecha_actualizacion AS "fechaActualizacion"`,
-      [codigo, nombre, input.descripcion ?? null, input.activo !== false],
+         id, codigo, nombre, descripcion,
+         tipo_materia AS "tipoMateria", carga_horaria_semanal AS "cargaHorariaSemanal",
+         peso_sintactico AS "pesoSintactico", materia_pesada AS "materiaPesada", activo,
+         caratula_url AS "caratulaUrl",
+         fecha_creacion AS "fechaCreacion", fecha_actualizacion AS "fechaActualizacion"`,
+      [codigo, nombre, input.descripcion ?? null, tipoMateria, carga, peso, materiaPesada, input.activo !== false, input.caratulaUrl ?? null],
     );
     return mapMateria(res.rows[0]);
   } catch (err) {
@@ -113,7 +139,29 @@ export async function createMateria(input: CreateMateriaInput): Promise<Materia>
 }
 
 export async function updateMateria(id: string, input: UpdateMateriaInput): Promise<Materia> {
-  await getMateriaById(id);
+  const current = await getMateriaById(id);
+  const affectsSchedule = ["nombre", "tipoMateria", "cargaHorariaSemanal", "pesoSintactico", "materiaPesada", "activo"]
+    .some((field) => input[field as keyof UpdateMateriaInput] !== undefined);
+  if (affectsSchedule) {
+    const inActive = await query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM mallas_curriculares mc
+         JOIN periodos_academicos p ON p.id = mc.periodo_id
+         WHERE mc.materia_id = $1 AND p.activo = true
+       ) AS exists`,
+      [id],
+    );
+    if (inActive.rows[0]?.exists) {
+      throw new HttpError(409, "La materia está en uso por una gestión activa y no puede cambiar sus parámetros de planificación");
+    }
+  }
+  const effectiveTipo = input.tipoMateria ?? current.tipoMateria;
+  const effectivePeso = input.pesoSintactico !== undefined
+    ? Number(input.pesoSintactico)
+    : effectiveTipo === "extracurricular" ? 1 : current.pesoSintactico;
+  if (effectiveTipo === "extracurricular" && effectivePeso >= 3) {
+    throw new HttpError(400, "Las extracurriculares deben tener menor peso sintáctico");
+  }
   const fields: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
@@ -134,9 +182,34 @@ export async function updateMateria(id: string, input: UpdateMateriaInput): Prom
     fields.push(`descripcion = $${idx++}`);
     params.push(input.descripcion);
   }
+  if (input.tipoMateria !== undefined) {
+    if (input.tipoMateria !== "principal" && input.tipoMateria !== "extracurricular") throw new HttpError(400, "tipoMateria inválido");
+    fields.push(`tipo_materia = $${idx++}`);
+    params.push(input.tipoMateria);
+  }
+  if (input.cargaHorariaSemanal !== undefined) {
+    const carga = Number(input.cargaHorariaSemanal);
+    if (!Number.isInteger(carga) || carga < 1 || carga > 40) throw new HttpError(400, "cargaHorariaSemanal debe estar entre 1 y 40");
+    fields.push(`carga_horaria_semanal = $${idx++}`);
+    params.push(carga);
+  }
+  if (input.pesoSintactico !== undefined) {
+    const peso = Number(input.pesoSintactico);
+    if (!Number.isInteger(peso) || peso < 1 || peso > 100) throw new HttpError(400, "pesoSintactico debe estar entre 1 y 100");
+    fields.push(`peso_sintactico = $${idx++}`);
+    params.push(peso);
+  }
+  if (input.materiaPesada !== undefined) {
+    fields.push(`materia_pesada = $${idx++}`);
+    params.push(Boolean(input.materiaPesada));
+  }
   if (input.activo !== undefined) {
     fields.push(`activo = $${idx++}`);
     params.push(Boolean(input.activo));
+  }
+  if (input.caratulaUrl !== undefined) {
+    fields.push(`caratula_url = $${idx++}`);
+    params.push(input.caratulaUrl ? String(input.caratulaUrl).trim() : null);
   }
 
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");
@@ -148,11 +221,24 @@ export async function updateMateria(id: string, input: UpdateMateriaInput): Prom
       `UPDATE materias SET ${fields.join(", ")}
        WHERE id = $${idx}
        RETURNING
-         id, codigo, nombre, descripcion, activo,
-         fecha_creacion AS "fechaCreacion",
-         fecha_actualizacion AS "fechaActualizacion"`,
+         id, codigo, nombre, descripcion,
+         tipo_materia AS "tipoMateria", carga_horaria_semanal AS "cargaHorariaSemanal",
+         peso_sintactico AS "pesoSintactico", materia_pesada AS "materiaPesada", activo,
+         caratula_url AS "caratulaUrl",
+         fecha_creacion AS "fechaCreacion", fecha_actualizacion AS "fechaActualizacion"`,
       params,
     );
+    if (affectsSchedule) {
+      await query(
+        `UPDATE periodos_academicos p
+         SET horarios_generados = false
+         WHERE p.activo = false
+           AND EXISTS (
+             SELECT 1 FROM mallas_curriculares mc WHERE mc.periodo_id = p.id AND mc.materia_id = $1
+           )`,
+        [id],
+      );
+    }
     return mapMateria(res.rows[0]);
   } catch (err) {
     throw mapDbError(err, "Error al actualizar la materia");

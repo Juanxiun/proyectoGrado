@@ -354,8 +354,8 @@ export function ProfileScreen() {
               <View className="gap-3 md:flex-row md:flex-wrap">
                 <Field label="Usuario" value={form.username} onChangeText={setField('username')} container="md:w-1/2" required editable={!isStudent} />
                 <Field label="Correo electrónico" value={form.email} onChangeText={setField('email')} keyboardType="email-address" container="md:w-1/2" required editable={!isStudent} />
-                <Field label="Celular" value={form.celular} onChangeText={setField('celular')} keyboardType="phone-pad" container="md:w-1/2" required />
-                <Field label="WhatsApp" value={form.whatsapp} onChangeText={setField('whatsapp')} keyboardType="phone-pad" container="md:w-1/2" />
+                <Field label="Celular" value={form.celular} onChangeText={(v) => setField('celular')(v.replace(/[^0-9]/g, ''))} keyboardType="phone-pad" container="md:w-1/2" required />
+                <Field label="WhatsApp" value={form.whatsapp} onChangeText={(v) => setField('whatsapp')(v.replace(/[^0-9]/g, ''))} keyboardType="phone-pad" container="md:w-1/2" />
                 <Field label="Nueva contraseña (opcional)" value={form.password} onChangeText={setField('password')} secureTextEntry placeholder="Mínimo 8 caracteres" container="md:w-1/2" />
               </View>
             ) : (

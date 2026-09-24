@@ -29,7 +29,8 @@ export async function changePassword(ctx: Context): Promise<void> {
     }
 
     const body = await ctx.request.body.json();
-    const { newPassword, confirmPassword } = body ?? {};
+    const { newPassword: requestedPassword, passwordNueva, confirmPassword, passwordActual } = body ?? {};
+    const newPassword = requestedPassword ?? passwordNueva;
 
     if (!newPassword) {
       ctx.response.status = 400;
@@ -50,12 +51,31 @@ export async function changePassword(ctx: Context): Promise<void> {
       return;
     }
 
+    if (passwordActual) {
+      const current = await query<{ password_hash: string }>(
+        `SELECT password_hash FROM usuario_cuenta WHERE usuario_id = $1`,
+        [auth.sub],
+      );
+      if (!current.rows.length) {
+        ctx.response.status = 404;
+        ctx.response.body = { error: "Cuenta no encontrada" };
+        return;
+      }
+      // deno-lint-ignore no-explicit-any
+      const validCurrent = await (bcrypt as any).compare(passwordActual, current.rows[0].password_hash);
+      if (!validCurrent) {
+        ctx.response.status = 400;
+        ctx.response.body = { error: "La contraseña actual no es correcta", field: "passwordActual" };
+        return;
+      }
+    }
+
     // deno-lint-ignore no-explicit-any
     const hash = await (bcrypt as any).hash(newPassword, 12);
 
     await query(
-      `UPDATE usuario_cuenta 
-       SET password_hash = $1, ultimo_login = NOW() 
+      `UPDATE usuario_cuenta
+       SET password_hash = $1, primer_login = false, password_actualizado = true, ultimo_login = NOW()
        WHERE usuario_id = $2`,
       [hash, auth.sub],
     );

@@ -17,9 +17,13 @@ Content-Type: application/json
 {
   "anio": 2026,
   "nombre": "Gestión 2026",
-  "fechaInicio": "2026-02-01",
-  "fechaFin": "2026-11-30",
-  "activo": true
+  "inicioGestion": "2026-02-01",
+  "finGestion": "2026-11-30",
+  "trimestres": [
+    { "numero": 1, "inicio": "2026-02-01", "fin": "2026-04-30" },
+    { "numero": 2, "inicio": "2026-05-01", "fin": "2026-08-31" },
+    { "numero": 3, "inicio": "2026-09-01", "fin": "2026-11-30" }
+  ]
 }
 
 ### Cursos

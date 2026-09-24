@@ -19,6 +19,8 @@ export async function listAsignaciones(ctx: Context): Promise<void> {
       cursoPeriodoId: params.get("cursoPeriodoId") ?? undefined,
       periodoId: params.get("periodoId") ?? undefined,
       estado: params.get("estado") ?? undefined,
+      viewerUserId: String(ctx.state.auth?.sub ?? ""),
+      viewerRole: String(ctx.state.auth?.role ?? ""),
     });
     respond(ctx, 200, result);
   } catch (err) {
@@ -29,7 +31,11 @@ export async function listAsignaciones(ctx: Context): Promise<void> {
 export async function getAsignacion(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
-    respond(ctx, 200, await asignacionService.getAsignacionById(id));
+    respond(ctx, 200, await asignacionService.getAsignacionById(
+      id,
+      String(ctx.state.auth?.sub ?? ""),
+      String(ctx.state.auth?.role ?? ""),
+    ));
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al obtener asignación docente");
   }

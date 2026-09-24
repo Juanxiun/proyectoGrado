@@ -63,6 +63,10 @@ export async function login(ctx: Context): Promise<void> {
       username: string;
       email: string;
       password_hash: string;
+      primer_login: boolean;
+      datos_personales_actualizados: boolean;
+      contacto_tutor_actualizado: boolean;
+      password_actualizado: boolean;
       ultimo_login: Date | string | null;
     }>(
       `SELECT
@@ -77,6 +81,10 @@ export async function login(ctx: Context): Promise<void> {
          uc.username,
          uc.email,
          uc.password_hash,
+         uc.primer_login,
+         uc.datos_personales_actualizados,
+         uc.contacto_tutor_actualizado,
+         uc.password_actualizado,
          uc.ultimo_login
        FROM usuario_cuenta uc
        JOIN usuarios u  ON u.id  = uc.usuario_id
@@ -92,7 +100,9 @@ export async function login(ctx: Context): Promise<void> {
     }
 
     const user = userRes.rows[0];
-    const isFirstLogin = user.ultimo_login === null;
+    const isFirstLogin = Boolean(user.primer_login) || user.ultimo_login === null;
+    const normalizedRole = String(user.rol).toLowerCase();
+    const isStudentRole = ["estudiante", "alumno", "padre", "padres", "apoderado", "tutor"].includes(normalizedRole);
 
     if (user.estado === "inactivo" || (user.estado as any) === 0) {
       ctx.response.status = 403;
@@ -121,13 +131,16 @@ export async function login(ctx: Context): Promise<void> {
       );
     }
 
-    const rolNombre = user.rol.toLowerCase();
-    const debeCambiarPassword = isFirstLogin && ["profesor", "maestro", "docente", "control", "administrativo", "director"].includes(rolNombre);
+    const rolNombre = normalizedRole;
+    const debeCambiarPassword = isFirstLogin || (isStudentRole && !user.password_actualizado);
+    const debeCompletarPerfil = isStudentRole &&
+      (!user.datos_personales_actualizados || !user.contacto_tutor_actualizado);
     // deno-lint-ignore no-explicit-any
-    let extraInfo: Record<string, any> = { debeCambiarPassword };
+    let extraInfo: Record<string, any> = { debeCambiarPassword, debeCompletarPerfil, primerLogin: isFirstLogin };
 
     switch (rolNombre) {
-      case "estudiante": {
+      case "estudiante":
+      case "alumno": {
         // Inscripción en el periodo académico activo
         const inscRes = await query<{
           estudiante_id: bigint;
@@ -152,7 +165,10 @@ export async function login(ctx: Context): Promise<void> {
            JOIN cursos c               ON c.id  = cp.curso_id
            JOIN periodos_academicos pa ON pa.id = cp.periodo_id
            WHERE e.usuario_id = $1
+             AND i.estado = 'activo'
+             AND cp.estado = 'activo'
              AND pa.activo = TRUE
+             AND pa.estado = 'activo'
            LIMIT 1`,
           [user.id],
         );
@@ -160,6 +176,7 @@ export async function login(ctx: Context): Promise<void> {
         if (inscRes.rows.length > 0) {
           const ins = inscRes.rows[0];
           extraInfo = {
+            ...extraInfo,
             estudianteId: String(ins.estudiante_id),
             cursoPeriodoId: String(ins.curso_periodo_id),
             nivel: ins.nivel,
@@ -174,7 +191,8 @@ export async function login(ctx: Context): Promise<void> {
 
       case "profesor":
       case "maestro":
-      case "maestros": {
+      case "maestros":
+      case "docente": {
         const mRes = await query<{ id: bigint }>(
           `SELECT id FROM maestros WHERE usuario_id = $1 LIMIT 1`,
           [user.id],
@@ -215,6 +233,7 @@ export async function login(ctx: Context): Promise<void> {
         );
 
         extraInfo = {
+          ...extraInfo,
           maestroId: maestroId ? String(maestroId) : undefined,
           cursos: cursosRes.rows.map((r) => ({
             asignacionId: String(r.asignacion_id),
