@@ -38,7 +38,7 @@ export async function getMaterial(ctx: Context): Promise<void> {
 
 import {
   buildMaterialObjectKey,
-  resolveNivelFromAsignacion,
+  resolveCursoInfoFromAsignacion,
   sanitizeLevel,
 } from "../utils/fileNaming.ts";
 
@@ -53,7 +53,6 @@ export async function createMaterial(ctx: Context): Promise<void> {
       const asignacionId = form.get("asignacionId")?.toString();
       const titulo = form.get("titulo")?.toString();
       const detalle = form.get("detalle")?.toString() ?? null;
-      const nivelPayload = form.get("nivel")?.toString();
 
       if (!asignacionId || !titulo) {
         throw new HttpError(400, "asignacionId y titulo son requeridos");
@@ -63,10 +62,8 @@ export async function createMaterial(ctx: Context): Promise<void> {
       }
 
       const fileBuffer = new Uint8Array(await file.arrayBuffer());
-      const nivel = nivelPayload
-        ? sanitizeLevel(nivelPayload)
-        : await resolveNivelFromAsignacion(asignacionId);
-      const objectKey = buildMaterialObjectKey(nivel, asignacionId, file.name);
+      const cursoInfo = await resolveCursoInfoFromAsignacion(asignacionId);
+      const objectKey = buildMaterialObjectKey(cursoInfo, asignacionId, file.name);
 
       // Validación de 150MB y tipos PDF/Word/Excel en MinIO
       const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);
@@ -119,7 +116,6 @@ export async function updateMaterial(ctx: Context): Promise<void> {
       const file = form.get("file");
       const titulo = form.get("titulo")?.toString();
       const detalle = form.get("detalle")?.toString();
-      const nivelPayload = form.get("nivel")?.toString();
       const asignacionId = form.get("asignacionId")?.toString();
       const activoStr = form.get("activo")?.toString();
 
@@ -132,10 +128,9 @@ export async function updateMaterial(ctx: Context): Promise<void> {
       if (file instanceof File) {
         const current = await materialService.getMaterialById(id);
         const fileBuffer = new Uint8Array(await file.arrayBuffer());
-        const nivel = nivelPayload
-          ? sanitizeLevel(nivelPayload)
-          : await resolveNivelFromAsignacion(asignacionId ?? String(current.asignacionId));
-        const objectKey = buildMaterialObjectKey(nivel, asignacionId ?? String(current.asignacionId), file.name);
+        const asigId = asignacionId ?? String(current.asignacionId);
+        const cursoInfo = await resolveCursoInfoFromAsignacion(asigId);
+        const objectKey = buildMaterialObjectKey(cursoInfo, asigId, file.name);
 
         // Sube nuevo archivo primero, luego borra el antiguo
         const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);

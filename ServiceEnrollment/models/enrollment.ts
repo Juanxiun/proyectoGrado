@@ -25,6 +25,9 @@ export interface CursoPeriodo {
   id: string;
   cursoId: string;
   periodoId: string;
+  turnoId?: string | null;
+  turnoCodigo?: string;
+  turnoNombre?: string;
   capacidadMaxima: number;
   estado: EstadoCursoPeriodo;
   curso?: {
@@ -41,7 +44,10 @@ export interface CursoPeriodo {
     nombre: string;
     fechaInicio: string;
     fechaFin: string;
+    inicioGestion?: string;
+    finGestion?: string;
     activo: boolean;
+    estado?: string;
   } | null;
   totalInscritos?: number;
 }
@@ -50,11 +56,13 @@ export interface CreateCursoPeriodoInput {
   cursoId: string | number;
   periodoId: string | number;
   capacidadMaxima?: number;
+  turnoId?: string | number;
   estado?: EstadoCursoPeriodo;
 }
 
 export interface UpdateCursoPeriodoInput {
   capacidadMaxima?: number;
+  turnoId?: string | number;
   estado?: EstadoCursoPeriodo;
 }
 
@@ -62,6 +70,8 @@ export interface Inscripcion {
   id: string;
   estudianteId: string;
   cursoPeriodoId: string;
+  periodoId?: string;
+  origen?: "nueva" | "reserva" | "promocion";
   fechaInscripcion: string;
   fechaRetiro?: string | null;
   estado: EstadoInscripcion;
@@ -82,7 +92,31 @@ export interface CreateInscripcionInput {
   estudianteId: string | number;
   cursoPeriodoId: string | number;
   fechaInscripcion?: string;
+  origen?: "nueva" | "reserva" | "promocion";
+  solicitudId?: string | number;
   observacion?: string | null;
+}
+
+export type TipoSolicitudInscripcion = "reserva" | "promocion";
+
+export interface SolicitudInscripcion {
+  id: string;
+  estudianteId: string;
+  periodoId: string;
+  cursoPeriodoDestinoId: string;
+  tipo: TipoSolicitudInscripcion;
+  estado: "pendiente" | "aprobada" | "rechazada";
+  motivo?: string | null;
+  fechaSolicitud: string;
+  fechaProceso?: string | null;
+  observacion?: string | null;
+  enrollmentId?: string;
+}
+
+export interface CreateSolicitudInscripcionInput {
+  cursoPeriodoDestinoId: string | number;
+  tipo: TipoSolicitudInscripcion;
+  motivo?: string | null;
 }
 
 export interface UpdateInscripcionInput {

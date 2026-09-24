@@ -19,8 +19,10 @@ export interface AuthClaims extends JWTPayload {
 
 export function normalizeRole(value: unknown): AppRole | null {
   const role = String(value ?? "").trim().toLowerCase();
-  if (role === "maestro" || role === "maestros" || role === "docente") return "profesor";
-  if (role === "gerencia") return "control";
+  if (role === "maestro" || role === "maestros" || role === "docente" || role === "profesor" || role === "profesores") return "profesor";
+  if (role === "gerencia" || role === "secretaria" || role === "secretario" || role === "administrativo" || role === "editor") return "control";
+  if (role === "admin" || role === "administrador" || role === "directores") return "director";
+  if (role === "alumno" || role === "alumnos" || role === "estudiante" || role === "estudiantes") return "estudiante";
   if (role === "padre" || role === "padres" || role === "apoderado" || role === "tutor") return "estudiante";
   return ["director", "profesor", "estudiante", "control"].includes(role)
     ? role as AppRole
@@ -30,7 +32,13 @@ export function normalizeRole(value: unknown): AppRole | null {
 export async function getClaims(ctx: Context): Promise<AuthClaims | null> {
   const header = ctx.request.headers.get("Authorization");
   if (!header?.startsWith("Bearer ")) return null;
-  return getClaimsFromToken(header.slice(7).trim());
+  return await getClaimsFromToken(header.slice(7).trim());
+}
+
+export function extractBearerToken(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const trimmed = value.trim();
+  return trimmed.toLowerCase().startsWith("bearer ") ? trimmed.slice(7).trim() : trimmed;
 }
 
 export async function getClaimsFromToken(token: string): Promise<AuthClaims | null> {

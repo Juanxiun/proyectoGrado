@@ -221,12 +221,12 @@ export function MaestroEvaluacionesScreen() {
           <View className="gap-3">
             <View>
               <Text className="text-xs font-semibold text-gray-700 mb-1">Materia y Curso *</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="gap-2">
+              <View className="w-full flex-row flex-wrap gap-2">
                 {asignaciones.map((a) => (
                   <TouchableOpacity
                     key={a.id}
                     onPress={() => setSelectedAsignacionId(a.id)}
-                    className={`px-3 py-2 rounded-xl border ${
+                    className={`flex-1 min-w-[220px] max-w-[320px] px-3 py-2 rounded-xl border ${
                       selectedAsignacionId === a.id
                         ? 'bg-maroon border-maroon'
                         : 'bg-gray-100 border-gray-200'
@@ -241,7 +241,7 @@ export function MaestroEvaluacionesScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
-              </ScrollView>
+              </View>
             </View>
 
             <View className={`gap-3 ${isMobile ? '' : 'flex-row'}`}>

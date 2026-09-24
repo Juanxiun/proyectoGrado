@@ -2,12 +2,12 @@ import { query } from "../connects/Database/transaction.ts";
 import {
   CreateEncargoEntregaInput,
   EncargoEntrega,
+  EstadoEntrega,
   PaginatedResult,
   PaginationQuery,
 } from "../models/homework.ts";
 import { HttpError, mapDbError } from "../utils/errors.ts";
 import { asDateTimeString, serialize, toId } from "../utils/serialize.ts";
-import { resolveFileUrl } from "../connects/Storage/minio.ts";
 import { AuthClaims } from "../security/auth.ts";
 
 interface EntregaRow {
@@ -46,7 +46,7 @@ function mapEntrega(row: EntregaRow): EncargoEntrega {
     tamanioBytes: row.tamanioBytes !== null && row.tamanioBytes !== undefined ? Number(row.tamanioBytes) : null,
     comentario: row.comentario,
     fechaEntrega: asDateTimeString(row.fechaEntrega) ?? "",
-    estadoEntrega: row.estadoEntrega as any,
+    estadoEntrega: row.estadoEntrega as EstadoEntrega,
     estudiante: row.usuarioId
       ? {
         id: toId(row.estudianteId),
@@ -267,10 +267,16 @@ export async function createOrUpdateEntrega(
       }
       estudianteId = toId(eRes.rows[0].id);
     } else {
-      const eCheck = await query<{ id: bigint }>(
-        `SELECT id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
+      let eCheck = await query<{ id: bigint }>(
+        `SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
         [estudianteId],
       );
+      if (!eCheck.rows.length) {
+        eCheck = await query<{ id: bigint }>(
+          `SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`,
+          [estudianteId],
+        );
+      }
       if (eCheck.rows.length === 0) {
         throw new HttpError(404, `Estudiante id=${estudianteId} no encontrado`);
       }

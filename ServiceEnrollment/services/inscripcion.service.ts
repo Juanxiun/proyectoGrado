@@ -3,18 +3,21 @@ import {
   CreateInscripcionInput,
   ESTADOS_INSCRIPCION,
   EstadoInscripcion,
+  EstadoCursoPeriodo,
   Inscripcion,
   PaginatedResult,
   PaginationQuery,
   UpdateInscripcionInput,
 } from "../models/enrollment.ts";
 import { HttpError, mapDbError } from "../utils/errors.ts";
-import { asDateTimeString, serialize, toId } from "../utils/serialize.ts";
+import { asDateString, asDateTimeString, serialize, toId } from "../utils/serialize.ts";
 
 interface InscripcionRow {
   id: bigint;
   estudianteId: bigint;
   cursoPeriodoId: bigint;
+  periodoId: bigint;
+  origen: "nueva" | "reserva" | "promocion";
   fechaInscripcion: Date | string;
   fechaRetiro: Date | string | null;
   estado: EstadoInscripcion;
@@ -28,13 +31,18 @@ interface InscripcionRow {
   estudianteEstado?: string;
   // Curso Periodo info
   cursoId?: bigint;
-  periodoId?: bigint;
+  cursoPeriodoEstado?: EstadoCursoPeriodo;
+  cursoActivo?: boolean;
   nivel?: string;
   grado?: string;
   paralelo?: string;
   capacidadMaxima?: number;
   anio?: number;
   periodoNombre?: string;
+  periodoInicio?: Date | string;
+  periodoFin?: Date | string;
+  periodoActivo?: boolean;
+  periodoEstado?: string;
 }
 
 function mapInscripcion(row: InscripcionRow): Inscripcion {
@@ -42,6 +50,8 @@ function mapInscripcion(row: InscripcionRow): Inscripcion {
     id: toId(row.id),
     estudianteId: toId(row.estudianteId),
     cursoPeriodoId: toId(row.cursoPeriodoId),
+    periodoId: toId(row.periodoId),
+    origen: row.origen,
     fechaInscripcion: asDateTimeString(row.fechaInscripcion) ?? "",
     fechaRetiro: asDateTimeString(row.fechaRetiro),
     estado: row.estado,
@@ -63,22 +73,23 @@ function mapInscripcion(row: InscripcionRow): Inscripcion {
         cursoId: toId(row.cursoId),
         periodoId: toId(row.periodoId!),
         capacidadMaxima: Number(row.capacidadMaxima ?? 0),
-        estado: "activo",
+        estado: row.cursoPeriodoEstado ?? "activo",
         curso: {
           id: toId(row.cursoId),
           nivel: row.nivel ?? "",
           grado: row.grado ?? "",
           paralelo: row.paralelo ?? "",
           capacidadMaxima: Number(row.capacidadMaxima ?? 0),
-          activo: true,
+          activo: Boolean(row.cursoActivo),
         },
         periodo: {
           id: toId(row.periodoId!),
           anio: Number(row.anio ?? 0),
           nombre: row.periodoNombre ?? "",
-          fechaInicio: "",
-          fechaFin: "",
-          activo: true,
+          fechaInicio: asDateString(row.periodoInicio),
+          fechaFin: asDateString(row.periodoFin),
+          activo: Boolean(row.periodoActivo),
+          estado: row.periodoEstado,
         },
       }
       : null,
@@ -93,11 +104,36 @@ function parseEstado(value: unknown): EstadoInscripcion {
   return estado;
 }
 
+async function resolveEstudianteId(input: string): Promise<{ id: bigint; estado: string; usuario_id: bigint }> {
+  let result = await query<{ id: bigint; estado: string; usuario_id: bigint }>(
+    `SELECT id, estado, usuario_id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
+    [input],
+  );
+  if (!result.rows.length) {
+    result = await query<{ id: bigint; estado: string; usuario_id: bigint }>(
+      `SELECT id, estado, usuario_id FROM estudiantes WHERE id = $1 LIMIT 1`,
+      [input],
+    );
+  }
+  if (!result.rows.length) throw new HttpError(404, `Estudiante id=${input} no encontrado`);
+  return result.rows[0];
+}
+
+async function resolveEstudianteFilterId(input: string): Promise<string> {
+  let result = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE id = $1 LIMIT 1`, [input]);
+  if (!result.rows.length) {
+    result = await query<{ id: bigint }>(`SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`, [input]);
+  }
+  if (!result.rows.length) throw new HttpError(404, `Estudiante id=${input} no encontrado`);
+  return toId(result.rows[0].id);
+}
 const SELECT = `
   SELECT
     i.id,
     i.estudiante_id AS "estudianteId",
     i.curso_periodo_id AS "cursoPeriodoId",
+    i.periodo_id AS "periodoId",
+    i.origen,
     i.fecha_inscripcion AS "fechaInscripcion",
     i.fecha_retiro AS "fechaRetiro",
     i.estado,
@@ -109,13 +145,18 @@ const SELECT = `
     u.apellido_materno AS "apellidoMaterno",
     ud.numero_doc AS "numeroDoc",
     cp.curso_id AS "cursoId",
-    cp.periodo_id AS "periodoId",
+    cp.estado AS "cursoPeriodoEstado",
+     c.activo AS "cursoActivo",
     cp.capacidad_maxima AS "capacidadMaxima",
     c.nivel,
     c.grado,
     c.paralelo,
     p.anio,
-    p.nombre AS "periodoNombre"
+    p.nombre AS "periodoNombre",
+    p.fecha_inicio AS "periodoInicio",
+    p.fecha_fin AS "periodoFin",
+    p.activo AS "periodoActivo",
+    p.estado AS "periodoEstado"
   FROM inscripciones i
   JOIN estudiantes e ON e.id = i.estudiante_id
   JOIN usuarios u ON u.id = e.usuario_id
@@ -133,6 +174,8 @@ export async function listInscripciones(
     periodoId?: string;
     estado?: string;
     buscar?: string;
+    viewerUserId?: string;
+    viewerRole?: string;
   },
 ): Promise<PaginatedResult<Inscripcion>> {
   const conditions: string[] = [];
@@ -141,9 +184,8 @@ export async function listInscripciones(
 
   if (filters.estudianteId) {
     if (!/^\d+$/.test(filters.estudianteId)) throw new HttpError(400, "estudianteId debe ser numérico");
-    conditions.push(`(i.estudiante_id = $${idx} OR e.usuario_id = $${idx})`);
-    params.push(filters.estudianteId);
-    idx++;
+    conditions.push(`i.estudiante_id = $${idx++}`);
+    params.push(await resolveEstudianteFilterId(filters.estudianteId));
   }
   if (filters.cursoPeriodoId) {
     if (!/^\d+$/.test(filters.cursoPeriodoId)) throw new HttpError(400, "cursoPeriodoId debe ser numérico");
@@ -167,6 +209,18 @@ export async function listInscripciones(
       ud.numero_doc ILIKE $${idx}
     )`);
     params.push(`%${filters.buscar}%`);
+    idx++;
+  }
+  if (filters.viewerRole === "estudiante" && filters.viewerUserId) {
+    conditions.push(`(
+      e.usuario_id = $${idx}
+      OR EXISTS (
+        SELECT 1 FROM estudiante_apoderado ea
+        JOIN apoderados a ON a.id = ea.apoderado_id
+        WHERE ea.estudiante_id = e.id AND a.usuario_id = $${idx}
+      )
+    )`);
+    params.push(filters.viewerUserId);
     idx++;
   }
 
@@ -203,8 +257,15 @@ export async function listInscripciones(
   }
 }
 
-export async function getInscripcionById(id: string): Promise<Inscripcion> {
-  const res = await query<InscripcionRow>(`${SELECT} WHERE i.id = $1`, [id]);
+export async function getInscripcionById(id: string, viewerUserId?: string, viewerRole?: string): Promise<Inscripcion> {
+  const scope = viewerRole === "estudiante" && viewerUserId
+    ? ` AND (e.usuario_id = $2 OR EXISTS (
+        SELECT 1 FROM estudiante_apoderado ea
+        JOIN apoderados a ON a.id = ea.apoderado_id
+        WHERE ea.estudiante_id = e.id AND a.usuario_id = $2
+      ))`
+    : "";
+  const res = await query<InscripcionRow>(`${SELECT} WHERE i.id = $1${scope}`, scope ? [id, viewerUserId] : [id]);
   if (res.rows.length === 0) {
     throw new HttpError(404, `Inscripción id=${id} no encontrada`);
   }
@@ -218,24 +279,20 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
   if (!/^\d+$/.test(cpInput)) throw new HttpError(400, "cursoPeriodoId debe ser numérico");
 
   // Resolver estudiante (aceptar id de estudiantes o usuario_id)
-  const estRes = await query<{ id: bigint; estado: string; usuario_id: bigint }>(
-    `SELECT id, estado, usuario_id FROM estudiantes WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
-    [estInput],
-  );
-  if (estRes.rows.length === 0) {
-    throw new HttpError(404, `Estudiante id=${estInput} no encontrado`);
-  }
-  const estudiante = estRes.rows[0];
+  const estudiante = await resolveEstudianteId(estInput);
   if (estudiante.estado === "suspendido" || estudiante.estado === "retirado") {
     throw new HttpError(400, `El estudiante no está habilitado para inscripción (estado: ${estudiante.estado})`);
   }
   const estudianteId = toId(estudiante.id);
 
   // Verificar curso_periodo
-  const cpRes = await query<{ id: bigint; periodo_id: bigint; capacidad_maxima: number; estado: string; grado: string; paralelo: string }>(
-    `SELECT cp.id, cp.periodo_id, cp.capacidad_maxima, cp.estado, c.grado, c.paralelo
+  const cpRes = await query<{ id: bigint; periodo_id: bigint; capacidad_maxima: number; estado: string; grado: string; paralelo: string; cursoActivo: boolean; periodoActivo: boolean; periodoEstado: string }>(
+    `SELECT cp.id, cp.periodo_id, cp.capacidad_maxima, cp.estado, c.grado, c.paralelo,
+       c.activo AS "cursoActivo",
+       p.activo AS "periodoActivo", p.estado AS "periodoEstado"
      FROM cursos_periodo cp
      JOIN cursos c ON c.id = cp.curso_id
+     JOIN periodos_academicos p ON p.id = cp.periodo_id
      WHERE cp.id = $1`,
     [cpInput],
   );
@@ -243,8 +300,11 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
     throw new HttpError(404, `Curso del periodo id=${cpInput} no encontrado`);
   }
   const cursoPeriodo = cpRes.rows[0];
-  if (cursoPeriodo.estado !== "activo") {
-    throw new HttpError(400, `El curso en este periodo se encuentra cerrado o cancelado (estado: ${cursoPeriodo.estado})`);
+  if (cursoPeriodo.estado !== "activo" || !cursoPeriodo.cursoActivo) {
+    throw new HttpError(400, `El curso en este periodo se encuentra cerrado, cancelado o inactivo (estado: ${cursoPeriodo.estado})`);
+  }
+  if (!cursoPeriodo.periodoActivo || cursoPeriodo.periodoEstado !== "activo") {
+    throw new HttpError(409, "La gestión académica no está activa; no se pueden crear inscripciones");
   }
 
   // Verificar si ya cuenta con inscripción activa en el mismo periodo
@@ -253,7 +313,7 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
      FROM inscripciones i
      JOIN cursos_periodo cp ON cp.id = i.curso_periodo_id
      JOIN cursos c ON c.id = cp.curso_id
-     WHERE i.estudiante_id = $1 AND cp.periodo_id = $2 AND i.estado = 'activo'`,
+     WHERE i.estudiante_id = $1 AND i.periodo_id = $2 AND i.estado = 'activo'`,
     [estudianteId, cursoPeriodo.periodo_id],
   );
   if (prevPeriodoRes.rows.length > 0) {
@@ -264,27 +324,58 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
     );
   }
 
+  const origen = input.origen ?? "nueva";
+  if (!["nueva", "reserva", "promocion"].includes(origen)) {
+    throw new HttpError(400, "origen de inscripción inválido");
+  }
+  const solicitudId = input.solicitudId ? String(input.solicitudId) : null;
+  if (solicitudId && !/^\d+$/.test(solicitudId)) throw new HttpError(400, "solicitudId debe ser numérico");
+  if (solicitudId) {
+    const solicitud = await query<{ id: bigint }>(
+      `SELECT id FROM solicitudes_inscripcion
+       WHERE id = $1 AND estudiante_id = $2 AND curso_periodo_destino_id = $3 AND estado = 'aprobada'`,
+      [solicitudId, estudianteId, cpInput],
+    );
+    if (!solicitud.rows.length) throw new HttpError(409, "La solicitud no corresponde a una inscripción aprobada");
+  }
+
   // Transacción con verificación de capacidad
   let newId: string;
   try {
     newId = await sTransaction(async (tx) => {
+      await tx.queryObject(`SELECT id FROM estudiantes WHERE id = $1 FOR UPDATE`, [estudianteId]);
+      const lockedPeriodo = await tx.queryObject<{ id: bigint; activo: boolean; estado: string }>(
+        `SELECT id, activo, estado FROM periodos_academicos WHERE id = $1 FOR UPDATE`,
+        [cursoPeriodo.periodo_id],
+      );
+      if (!lockedPeriodo.rows.length || !lockedPeriodo.rows[0].activo || lockedPeriodo.rows[0].estado !== "activo") {
+        throw new HttpError(409, "La gestión académica ya no está activa");
+      }
+      const lockedCp = await tx.queryObject<{ id: bigint; periodo_id: bigint; capacidad_maxima: number; estado: string }>(
+        `SELECT id, periodo_id, capacidad_maxima, estado FROM cursos_periodo WHERE id = $1 FOR UPDATE`,
+        [cpInput],
+      );
+      if (!lockedCp.rows.length) throw new HttpError(404, `Curso del periodo id=${cpInput} no encontrado`);
+      if (lockedCp.rows[0].estado !== "activo") throw new HttpError(400, "El curso ya no está activo");
       const countRes = await tx.queryObject<{ count: string }>(
         `SELECT COUNT(*) AS count FROM inscripciones WHERE curso_periodo_id = $1 AND estado = 'activo'`,
         [cpInput],
       );
       const inscritos = Number(countRes.rows[0]?.count ?? 0);
-      if (inscritos >= Number(cursoPeriodo.capacidad_maxima)) {
+      const capacidadActual = Number(lockedCp.rows[0].capacidad_maxima);
+      if (inscritos >= capacidadActual) {
         throw new HttpError(
           400,
-          `El curso ha alcanzado su capacidad máxima permitida (${cursoPeriodo.capacidad_maxima} estudiantes)`,
+          `El curso ha alcanzado su capacidad máxima permitida (${capacidadActual} estudiantes)`,
         );
       }
 
       const res = await tx.queryObject<{ id: bigint }>(
-        `INSERT INTO inscripciones (estudiante_id, curso_periodo_id, observacion, estado)
-         VALUES ($1, $2, $3, 'activo')
+        `INSERT INTO inscripciones
+           (estudiante_id, curso_periodo_id, periodo_id, solicitud_id, origen, fecha_inscripcion, observacion, estado)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6::timestamptz, NOW()), $7, 'activo')
          RETURNING id`,
-        [estudianteId, cpInput, input.observacion ?? null],
+        [estudianteId, cpInput, cursoPeriodo.periodo_id, solicitudId, origen, input.fechaInscripcion ?? null, input.observacion ?? null],
       );
       return toId(res.rows[0].id);
     });
@@ -295,19 +386,35 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
   return await getInscripcionById(newId);
 }
 
+export async function habilitarInscripcion(
+  usuarioId: string,
+  cursoPeriodoId: string,
+): Promise<Inscripcion> {
+  return createInscripcion({
+    estudianteId: usuarioId,
+    cursoPeriodoId,
+    origen: "nueva",
+    observacion: "Inscripción habilitada por el estudiante",
+  });
+}
+
 export async function updateInscripcion(id: string, input: UpdateInscripcionInput): Promise<Inscripcion> {
   const current = await getInscripcionById(id);
   const fields: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
+  let nextEstado: EstadoInscripcion | undefined;
 
   if (input.estado !== undefined) {
-    const estado = parseEstado(input.estado);
+    nextEstado = parseEstado(input.estado);
+    if (nextEstado === "activo" && input.fechaRetiro) {
+      throw new HttpError(400, "Una inscripción activa no puede tener fecha de retiro");
+    }
     fields.push(`estado = $${idx++}`);
-    params.push(estado);
-    if (estado === "retirado" && !current.fechaRetiro) {
+    params.push(nextEstado);
+    if (nextEstado === "retirado" && !current.fechaRetiro && input.fechaRetiro === undefined) {
       fields.push(`fecha_retiro = NOW()`);
-    } else if (estado === "activo") {
+    } else if (nextEstado === "activo" && input.fechaRetiro === undefined) {
       fields.push(`fecha_retiro = NULL`);
     }
   }
@@ -325,8 +432,35 @@ export async function updateInscripcion(id: string, input: UpdateInscripcionInpu
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");
 
   try {
-    params.push(id);
-    await query(`UPDATE inscripciones SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+    await sTransaction(async (tx) => {
+      if (nextEstado === "activo" && current.estado !== "activo") {
+        await tx.queryObject(`SELECT id FROM estudiantes WHERE id = $1 FOR UPDATE`, [current.estudianteId]);
+        const period = await tx.queryObject<{ activo: boolean; estado: string }>(
+          `SELECT activo, estado FROM periodos_academicos WHERE id = $1 FOR UPDATE`,
+          [current.periodoId],
+        );
+        if (!period.rows.length || !period.rows[0].activo || period.rows[0].estado !== "activo") {
+          throw new HttpError(409, "No se puede reactivar una inscripción de una gestión cerrada");
+        }
+        const course = await tx.queryObject<{ estado: string; capacidad: number }>(
+          `SELECT estado, capacidad_maxima AS capacidad FROM cursos_periodo WHERE id = $1 FOR UPDATE`,
+          [current.cursoPeriodoId],
+        );
+        if (!course.rows.length || course.rows[0].estado !== "activo") {
+          throw new HttpError(409, "No se puede reactivar una inscripción de un curso cerrado");
+        }
+        const count = await tx.queryObject<{ count: string }>(
+          `SELECT COUNT(*) AS count FROM inscripciones
+           WHERE curso_periodo_id = $1 AND estado = 'activo' AND id <> $2`,
+          [current.cursoPeriodoId, id],
+        );
+        if (Number(count.rows[0]?.count ?? 0) >= Number(course.rows[0].capacidad)) {
+          throw new HttpError(409, "El curso no tiene capacidad para reactivar la inscripción");
+        }
+      }
+      params.push(id);
+      await tx.queryObject(`UPDATE inscripciones SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+    });
     return await getInscripcionById(id);
   } catch (err) {
     throw mapDbError(err, "Error al actualizar la inscripción");

@@ -84,7 +84,7 @@ function buildQueryString(payload: any): string {
     if (
       value !== undefined &&
       value !== null &&
-      !["params", "authorization", "token", "headers", "body"].includes(key)
+      !["params", "authToken", "authorization", "token", "headers", "body"].includes(key)
     ) {
       params.set(key, String(value));
     }
@@ -122,7 +122,8 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
 
     try {
       const token = extractBearerToken(
-        payload?.authorization ??
+        payload?.authToken ??
+          payload?.authorization ??
           payload?.token ??
           payload?.headers?.Authorization ??
           payload?.headers?.authorization,

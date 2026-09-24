@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using RestApi.Services;
+using System.Text.Json;
 
 namespace RestApi.Hubs;
 
@@ -27,6 +28,19 @@ public sealed class AppHub : Hub
             return;
         }
 
+        if (!string.Equals(action, "auth.login", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(action, "login", StringComparison.OrdinalIgnoreCase)
+            && !HasAuthenticationToken(payload))
+        {
+            await Clients.Caller.SendAsync("ReceiveResponse", new
+            {
+                requestId,
+                status = 401,
+                error = "Token de autenticación requerido"
+            });
+            return;
+        }
+
         _tracker.Register(requestId, Context.ConnectionId);
 
         var dispatched = await _webhookDispatcher.DispatchAsync(requestId, action, payload);
@@ -40,6 +54,23 @@ public sealed class AppHub : Hub
                 status = 502,
                 error = "No se pudo entregar el Webhook al servicio Backend"
             });
+        }
+    }
+
+    private static bool HasAuthenticationToken(object? payload)
+    {
+        if (payload is null) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));
+            if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
+            return new[] { "authToken", "authorization", "token" }
+                .Any(name => document.RootElement.TryGetProperty(name, out var value)
+                    && !string.IsNullOrWhiteSpace(value.GetString()));
+        }
+        catch
+        {
+            return false;
         }
     }
 

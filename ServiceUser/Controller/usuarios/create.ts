@@ -9,7 +9,6 @@ import {
   detectImageExt,
   mimeFromExt,
 } from "../../utils/fileNaming.ts";
-// deno-lint-ignore no-explicit-any
 import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
 import { generateUsername, generateEmail, generatePassword } from "../../utils/username.ts";
@@ -20,7 +19,7 @@ import { sendWelcomeCredentialsEmail } from "../../services/credentialsEmail.ser
  *
  * Acepta multipart/form-data con:
  *   - campo "datos": JSON string con los datos del usuario
- *   - campo "foto":  archivo PNG o JPG (obligatorio)
+ *   - campo "foto":  archivo PNG o JPG (opcional)
  *   - campos "doc_file_{index}": archivos PDF para cada documento
  *
  * La imagen se sube a MinIO con el nombre:
@@ -37,7 +36,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
     let fotoBytes: Uint8Array | null = null;
     let fotoExt: "png" | "jpg" | null = null;
 
-    let documentFiles: Array<{ index: number; bytes: Uint8Array; name: string }> = [];
+    const documentFiles: Array<{ index: number; bytes: Uint8Array; name: string }> = [];
 
     if (contentType.toLowerCase().includes("multipart/form-data")) {
       const form = await readMultipartForm(ctx);
@@ -51,19 +50,14 @@ export async function createUsuario(ctx: Context): Promise<void> {
       datos = JSON.parse(datosField);
 
       const foto = await readFilePart(form.get("foto"));
-      if (!foto) {
-        ctx.response.status = 400;
-        ctx.response.body = { error: "La foto es obligatoria y debe ser PNG o JPG" };
-        return;
-      }
-
-      fotoBytes = foto.bytes;
-      fotoExt = detectImageExt(fotoBytes);
-
-      if (!fotoExt) {
-        ctx.response.status = 400;
-        ctx.response.body = { error: "La foto debe ser una imagen PNG o JPG valida (formato no reconocido)" };
-        return;
+      if (foto) {
+        fotoBytes = foto.bytes;
+        fotoExt = detectImageExt(fotoBytes);
+        if (!fotoExt) {
+          ctx.response.status = 400;
+          ctx.response.body = { error: "La foto debe ser una imagen PNG o JPG válida (formato no reconocido)" };
+          return;
+        }
       }
 
       if (Array.isArray(datos.documentos)) {
@@ -80,47 +74,73 @@ export async function createUsuario(ctx: Context): Promise<void> {
             documentFiles.push({ index: i, bytes: docFile.bytes, name: docFile.name });
           }
         }
-        if (documentFiles.length !== datos.documentos.length) {
-          ctx.response.status = 400;
-          ctx.response.body = { error: "Cada documento registrado debe incluir su fotocopia en PDF" };
-          return;
-        }
+        // Los documentos pueden cargarse posteriormente; sólo se validan los archivos enviados.
       }
     } else {
       datos = await ctx.request.body.json();
     }
 
-    const { rolId, nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero, estado, cuenta, documentos, direccion, contactos, maestro, apoderadoId, parentesco } = datos;
+    const { rolId, rol: requestedRoleInput, nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero, estado, cuenta, documentos, direccion, contactos, maestro, apoderadoId, parentesco } = datos;
 
-    if (!rolId || !nombre?.trim() || !apellidoPaterno?.trim() || !nacimiento) {
+    if ((!rolId && !requestedRoleInput) || !nombre?.trim() || !apellidoPaterno?.trim() || !nacimiento) {
       ctx.response.status = 400;
-      ctx.response.body = { error: "Faltan campos obligatorios: rolId, nombre, apellidoPaterno, nacimiento" };
+      ctx.response.body = { error: "Faltan campos obligatorios: rol, nombre, apellidoPaterno, nacimiento" };
       return;
     }
 
-    if (!fotoBytes) {
-      ctx.response.status = 400;
-      ctx.response.body = { error: "La foto es obligatoria y debe ser PNG o JPG" };
-      return;
-    }
-
-    if (cuenta && (typeof cuenta.password !== "string" || cuenta.password.length < 8)) {
+    if (cuenta?.password !== undefined && cuenta.password !== "" && (typeof cuenta.password !== "string" || cuenta.password.length < 8)) {
       ctx.response.status = 400;
       ctx.response.body = { error: "La contrasena debe tener al menos 8 caracteres" };
       return;
     }
 
-    const rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM roles WHERE id = $1`, [rolId]);
+    const roleAliases: Record<string, string> = {
+      admin: "director",
+      administrador: "director",
+      maestro: "profesor",
+      maestros: "profesor",
+      profesores: "profesor",
+      docente: "profesor",
+      alumno: "estudiante",
+      estudiantes: "estudiante",
+      directores: "director",
+      padre: "apoderado",
+      padres: "apoderado",
+      tutor: "apoderado",
+      secretaria: "control",
+      secretario: "control",
+      gerencia: "control",
+      administrativo: "control",
+      editor: "control",
+    };
+    const requestedRole = String(requestedRoleInput ?? "").trim().toLowerCase();
+    const mappedRole = roleAliases[requestedRole] ?? requestedRole;
+    const legacyRoleById: Record<string, string> = {
+      "1": "director",
+      "2": "profesor",
+      "3": "estudiante",
+      "4": "control",
+      "5": "apoderado",
+    };
+    const roleName = mappedRole || legacyRoleById[String(rolId ?? "")] || "";
+    let rolResult = await query<{ id: bigint; rol: string }>(
+      `SELECT id, rol FROM roles WHERE LOWER(rol) = $1 AND COALESCE(activo, true) = true LIMIT 1`,
+      [roleName],
+    );
+    if (rolResult.rows.length === 0 && rolId) {
+      rolResult = await query<{ id: bigint; rol: string }>(`SELECT id, rol FROM roles WHERE id = $1 AND COALESCE(activo, true) = true`, [rolId]);
+    }
     if (rolResult.rows.length === 0) {
       ctx.response.status = 400;
-      ctx.response.body = { error: "Rol con id=" + rolId + " no existe" };
+      ctx.response.body = { error: `Rol "${roleName || rolId || ""}" no existe o está inactivo` };
       return;
     }
+    const resolvedRolId = rolResult.rows[0].id;
     const rolNombre = rolResult.rows[0].rol.toLowerCase();
 
-    if (ctx.state.auth?.role === "control" && !["profesor", "maestro", "docente", "estudiante"].includes(rolNombre)) {
+    if (ctx.state.auth?.role === "control" && !["profesor", "profesores", "maestro", "maestros", "docente", "estudiante", "estudiantes", "alumno", "alumnos", "control", "administrativo", "secretaria", "editor", "apoderado", "tutor", "gerencia"].includes(rolNombre)) {
       ctx.response.status = 403;
-      ctx.response.body = { error: "Control solo puede registrar profesores y estudiantes" };
+      ctx.response.body = { error: "Control no puede registrar el rol de director" };
       return;
     }
 
@@ -130,10 +150,11 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
     const apellidoMaternoFinal = apellidoMaterno?.trim() || null;
 
-    // Generar username, email y password automáticamente
-    const username = generateUsername(nombre, apellidoPaterno, apellidoMaternoFinal ?? "", ci);
-    const email = generateEmail(username);
-    const password = generatePassword(username);
+    // Usar las credenciales proporcionadas cuando existan; si no, generar
+    // valores institucionales seguros para el primer ingreso.
+    const username = String(cuenta?.username ?? "").trim() || generateUsername(nombre, apellidoPaterno, apellidoMaternoFinal ?? "", ci);
+    const email = String(cuenta?.email ?? "").trim() || generateEmail(username);
+    const password = String(cuenta?.password ?? "") || generatePassword(username);
 
     const cuentaFinal = {
       username,
@@ -149,9 +170,12 @@ export async function createUsuario(ctx: Context): Promise<void> {
       estadoFinal = "bloqueado";
     }
 
-    // Subir foto: nombre_apellido_rolAbr_perfil.<ext>
-    const photoKey = buildPhotoKey(nombre, apellidoPaterno, rolNombre, fotoExt!);
-    const fotoUrl = await uploadImage(photoKey, fotoBytes, mimeFromExt(fotoExt!));
+    // La fotografía es opcional: el registro no debe bloquearse por MinIO.
+    let fotoUrl: string | null = null;
+    if (fotoBytes && fotoExt) {
+      const photoKey = buildPhotoKey(nombre, apellidoPaterno, rolNombre, fotoExt);
+      fotoUrl = await uploadImage(photoKey, fotoBytes, mimeFromExt(fotoExt));
+    }
 
     // deno-lint-ignore no-explicit-any
     const passwordHash: string | null = await (bcrypt as any).hash(password, 12);
@@ -160,20 +184,28 @@ export async function createUsuario(ctx: Context): Promise<void> {
       const usuarioRes = await tx.queryObject<{ id: bigint }>(`
         INSERT INTO usuarios (rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, foto_url, estado)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id
-      `, [rolId, nombre.trim(), apellidoPaterno.trim(), apellidoMaternoFinal, nacimiento, genero ?? null, fotoUrl, estadoFinal]);
+      `, [resolvedRolId, nombre.trim(), apellidoPaterno.trim(), apellidoMaternoFinal, nacimiento, genero ?? null, fotoUrl, estadoFinal]);
       const uid = usuarioRes.rows[0].id;
 
       if (cuentaFinal) {
-        await tx.queryObject(`INSERT INTO usuario_cuenta (usuario_id, username, email, password_hash) VALUES ($1, $2, $3, $4)`,
-          [uid, cuentaFinal.username, cuentaFinal.email, passwordHash]);
+        await tx.queryObject(
+          `INSERT INTO usuario_cuenta
+             (usuario_id, username, email, password_hash, primer_login,
+              datos_personales_actualizados, contacto_tutor_actualizado, password_actualizado)
+           VALUES ($1, $2, $3, $4, true, false, false, false)`,
+          [uid, cuentaFinal.username, cuentaFinal.email, passwordHash],
+        );
       }
 
       if (Array.isArray(documentos)) {
         for (let i = 0; i < documentos.length; i++) {
           const doc = documentos[i];
+          if (!doc?.tipoDoc || !String(doc.numeroDoc ?? "").trim()) continue;
           const file = documentFiles.find((f) => f.index === i);
           if (file) {
-            const docKey = buildDocKey(nombre, apellidoPaterno, rolNombre, doc.tipoDoc);
+            const nivel = datos.nivel || datos.estudiante?.nivel;
+            const grado = datos.grado || datos.estudiante?.grado;
+            const docKey = buildDocKey(nombre, apellidoPaterno, rolNombre, doc.tipoDoc, nivel, grado);
             doc.docUrl = await uploadFile(docKey, file.bytes, "application/pdf");
           }
           await tx.queryObject(`INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url) VALUES ($1, $2, $3, $4)`,
@@ -195,7 +227,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
       const hoy = new Date().toISOString().split("T")[0];
 
-      if (["estudiante", "alumno"].includes(rolNombre)) {
+      if (["estudiante", "estudiantes", "alumno", "alumnos"].includes(rolNombre)) {
         const estRes = await tx.queryObject<{ id: bigint }>(
           `INSERT INTO estudiantes (usuario_id, fecha_ingreso, estado) VALUES ($1, $2, 'activo') RETURNING id`,
           [uid, hoy]
@@ -221,11 +253,26 @@ export async function createUsuario(ctx: Context): Promise<void> {
         }
       }
 
-      if (["profesor", "maestro", "docente"].includes(rolNombre)) {
+      if (["profesor", "profesores", "maestro", "maestros", "docente"].includes(rolNombre)) {
         await tx.queryObject(
-          `INSERT INTO maestros (usuario_id, especialidad, fecha_contratacion, estado) VALUES ($1, $2, $3, 'activo')`,
-          [uid, maestro?.especialidad ?? null, maestro?.fechaContratacion ?? hoy]
+          `INSERT INTO maestros (usuario_id, especialidad, fecha_contratacion, estado, materias_configuradas)
+           VALUES ($1, $2, $3, 'activo', $4)`,
+          [uid, maestro?.especialidad ?? null, maestro?.fechaContratacion ?? hoy, Array.isArray(maestro?.materias)]
         );
+        const materiaIds = Array.isArray(maestro?.materias)
+          ? [...new Set(maestro.materias.map((value: unknown) => String(value).trim()).filter((value: string) => /^\d+$/.test(value)))]
+          : [];
+        if (materiaIds.length) {
+          await tx.queryObject(
+            `INSERT INTO maestro_materias (maestro_id, materia_id)
+             SELECT m.id, v.materia_id::bigint
+             FROM maestros m
+             CROSS JOIN UNNEST($2::bigint[]) AS v(materia_id)
+             WHERE m.usuario_id = $1
+             ON CONFLICT (maestro_id, materia_id) DO NOTHING`,
+            [uid, materiaIds],
+          );
+        }
       }
 
       if (["padre", "madre", "padres", "apoderado", "tutor"].includes(rolNombre)) {
@@ -241,7 +288,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
     // Enviar credenciales institucionales por correo electrónico (Brevo)
     if (cuentaFinal) {
       const targetEmail = Array.isArray(contactos)
-        ? contactos.find((c: any) => c.tipo?.toLowerCase() === "email" || c.tipo?.toLowerCase() === "correo")?.contenido
+        ? contactos.find((c: { tipo?: string; contenido?: string }) => c.tipo?.toLowerCase() === "email" || c.tipo?.toLowerCase() === "correo")?.contenido
         : undefined;
 
       sendWelcomeCredentialsEmail({
@@ -256,7 +303,14 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
     ctx.response.status = 201;
     broadcastUserEvent({ action: "created", userId: String(usuarioId) });
-    ctx.response.body = serialize({ message: "Usuario creado correctamente", id: usuarioId, username: cuentaFinal?.username ?? null, email: cuentaFinal?.email ?? null, fotoUrl: await resolveMediaUrl(fotoUrl) });
+    ctx.response.body = serialize({
+      message: "Usuario creado correctamente",
+      id: usuarioId,
+      username: cuentaFinal?.username ?? null,
+      email: cuentaFinal?.email ?? null,
+      primerLogin: true,
+      fotoUrl: fotoUrl ? await resolveMediaUrl(fotoUrl) : null,
+    });
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
     const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();

@@ -50,7 +50,7 @@ public sealed class UsuariosController : ControllerBase
     ///
     /// Para multipart, enviar:
     ///   - datos: JSON string con los campos del usuario
-    ///   - foto:  archivo PNG/JPG obligatorio (se valida y sube a MinIO)
+    ///   - foto:  archivo PNG/JPG opcional (si se envía, se valida y sube a MinIO)
     ///   - doc_file_{index}: archivo PDF opcional para cada documento
     /// </summary>
     [HttpPost]

@@ -27,6 +27,27 @@ import {
   updateMateria,
 } from "./Controller/materias/materias.ts";
 import { checkAndDeactivateExpiredPeriodos } from "./services/periodo.service.ts";
+import {
+  activatePeriodo,
+  deactivatePeriodo,
+  clonePeriodo,
+  generatePaymentPlan,
+  generatePaymentPlanForPeriod,
+  generateSchedule,
+  generateScheduleForPeriod,
+  generateStructure,
+  getAulas,
+  getPeriodoEstado,
+  getPeriodoValidacion,
+  listPeriodoTrimestres,
+  listHorarios,
+  listMallas,
+  listPlanes,
+  listTrimestres,
+  postAula,
+  postHorarioManual,
+  postMalla,
+} from "./Controller/gestion/gestion.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8881);
 
@@ -51,6 +72,37 @@ app.use(async (ctx, next) => {
 rt.post("/webhook", handleWebhookEvent);
 
 // ── Rutas Académicas Core ──────────────────────────────────────────────────
+// Configuración, clonación y activación de la gestión
+rt.post("/periodos/:id/clonar", requireAuth(ROLES_GESTION), clonePeriodo);
+rt.post("/periodos/:id/clone", requireAuth(ROLES_GESTION), clonePeriodo);
+rt.post("/periodos/:id/generar-estructura", requireAuth(ROLES_GESTION), generateStructure);
+rt.post("/periodos/:id/estructura/generar", requireAuth(ROLES_GESTION), generateStructure);
+rt.post("/periodos/:id/generar-cursos", requireAuth(ROLES_GESTION), generateStructure);
+rt.post("/periodos/:id/generar-horarios", requireAuth(ROLES_GESTION), generateSchedule);
+rt.post("/periodos/:id/horarios/generar", requireAuth(ROLES_GESTION), generateSchedule);
+rt.post("/periodos/:id/horarios/manual", requireAuth(ROLES_GESTION), postHorarioManual);
+rt.post("/periodos/:id/generar-plan-pagos", requireAuth(ROLES_GESTION), generatePaymentPlan);
+rt.post("/periodos/:id/plan-pagos/generar", requireAuth(ROLES_GESTION), generatePaymentPlan);
+rt.post("/periodos/:id/activar", requireAuth(ROLES_GESTION), activatePeriodo);
+rt.post("/periodos/:id/desactivar", requireAuth(ROLES_GESTION), deactivatePeriodo);
+rt.get("/periodos/:id/estado", requireAuth(ROLES_LECTURA), getPeriodoEstado);
+rt.get("/periodos/:id/readiness", requireAuth(ROLES_LECTURA), getPeriodoEstado);
+rt.get("/periodos/:id/validacion", requireAuth(ROLES_LECTURA), getPeriodoValidacion);
+rt.get("/periodos/:id/validar", requireAuth(ROLES_LECTURA), getPeriodoValidacion);
+rt.get("/periodos/:id/trimestres", requireAuth(ROLES_LECTURA), listPeriodoTrimestres);
+
+// Listados de configuración de la gestión
+rt.get("/trimestres", requireAuth(ROLES_LECTURA), listTrimestres);
+rt.get("/horarios", requireAuth(ROLES_LECTURA), listHorarios);
+rt.post("/horarios/generar", requireAuth(ROLES_GESTION), generateScheduleForPeriod);
+rt.post("/horarios/manual", requireAuth(ROLES_GESTION), postHorarioManual);
+rt.get("/mallas-curriculares", requireAuth(ROLES_LECTURA), listMallas);
+rt.post("/mallas-curriculares", requireAuth(ROLES_GESTION), postMalla);
+rt.get("/planes-pago", requireAuth(ROLES_LECTURA), listPlanes);
+rt.post("/planes-pago/generar", requireAuth(ROLES_GESTION), generatePaymentPlanForPeriod);
+rt.get("/aulas", requireAuth(ROLES_LECTURA), getAulas);
+rt.post("/aulas", requireAuth(ROLES_GESTION), postAula);
+
 // Periodos Académicos (Apertura y Cierre de Años Lectivos)
 rt.get("/periodos", requireAuth(ROLES_LECTURA), listPeriodos);
 rt.get("/periodos/:id", requireAuth(ROLES_LECTURA), getPeriodo);
@@ -79,7 +131,7 @@ rt.get("/health", (ctx) => {
     service: "ServiceAcademic",
     timestamp: new Date().toISOString(),
     version: "1.1.0",
-    features: ["Periodos Academicos", "Cursos y Niveles", "Materias Inmutables", "Apertura y Cierre Anual"],
+    features: ["Gestion academica", "Trimestres", "Mallas curriculares", "Turnos y aulas", "Horarios", "Planes de pago", "Activacion controlada"],
   };
 });
 
@@ -96,6 +148,10 @@ console.log(`   POST   /webhook`);
 console.log(`   GET    /periodos`);
 console.log(`   GET    /cursos`);
 console.log(`   GET    /materias`);
+console.log(`   POST   /periodos/:id/generar-estructura`);
+console.log(`   POST   /periodos/:id/generar-horarios`);
+console.log(`   POST   /periodos/:id/generar-plan-pagos`);
+console.log(`   POST   /periodos/:id/activar`);
 console.log(`   GET    /health`);
 
 // Tarea diaria: verificar periodos expirados y cambiar activo a false

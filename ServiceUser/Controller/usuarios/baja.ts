@@ -33,11 +33,11 @@ export async function bajaUsuario(
     const targetRole = userRes.rows[0].rol.trim().toLowerCase();
     if (
       ctx.state.auth?.role === "control" &&
-      !["profesor", "maestro", "docente", "estudiante"].includes(targetRole)
+      !["profesor", "profesores", "maestro", "maestros", "docente", "estudiante", "estudiantes", "alumno", "alumnos", "apoderado", "tutor", "control", "administrativo", "gerencia", "secretaria", "secretario", "editor"].includes(targetRole)
     ) {
       ctx.response.status = 403;
       ctx.response.body = {
-        error: "Control solo puede gestionar profesores y estudiantes",
+        error: "Control puede gestionar docentes, estudiantes y personal de control",
       };
       return;
     }
@@ -47,12 +47,12 @@ export async function bajaUsuario(
       [id],
     );
 
-    if (["profesor", "maestro", "docente"].includes(targetRole)) {
+    if (["profesor", "profesores", "maestro", "maestros", "docente"].includes(targetRole)) {
       await query(
         `UPDATE maestros SET estado = 'inactivo', fecha_actualizacion = NOW() WHERE usuario_id = $1`,
         [id],
       );
-    } else if (["estudiante", "alumno"].includes(targetRole)) {
+    } else if (["estudiante", "estudiantes", "alumno", "alumnos"].includes(targetRole)) {
       await query(
         `UPDATE estudiantes SET estado = 'retirado', fecha_actualizacion = NOW() WHERE usuario_id = $1`,
         [id],

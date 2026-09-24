@@ -25,7 +25,7 @@ import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import type { CreateUsuarioPayload, UpdateUsuarioPayload, Usuario, UsuarioDoc } from '../../../types';
 
 const empty: CreateUsuarioPayload = {
-  rolId: '1', nombre: '', apellidoPaterno: '', apellidoMaterno: '', nacimiento: '',
+  rolId: '1', rol: 'director', nombre: '', apellidoPaterno: '', apellidoMaterno: '', nacimiento: '',
   cuenta: { username: '', email: '', password: '' },
   documentos: [{ tipoDoc: 'DNI', numeroDoc: '' }],
 };
@@ -89,9 +89,6 @@ export function UserManagementScreen() {
 
   const save = async () => {
     if (!validate()) return;
-    if (!editing && !fotoUri) {
-      Alert.alert('Foto requerida', 'Debe subir la foto de perfil (PNG/JPG).'); return;
-    }
 
     const ciDoc = documents.find((d) => d.tipoDoc.toUpperCase() === 'CI');
     const hasCiFile = Boolean(ciDoc?.fileUri || ciDoc?.docUrl);
@@ -255,7 +252,7 @@ export function UserManagementScreen() {
             </View>
 
             <ScrollView className="p-5 max-h-[75vh]" contentContainerStyle={{ gap: 16 }}>
-              <ProfilePhotoPicker photoUri={fotoUri} onChange={setFotoUri} required={!editing} />
+              <ProfilePhotoPicker photoUri={fotoUri} onChange={setFotoUri} required={false} />
 
               <View className="flex-row flex-wrap gap-2">
                 {([['nombre', 'Nombre *'], ['apellidoPaterno', 'Apellido paterno *'], ['apellidoMaterno', 'Apellido materno *']] as const).map(([key, label]) => (

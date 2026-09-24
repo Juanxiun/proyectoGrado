@@ -3,7 +3,7 @@ import { brevo, EMAIL_FROM } from "../config/send.conf.ts";
 import { generate2FABentoEmailHtml } from "../utils/emailTemplate.ts";
 import { DeviceInfo, LocationInfo } from "../utils/deviceDetector.ts";
 
-const ROLES_2FA = ["director", "maestros", "maestro", "profesor", "docente", "control", "gerencia"];
+const ROLES_2FA = ["director", "administrador", "admin", "maestros", "maestro", "profesor", "docente", "control", "gerencia", "secretaria", "secretario", "administrativo", "editor"];
 function generateCode(): string {
   const bytes = new Uint32Array(1);
   crypto.getRandomValues(bytes);

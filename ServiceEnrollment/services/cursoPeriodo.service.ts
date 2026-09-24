@@ -1,3 +1,4 @@
+import type { Transaction } from "@db/postgres";
 import { query, sTransaction } from "../connects/Database/transaction.ts";
 import {
   CreateCursoPeriodoInput,
@@ -15,6 +16,9 @@ interface CursoPeriodoRow {
   id: bigint;
   cursoId: bigint;
   periodoId: bigint;
+  turnoId?: bigint | null;
+  turnoCodigo?: string;
+  turnoNombre?: string;
   capacidadMaxima: number;
   estado: EstadoCursoPeriodo;
   nivel?: string;
@@ -26,7 +30,10 @@ interface CursoPeriodoRow {
   periodoNombre?: string;
   fechaInicio?: Date | string;
   fechaFin?: Date | string;
+  inicioGestion?: Date | string;
+  finGestion?: Date | string;
   periodoActivo?: boolean;
+  periodoEstado?: string;
   totalInscritos?: string | number;
 }
 
@@ -35,6 +42,9 @@ function mapCursoPeriodo(row: CursoPeriodoRow): CursoPeriodo {
     id: toId(row.id),
     cursoId: toId(row.cursoId),
     periodoId: toId(row.periodoId),
+    turnoId: row.turnoId ? toId(row.turnoId) : null,
+    turnoCodigo: row.turnoCodigo,
+    turnoNombre: row.turnoNombre,
     capacidadMaxima: Number(row.capacidadMaxima),
     estado: row.estado,
     totalInscritos: Number(row.totalInscritos ?? 0),
@@ -55,12 +65,60 @@ function mapCursoPeriodo(row: CursoPeriodoRow): CursoPeriodo {
         nombre: row.periodoNombre,
         fechaInicio: asDateString(row.fechaInicio),
         fechaFin: asDateString(row.fechaFin),
+        inicioGestion: asDateString(row.inicioGestion ?? row.fechaInicio),
+        finGestion: asDateString(row.finGestion ?? row.fechaFin),
         activo: Boolean(row.periodoActivo),
+        estado: row.periodoEstado,
       }
       : null,
   });
 }
 
+async function assertEditableCursoPeriodo(id: string): Promise<{ periodoId: string }> {
+  const result = await query<{ periodoId: bigint; periodoActivo: boolean; periodoEstado: string; cursoEstado: string }>(
+    `SELECT cp.periodo_id AS "periodoId", p.activo AS "periodoActivo",
+       p.estado AS "periodoEstado", cp.estado AS "cursoEstado"
+     FROM cursos_periodo cp
+     JOIN periodos_academicos p ON p.id = cp.periodo_id
+     WHERE cp.id = $1`,
+    [id],
+  );
+  if (!result.rows.length) throw new HttpError(404, `Curso del periodo id=${id} no encontrado`);
+  const row = result.rows[0];
+  if (row.periodoActivo || !["configuracion", "borrador"].includes(row.periodoEstado) || row.cursoEstado !== "activo") {
+    throw new HttpError(409, "El curso pertenece a una gestión que ya no puede editarse");
+  }
+  return { periodoId: toId(row.periodoId) };
+}
+
+async function assertEditablePeriodoTx(tx: Transaction, periodoId: string): Promise<void> {
+  const result = await tx.queryObject<{ activo: boolean; estado: string }>(
+    `SELECT activo, estado FROM periodos_academicos WHERE id = $1 FOR UPDATE`,
+    [periodoId],
+  );
+  if (!result.rows.length || result.rows[0].activo || !["configuracion", "borrador"].includes(result.rows[0].estado)) {
+    throw new HttpError(409, "La gestión ya no puede editarse");
+  }
+}
+
+async function assertEditableCursoPeriodoTx(tx: Transaction, id: string): Promise<string> {
+  const result = await tx.queryObject<{ periodoId: bigint; periodoActivo: boolean; periodoEstado: string; estado: string; cursoActivo: boolean }>(
+    `SELECT cp.periodo_id AS "periodoId", p.activo AS "periodoActivo",
+       p.estado AS "periodoEstado", cp.estado, c.activo AS "cursoActivo"
+     FROM cursos_periodo cp
+     JOIN cursos c ON c.id = cp.curso_id
+     JOIN periodos_academicos p ON p.id = cp.periodo_id
+     WHERE cp.id = $1
+     FOR UPDATE OF p, cp`,
+    [id],
+  );
+  if (!result.rows.length) throw new HttpError(404, `Curso del periodo id=${id} no encontrado`);
+  const row = result.rows[0];
+  if (row.periodoActivo || !["configuracion", "borrador"].includes(row.periodoEstado) || row.estado !== "activo" || !row.cursoActivo) {
+    throw new HttpError(409, "El curso pertenece a una gestión que ya no puede editarse");
+  }
+  return toId(row.periodoId);
+}
 function parseEstado(value: unknown): EstadoCursoPeriodo {
   const estado = String(value ?? "").trim().toLowerCase() as EstadoCursoPeriodo;
   if (!ESTADOS_CURSO_PERIODO.includes(estado)) {
@@ -74,6 +132,9 @@ const SELECT = `
     cp.id,
     cp.curso_id AS "cursoId",
     cp.periodo_id AS "periodoId",
+    cp.turno_id AS "turnoId",
+    t.codigo AS "turnoCodigo",
+    t.nombre AS "turnoNombre",
     cp.capacidad_maxima AS "capacidadMaxima",
     cp.estado,
     c.nivel,
@@ -85,10 +146,14 @@ const SELECT = `
     p.nombre AS "periodoNombre",
     p.fecha_inicio AS "fechaInicio",
     p.fecha_fin AS "fechaFin",
+    p.inicio_gestion AS "inicioGestion",
+    p.fin_gestion AS "finGestion",
     p.activo AS "periodoActivo",
+    p.estado AS "periodoEstado",
     (SELECT COUNT(*) FROM inscripciones i WHERE i.curso_periodo_id = cp.id AND i.estado = 'activo') AS "totalInscritos"
   FROM cursos_periodo cp
   JOIN cursos c ON c.id = cp.curso_id
+  JOIN turnos t ON t.id = cp.turno_id
   JOIN periodos_academicos p ON p.id = cp.periodo_id
 `;
 
@@ -166,12 +231,15 @@ export async function createCursoPeriodo(input: CreateCursoPeriodoInput): Promis
   if (!/^\d+$/.test(periodoId)) throw new HttpError(400, "periodoId debe ser numérico");
 
   const [cursoRes, periodoRes] = await Promise.all([
-    query<{ id: bigint; capacidad_maxima: number }>(`SELECT id, capacidad_maxima FROM cursos WHERE id = $1`, [cursoId]),
-    query<{ id: bigint; activo: boolean }>(`SELECT id, activo FROM periodos_academicos WHERE id = $1`, [periodoId]),
+    query<{ id: bigint; capacidad_maxima: number; activo: boolean }>(`SELECT id, capacidad_maxima, activo FROM cursos WHERE id = $1`, [cursoId]),
+    query<{ id: bigint; activo: boolean; estado: string }>(`SELECT id, activo, estado FROM periodos_academicos WHERE id = $1`, [periodoId]),
   ]);
 
-  if (cursoRes.rows.length === 0) throw new HttpError(404, `Curso id=${cursoId} no encontrado`);
+  if (cursoRes.rows.length === 0 || !cursoRes.rows[0].activo) throw new HttpError(404, `Curso id=${cursoId} no encontrado o inactivo`);
   if (periodoRes.rows.length === 0) throw new HttpError(404, `Periodo id=${periodoId} no encontrado`);
+  if (periodoRes.rows[0].activo || !["configuracion", "borrador"].includes(periodoRes.rows[0].estado)) {
+    throw new HttpError(409, "Los cursos se crean únicamente durante la configuración de la gestión");
+  }
 
   const capacidad = Number(input.capacidadMaxima ?? cursoRes.rows[0].capacidad_maxima);
   if (!Number.isInteger(capacidad) || capacidad < 1) {
@@ -180,21 +248,44 @@ export async function createCursoPeriodo(input: CreateCursoPeriodoInput): Promis
 
   const estado = input.estado ? parseEstado(input.estado) : "activo";
 
+  const turnoId = input.turnoId ? String(input.turnoId) : null;
+  if (turnoId && !/^\d+$/.test(turnoId)) throw new HttpError(400, "turnoId debe ser numérico");
+  let effectiveTurnoId = turnoId;
+  await query(
+    `INSERT INTO turnos (codigo, nombre, hora_inicio, hora_fin, receso_inicio, receso_fin)
+     VALUES
+       ('manana', 'Turno Mañana', '07:00', '12:30', '09:30', '10:00'),
+       ('tarde', 'Turno Tarde', '14:00', '18:30', '16:00', '16:30')
+     ON CONFLICT (codigo) DO UPDATE SET nombre = EXCLUDED.nombre`,
+  );
+  if (!effectiveTurnoId) {
+    const defaultTurno = await query<{ id: bigint }>(`SELECT id FROM turnos WHERE codigo = 'manana' LIMIT 1`);
+    effectiveTurnoId = defaultTurno.rows[0] ? toId(defaultTurno.rows[0].id) : null;
+  }
+  if (effectiveTurnoId) {
+    const turno = await query<{ id: bigint }>(`SELECT id FROM turnos WHERE id = $1 AND activo = true`, [effectiveTurnoId]);
+    if (!turno.rows.length) throw new HttpError(400, "El turno seleccionado no está activo");
+  }
   try {
-    const res = await query<{ id: bigint }>(
-      `INSERT INTO cursos_periodo (curso_id, periodo_id, capacidad_maxima, estado)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id`,
-      [cursoId, periodoId, capacidad, estado],
-    );
-    return await getCursoPeriodoById(toId(res.rows[0].id));
+    const newId = await sTransaction(async (tx) => {
+      await assertEditablePeriodoTx(tx, periodoId);
+      const res = await tx.queryObject<{ id: bigint }>(
+        `INSERT INTO cursos_periodo (curso_id, periodo_id, capacidad_maxima, turno_id, estado)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        [cursoId, periodoId, capacidad, effectiveTurnoId, estado],
+      );
+      await tx.queryObject(`UPDATE periodos_academicos SET horarios_generados = false WHERE id = $1`, [periodoId]);
+      return toId(res.rows[0].id);
+    });
+    return await getCursoPeriodoById(newId);
   } catch (err) {
     throw mapDbError(err, "Error al asociar curso con periodo académico");
   }
 }
 
 export async function updateCursoPeriodo(id: string, input: UpdateCursoPeriodoInput): Promise<CursoPeriodo> {
-  await getCursoPeriodoById(id);
+  await assertEditableCursoPeriodo(id);
   const fields: string[] = [];
   const params: unknown[] = [];
   let idx = 1;
@@ -207,6 +298,14 @@ export async function updateCursoPeriodo(id: string, input: UpdateCursoPeriodoIn
     fields.push(`capacidad_maxima = $${idx++}`);
     params.push(capacidad);
   }
+  if (input.turnoId !== undefined) {
+    const turnoId = String(input.turnoId ?? "").trim();
+    if (!/^\d+$/.test(turnoId)) throw new HttpError(400, "turnoId debe ser numérico");
+    const turno = await query<{ id: bigint }>(`SELECT id FROM turnos WHERE id = $1 AND activo = true`, [turnoId]);
+    if (!turno.rows.length) throw new HttpError(400, "El turno seleccionado no está activo");
+    fields.push(`turno_id = $${idx++}`);
+    params.push(turnoId);
+  }
   if (input.estado !== undefined) {
     fields.push(`estado = $${idx++}`);
     params.push(parseEstado(input.estado));
@@ -215,8 +314,16 @@ export async function updateCursoPeriodo(id: string, input: UpdateCursoPeriodoIn
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");
 
   try {
-    params.push(id);
-    await query(`UPDATE cursos_periodo SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+    await sTransaction(async (tx) => {
+      await assertEditableCursoPeriodoTx(tx, id);
+      params.push(id);
+      await tx.queryObject(`UPDATE cursos_periodo SET ${fields.join(", ")} WHERE id = $${idx}`, params);
+      await tx.queryObject(
+        `UPDATE periodos_academicos SET horarios_generados = false
+         WHERE id = (SELECT periodo_id FROM cursos_periodo WHERE id = $1)`,
+        [id],
+      );
+    });
     return await getCursoPeriodoById(id);
   } catch (err) {
     throw mapDbError(err, "Error al actualizar curso del periodo");
@@ -224,9 +331,14 @@ export async function updateCursoPeriodo(id: string, input: UpdateCursoPeriodoIn
 }
 
 export async function deleteCursoPeriodo(id: string): Promise<void> {
-  await getCursoPeriodoById(id);
+  const current = await getCursoPeriodoById(id);
+  await assertEditableCursoPeriodo(id);
   try {
-    await query(`DELETE FROM cursos_periodo WHERE id = $1`, [id]);
+    await sTransaction(async (tx) => {
+      await assertEditableCursoPeriodoTx(tx, id);
+      await tx.queryObject(`DELETE FROM cursos_periodo WHERE id = $1`, [id]);
+      await tx.queryObject(`UPDATE periodos_academicos SET horarios_generados = false WHERE id = $1`, [current.periodoId]);
+    });
   } catch (err) {
     throw mapDbError(err, "Error al eliminar curso del periodo: existen inscripciones o asignaciones asociadas");
   }

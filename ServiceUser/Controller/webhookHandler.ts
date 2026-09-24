@@ -4,6 +4,7 @@ import { getUsuario, getUsuarios } from "./usuarios/views.ts";
 import { createUsuario } from "./usuarios/create.ts";
 import { updateUsuario } from "./usuarios/update.ts";
 import { deleteUsuario } from "./usuarios/delete.ts";
+import { extractBearerToken, getClaimsFromToken } from "../middleware/auth.ts";
 
 export interface WebhookEventPayload {
   eventId: string;
@@ -14,11 +15,44 @@ export interface WebhookEventPayload {
   payload?: any;
 }
 
+function isAllowedCallbackUrl(value: unknown): boolean {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const configured = [
+      Deno.env.get("GATEWAY_PUBLIC_URL"),
+      Deno.env.get("GATEWAY_CALLBACK_ORIGIN"),
+      Deno.env.get("PUBLIC_URL"),
+      "http://localhost:5141",
+      "http://127.0.0.1:5141",
+      "http://gateway:5141",
+      "http://restapi:5141",
+    ].filter((origin): origin is string => Boolean(origin));
+    return configured.some((allowed) => new URL(allowed).origin === url.origin);
+  } catch {
+    return false;
+  }
+}
+
+async function sendCallback(callbackUrl: string, eventId: string, status: number, data: unknown, error: string | null): Promise<void> {
+  try {
+    await fetch(callbackUrl, {
+      method: "POST",
+      redirect: "error",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId, status, data, error }),
+    });
+  } catch (callbackError) {
+    console.error(`[WebhookHandler] No se pudo enviar Callback a ${callbackUrl}:`, callbackError);
+  }
+}
+
 export async function handleWebhookEvent(ctx: Context): Promise<void> {
   let body: WebhookEventPayload;
   try {
     body = await ctx.request.body.json();
-  } catch (err) {
+  } catch (_err) {
     ctx.response.status = 400;
     ctx.response.body = { error: "Cuerpo de Webhook inválido" };
     return;
@@ -29,6 +63,11 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
   if (!eventId || !eventType || !callbackUrl) {
     ctx.response.status = 400;
     ctx.response.body = { error: "eventId, eventType y callbackUrl son requeridos" };
+    return;
+  }
+  if (!isAllowedCallbackUrl(callbackUrl)) {
+    ctx.response.status = 400;
+    ctx.response.body = { error: "callbackUrl no permitido" };
     return;
   }
 
@@ -44,9 +83,45 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
     let resultError: string | null = null;
 
     try {
+      const isLoginEvent = eventType === "auth.login" || eventType === "login";
+      const token = extractBearerToken(
+        payload?.authToken ??
+          payload?.authorization ??
+          payload?.token ??
+          payload?.headers?.Authorization ??
+          payload?.headers?.authorization,
+      );
+      const claims = isLoginEvent ? null : token ? await getClaimsFromToken(token) : null;
+      if (!isLoginEvent && !claims) {
+        resultStatus = 401;
+        resultError = "Token inválido, expirado o sesión inactiva";
+        await sendCallback(callbackUrl, eventId, resultStatus, resultData, resultError);
+        return;
+      }
+
+      if (
+        (eventType === "usuarios.list" || eventType === "usuarios:list" || eventType === "getUsuarios") &&
+        claims && !["director", "control", "profesor"].includes(claims.role)
+      ) {
+        resultStatus = 403;
+        resultError = "No tiene permisos para listar usuarios";
+        await sendCallback(callbackUrl, eventId, resultStatus, resultData, resultError);
+        return;
+      }
+      if (
+        ["usuarios.create", "usuarios:create", "createUsuario", "usuarios.delete", "usuarios:delete", "deleteUsuario"].includes(eventType) &&
+        (!claims || !["director", "control"].includes(claims.role))
+      ) {
+        resultStatus = 403;
+        resultError = "No tiene permisos para modificar usuarios";
+        await sendCallback(callbackUrl, eventId, resultStatus, resultData, resultError);
+        return;
+      }
+
       const mockHeaders = new Headers();
       const cType = payload?.contentType || "application/json";
       mockHeaders.set("content-type", cType);
+      if (token) mockHeaders.set("Authorization", `Bearer ${token}`);
 
       // Crear un contexto 
       // deno-lint-ignore no-explicit-any
@@ -74,6 +149,7 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
           id: String(payload?.id ?? payload?.params?.id ?? ""),
           ...((typeof payload === "object" && payload !== null) ? payload : {}),
         },
+        state: { auth: claims },
         response: {
           status: 200,
           body: null,
@@ -130,21 +206,7 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
       resultError = err instanceof Error ? err.message : "Error interno del backend";
     }
 
-    // Enviar Callback vía HTTP POST a callbackUrl del RestApi
-    try {
-      await fetch(callbackUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId,
-          status: resultStatus,
-          data: resultData,
-          error: resultError,
-        }),
-      });
-    } catch (cbErr) {
-      console.error(`[WebhookHandler] No se pudo enviar Callback a ${callbackUrl}:`, cbErr);
-    }
+    await sendCallback(callbackUrl, eventId, resultStatus, resultData, resultError);
   })();
 }
 
@@ -153,7 +215,11 @@ function buildQueryString(payload: any): string {
   if (!payload || typeof payload !== "object") return "";
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(payload)) {
-    if (value !== undefined && value !== null && key !== "params") {
+    if (
+      value !== undefined &&
+      value !== null &&
+      !["params", "authToken", "authorization", "token", "headers", "contentType", "datos"].includes(key)
+    ) {
       params.set(key, String(value));
     }
   }

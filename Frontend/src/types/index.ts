@@ -34,6 +34,11 @@ export interface AuthUsuario {
   maestroId?: string;
   cursoPeriodoId?: string;
   debeCambiarPassword?: boolean;
+  debeCompletarPerfil?: boolean;
+  primerLogin?: boolean;
+  datosPersonalesActualizados?: boolean;
+  contactoTutorActualizado?: boolean;
+  passwordActualizado?: boolean;
 }
 
 export interface LoginResponse {
@@ -61,6 +66,10 @@ export interface UsuarioCuenta {
   username: string;
   email: string;
   ultimoLogin?: string | null;
+  primerLogin?: boolean;
+  datosPersonalesActualizados?: boolean;
+  contactoTutorActualizado?: boolean;
+  passwordActualizado?: boolean;
 }
 
 export interface UsuarioDoc {
@@ -117,11 +126,17 @@ export interface Usuario {
   username?: string;
   email?: string;
   ultimoLogin?: string | null;
+  primerLogin?: boolean;
+  datosPersonalesActualizados?: boolean;
+  contactoTutorActualizado?: boolean;
+  passwordActualizado?: boolean;
   cuenta?: UsuarioCuenta | null;
   documentos?: UsuarioDoc[];
   direccion?: UsuarioDir | null;
   contactos?: UsuarioCont[];
   apoderados?: UsuarioApoderado[];
+  materias?: Array<{ id: string; codigo?: string; nombre: string }>;
+  materiasConfigurado?: boolean;
 }
 
 export interface UsuariosListResponse {
@@ -156,11 +171,15 @@ export interface UpdateUsuarioPayload {
   documentos?: UsuarioDoc[];
   direccion?: UsuarioDir;
   contactos?: UsuarioCont[];
-  maestro?: { especialidad?: string };
+  maestro?: { especialidad?: string; materias?: string[] };
+  apoderado?: { nombre?: string; apellidoPaterno?: string; apellidoMaterno?: string; ci?: string; celular?: string; telefono?: string };
+  parentesco?: string;
 }
 
 export interface CreateUsuarioPayload {
-  rolId: string;
+  /** ID legado; el backend también acepta el nombre estable del rol. */
+  rolId?: string;
+  rol?: string;
   nombre: string;
   apellidoPaterno: string;
   apellidoMaterno?: string;
@@ -171,7 +190,7 @@ export interface CreateUsuarioPayload {
   documentos?: UsuarioDoc[];
   direccion?: UsuarioDir;
   contactos?: UsuarioCont[];
-  maestro?: { especialidad?: string; fechaContratacion?: string };
+  maestro?: { especialidad?: string; fechaContratacion?: string; materias?: Array<string | number> };
   apoderadoId?: string;
   parentesco?: string;
 }
@@ -179,4 +198,8 @@ export interface CreateUsuarioPayload {
 export interface UpdateUsuarioResponse {
   message: string;
   fotoUrl: string | null;
+  onboarding?: {
+    datosPersonalesActualizados: boolean;
+    contactoTutorActualizado: boolean;
+  };
 }

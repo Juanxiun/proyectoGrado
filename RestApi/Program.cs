@@ -61,6 +61,10 @@ app.Use(async (context, next) =>
             .Trim('/')
             .Split('/', StringSplitOptions.RemoveEmptyEntries)
             .ElementAtOrDefault(1) ?? "unknown";
+        if (context.Request.Path.Value?.Contains("/horarios/", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            resource = "horarios";
+        }
         var hub = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<AppHub>>();
         await hub.Clients.All.SendAsync("DataChanged", new
         {

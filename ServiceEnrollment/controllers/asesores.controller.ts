@@ -17,6 +17,8 @@ export async function listAsesores(ctx: Context): Promise<void> {
       cursoPeriodoId: params.get("cursoPeriodoId") ?? undefined,
       maestroId: params.get("maestroId") ?? undefined,
       periodoId: params.get("periodoId") ?? undefined,
+      viewerUserId: String(ctx.state.auth?.sub ?? ""),
+      viewerRole: String(ctx.state.auth?.role ?? ""),
     });
     respond(ctx, 200, result);
   } catch (err) {
@@ -27,7 +29,11 @@ export async function listAsesores(ctx: Context): Promise<void> {
 export async function getAsesor(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
-    respond(ctx, 200, await asesorService.getAsesorById(id));
+    respond(ctx, 200, await asesorService.getAsesorById(
+      id,
+      String(ctx.state.auth?.sub ?? ""),
+      String(ctx.state.auth?.role ?? ""),
+    ));
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al obtener asesor de curso");
   }

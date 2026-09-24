@@ -1,7 +1,47 @@
-import { Alert, Linking, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useState } from 'react';
+import { Alert, Linking, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
 import type { UsuarioDoc } from '../../../types';
+
+export const BOLIVIA_CI_EXTENSIONS = [
+  { code: 'LP', name: 'La Paz' },
+  { code: 'SC', name: 'Santa Cruz' },
+  { code: 'CB', name: 'Cochabamba' },
+  { code: 'OR', name: 'Oruro' },
+  { code: 'PT', name: 'Potosí' },
+  { code: 'TJ', name: 'Tarija' },
+  { code: 'CH', name: 'Chuquisaca' },
+  { code: 'BE', name: 'Beni' },
+  { code: 'PD', name: 'Pando' },
+  { code: '', name: 'Sin extensión' },
+] as const;
+
+export type BoliviaExtension = typeof BOLIVIA_CI_EXTENSIONS[number]['code'];
+
+/**
+ * Parsea un documento CI en número puro y extensión de departamento.
+ * Ejemplo: "8492019-LP" -> { digits: "8492019", ext: "LP" }
+ *          "8492019 LP" -> { digits: "8492019", ext: "LP" }
+ */
+export function parseCiDocument(val: string): { digits: string; ext: string } {
+  const raw = (val || '').trim();
+  if (!raw) return { digits: '', ext: '' };
+
+  const match = raw.match(/^([0-9]+)(?:[-_\s]+([a-zA-Z]{2}))?$/i);
+  if (match) {
+    const digits = match[1] || '';
+    const extFound = (match[2] || '').toUpperCase();
+    const isKnown = BOLIVIA_CI_EXTENSIONS.some((e) => e.code === extFound);
+    return { digits, ext: isKnown ? extFound : '' };
+  }
+
+  // Si tiene caracteres no numéricos al final
+  const digits = raw.replace(/[^0-9]/g, '');
+  const letters = raw.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
+  const isKnown = BOLIVIA_CI_EXTENSIONS.some((e) => e.code === letters);
+  return { digits, ext: isKnown ? letters : '' };
+}
 
 interface DocumentInputProps {
   documents: UsuarioDoc[];
@@ -21,6 +61,8 @@ export function DocumentInput({
   showRequiredBadge = false,
   fieldErrors = {},
 }: DocumentInputProps) {
+  const [activeExtModalIndex, setActiveExtModalIndex] = useState<number | null>(null);
+
   const isCriticalDoc = (tipoDoc: string) => {
     const t = (tipoDoc || '').trim().toUpperCase();
     return t === 'CI' || requiredTypes.some((rt) => rt.trim().toUpperCase() === t);
@@ -70,6 +112,23 @@ export function DocumentInput({
     const newDocs = [...documents];
     newDocs[index] = { ...newDocs[index], numeroDoc };
     onChange(newDocs);
+  };
+
+  const updateCiDigits = (index: number, newDigitsRaw: string) => {
+    // Restricción estricta: sólo números en el CI
+    const digitsOnly = newDigitsRaw.replace(/[^0-9]/g, '');
+    const currentDoc = documents[index];
+    const { ext } = parseCiDocument(currentDoc?.numeroDoc || '');
+    const combined = ext ? `${digitsOnly}-${ext}` : digitsOnly;
+    updateNumeroDoc(index, combined);
+  };
+
+  const updateCiExtension = (index: number, newExt: string) => {
+    const currentDoc = documents[index];
+    const { digits } = parseCiDocument(currentDoc?.numeroDoc || '');
+    const combined = newExt ? `${digits}-${newExt}` : digits;
+    updateNumeroDoc(index, combined);
+    setActiveExtModalIndex(null);
   };
 
   const fileLabel = (doc: UsuarioDoc) => {
@@ -132,6 +191,9 @@ export function DocumentInput({
         const label = fileLabel(doc);
         const hasFile = Boolean(doc.fileUri || doc.docUrl);
         const critical = isCriticalDoc(doc.tipoDoc);
+        const isCi = (doc.tipoDoc || '').trim().toUpperCase() === 'CI';
+        const isRude = (doc.tipoDoc || '').trim().toUpperCase() === 'RUDE';
+        const { digits, ext } = isCi ? parseCiDocument(doc.numeroDoc) : { digits: doc.numeroDoc, ext: '' };
 
         return (
           <View
@@ -146,7 +208,7 @@ export function DocumentInput({
           >
             {/* Fila con inputs y botones */}
             <View className="flex-row items-center gap-2">
-              <View className="w-[120px]">
+              <View className="w-[100px] md:w-[120px]">
                 <TextInput
                   value={doc.tipoDoc}
                   onChangeText={(v) => updateTipoDoc(idx, v)}
@@ -155,19 +217,48 @@ export function DocumentInput({
                 />
               </View>
 
-              <View className="flex-1">
-                <TextInput
-                  value={doc.numeroDoc}
-                  onChangeText={(v) => updateNumeroDoc(idx, v)}
-                  placeholder="Número / Código *"
-                  className="bg-gray-100 rounded-lg px-2.5 py-2 text-xs text-gray-800 border border-gray-200"
-                />
-                {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`] && (
-                  <Text className="text-xs text-red-600 mt-1">
-                    {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`]}
-                  </Text>
-                )}
-              </View>
+              {isCi ? (
+                /* CI con input de solo números + selector de extensión por departamento de Bolivia */
+                <View className="flex-1 flex-row items-center gap-1.5">
+                  <TextInput
+                    value={digits}
+                    onChangeText={(v) => updateCiDigits(idx, v)}
+                    placeholder="Número de CI (sólo dígitos) *"
+                    keyboardType="numeric"
+                    className="flex-1 bg-gray-100 rounded-lg px-2.5 py-2 text-xs text-gray-800 border border-gray-200 font-mono"
+                  />
+                  <TouchableOpacity
+                    onPress={() => setActiveExtModalIndex(idx)}
+                    className="bg-maroon/10 border border-maroon/30 rounded-lg px-2 py-2 flex-row items-center gap-1"
+                  >
+                    <Text className="text-xs font-bold text-maroon">
+                      {ext ? `Ext: ${ext}` : 'Ext: Sel.'}
+                    </Text>
+                    <Ionicons name="chevron-down" size={13} color="#801529" />
+                  </TouchableOpacity>
+                </View>
+              ) : isRude ? (
+                /* RUDE con input sólo números */
+                <View className="flex-1">
+                  <TextInput
+                    value={doc.numeroDoc}
+                    onChangeText={(v) => updateNumeroDoc(idx, v.replace(/[^0-9]/g, ''))}
+                    placeholder="Código RUDE (sólo números) *"
+                    keyboardType="numeric"
+                    className="bg-gray-100 rounded-lg px-2.5 py-2 text-xs text-gray-800 border border-gray-200 font-mono"
+                  />
+                </View>
+              ) : (
+                /* Input estándar para otros documentos */
+                <View className="flex-1">
+                  <TextInput
+                    value={doc.numeroDoc}
+                    onChangeText={(v) => updateNumeroDoc(idx, v)}
+                    placeholder="Número / Código *"
+                    className="bg-gray-100 rounded-lg px-2.5 py-2 text-xs text-gray-800 border border-gray-200"
+                  />
+                </View>
+              )}
 
               {/* Botón selector de archivo */}
               <TouchableOpacity
@@ -203,6 +294,12 @@ export function DocumentInput({
                 />
               </TouchableOpacity>
             </View>
+
+            {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`] && (
+              <Text className="text-xs text-red-600 mt-1">
+                {fieldErrors[`documento:${doc.tipoDoc?.trim().toUpperCase()}`]}
+              </Text>
+            )}
 
             {/* Estado del archivo adjunto */}
             <View className="mt-2 pt-2 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
@@ -257,6 +354,70 @@ export function DocumentInput({
           </View>
         );
       })}
+
+      {/* Modal Selector de Extensiones Departamentales de Bolivia para CI */}
+      <Modal
+        visible={activeExtModalIndex !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setActiveExtModalIndex(null)}
+      >
+        <View className="flex-1 bg-black/60 items-center justify-center p-4">
+          <View className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl">
+            <View className="p-4 bg-maroon flex-row items-center justify-between">
+              <View>
+                <Text className="text-base font-bold text-white">Extensión de CI (Bolivia)</Text>
+                <Text className="text-xs text-white/80">Seleccione el departamento emisor</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setActiveExtModalIndex(null)}
+                className="w-7 h-7 rounded-full bg-white/20 items-center justify-center"
+              >
+                <Ionicons name="close" size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView className="p-3 max-h-80">
+              <View className="gap-1.5">
+                {BOLIVIA_CI_EXTENSIONS.map((item) => {
+                  const currentExt = activeExtModalIndex !== null
+                    ? parseCiDocument(documents[activeExtModalIndex]?.numeroDoc || '').ext
+                    : '';
+                  const isSelected = currentExt === item.code;
+
+                  return (
+                    <TouchableOpacity
+                      key={item.code || 'none'}
+                      onPress={() => {
+                        if (activeExtModalIndex !== null) {
+                          updateCiExtension(activeExtModalIndex, item.code);
+                        }
+                      }}
+                      className={`p-3 rounded-xl flex-row items-center justify-between border ${
+                        isSelected
+                          ? 'bg-maroon/10 border-maroon'
+                          : 'bg-gray-50 border-gray-200'
+                      }`}
+                    >
+                      <View className="flex-row items-center gap-2.5">
+                        <View className={`w-8 h-8 rounded-lg items-center justify-center ${isSelected ? 'bg-maroon' : 'bg-gray-200'}`}>
+                          <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                            {item.code || '—'}
+                          </Text>
+                        </View>
+                        <Text className={`text-sm font-semibold ${isSelected ? 'text-maroon' : 'text-gray-800'}`}>
+                          {item.name}
+                        </Text>
+                      </View>
+                      {isSelected && <Ionicons name="checkmark-circle" size={18} color="#801529" />}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

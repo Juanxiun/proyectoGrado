@@ -22,6 +22,26 @@ import {
   listMaterias,
   updateMateria,
 } from "./materias/materias.ts";
+import {
+  activatePeriodo,
+  deactivatePeriodo,
+  clonePeriodo,
+  generatePaymentPlan,
+  generatePaymentPlanForPeriod,
+  generateSchedule,
+  generateScheduleForPeriod,
+  generateStructure,
+  getPeriodoEstado,
+  getPeriodoValidacion,
+  getAulas,
+  listMallas,
+  listHorarios,
+  listPlanes,
+  listTrimestres,
+  postAula,
+  postHorarioManual,
+  postMalla,
+} from "./gestion/gestion.ts";
 
 export interface WebhookEventPayload {
   eventId: string;
@@ -40,6 +60,18 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "periodos.create": createPeriodo,
   "periodos.update": updatePeriodo,
   "periodos.delete": deletePeriodo,
+  "periodos.estado": getPeriodoEstado,
+  "periodos.readiness": getPeriodoEstado,
+  "periodos.validacion": getPeriodoValidacion,
+  "periodos.validar": getPeriodoValidacion,
+  "periodos.clonar": clonePeriodo,
+  "periodos.clone": clonePeriodo,
+  "periodos.generar-estructura": generateStructure,
+  "periodos.generar-cursos": generateStructure,
+  "periodos.generar-horarios": generateSchedule,
+  "periodos.generar-plan-pagos": generatePaymentPlan,
+  "periodos.activar": activatePeriodo,
+  "periodos.desactivar": deactivatePeriodo,
   "cursos.list": listCursos,
   "cursos.get": getCurso,
   "cursos.create": createCurso,
@@ -50,6 +82,16 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "materias.create": createMateria,
   "materias.update": updateMateria,
   "materias.delete": deleteMateria,
+  "mallas-curriculares.list": listMallas,
+  "mallas-curriculares.create": postMalla,
+  "horarios.list": listHorarios,
+  "horarios.generate": generateScheduleForPeriod,
+  "horarios.manual": postHorarioManual,
+  "planes-pago.list": listPlanes,
+  "planes-pago.generate": generatePaymentPlanForPeriod,
+  "trimestres.list": listTrimestres,
+  "aulas.list": getAulas,
+  "aulas.create": postAula,
 };
 
 // deno-lint-ignore no-explicit-any
@@ -60,7 +102,7 @@ function buildQueryString(payload: any): string {
     if (
       value !== undefined &&
       value !== null &&
-      !["params", "authorization", "token", "headers", "body"].includes(key)
+      !["params", "authToken", "authorization", "token", "headers", "body"].includes(key)
     ) {
       params.set(key, String(value));
     }
@@ -98,7 +140,8 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
 
     try {
       const token = extractBearerToken(
-        payload?.authorization ??
+        payload?.authToken ??
+          payload?.authorization ??
           payload?.token ??
           payload?.headers?.Authorization ??
           payload?.headers?.authorization,
@@ -111,8 +154,9 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
         return;
       }
 
-      const isWrite = /\.(create|update|delete)$/.test(eventType);
-      if (isWrite && !["director", "control"].includes(claims.role)) {
+      const isWrite = /\.(create|update|delete|clone|clonar|activar|desactivar|generate|generar-estructura|generar-cursos|generar-horarios|generar-plan-pagos)$/.test(eventType);
+      const isManagement = /^periodos\.(estado|readiness|validacion|validar|clonar|clone|activar|desactivar|generar-estructura|generar-cursos|generar-horarios|generar-plan-pagos)$/.test(eventType);
+      if ((isWrite || isManagement) && !["director", "control"].includes(claims.role)) {
         resultStatus = 403;
         resultError = "No tiene permisos para esta operación";
         await sendWebhookCallback(callbackUrl, eventId, resultStatus, null, resultError);
@@ -142,7 +186,8 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
           },
         },
         params: {
-          id: String(payload?.id ?? payload?.params?.id ?? ""),
+          id: String(payload?.id ?? payload?.params?.id ?? payload?.periodoId ?? ""),
+          periodoId: String(payload?.periodoId ?? payload?.params?.periodoId ?? ""),
         },
         state: { auth: claims },
         response: {

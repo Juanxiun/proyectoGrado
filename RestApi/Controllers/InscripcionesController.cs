@@ -16,6 +16,26 @@ public sealed class InscripcionesController : ControllerBase
     public Task<IActionResult> GetAll()
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/inscripciones{EnrollmentServiceClient.ForwardQueryString(Request)}", Request));
 
+    [HttpPost("solicitud")]
+    public Task<IActionResult> CreateRequest()
+        => Proxy(_client.ForwardAsync(HttpMethod.Post, "/inscripciones/solicitud", Request));
+
+    [HttpPost("habilitar")]
+    public Task<IActionResult> Enable()
+        => Proxy(_client.ForwardAsync(HttpMethod.Post, "/inscripciones/habilitar", Request));
+
+    [HttpGet("solicitudes")]
+    public Task<IActionResult> ListRequests()
+        => Proxy(_client.ForwardAsync(HttpMethod.Get, "/inscripciones/solicitudes", Request));
+
+    [HttpPatch("solicitudes/{id:long}/aprobar")]
+    public Task<IActionResult> ApproveRequest(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Patch, $"/inscripciones/solicitudes/{id}/aprobar", Request));
+
+    [HttpPatch("solicitudes/{id:long}/rechazar")]
+    public Task<IActionResult> RejectRequest(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Patch, $"/inscripciones/solicitudes/{id}/rechazar", Request));
+
     [HttpGet("{id:long}")]
     public Task<IActionResult> GetOne(long id)
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/inscripciones/{id}", Request));

@@ -10,10 +10,14 @@ import {
   updateCursoPeriodo,
 } from "./cursosPeriodo.controller.ts";
 import {
+  approveSolicitudInscripcion,
   createInscripcion,
+  createSolicitudInscripcion,
   deleteInscripcion,
   getInscripcion,
+  listSolicitudesInscripcion,
   listInscripciones,
+  rejectSolicitudInscripcion,
   updateInscripcion,
 } from "./inscripciones.controller.ts";
 import {
@@ -61,6 +65,11 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "inscripciones.create": createInscripcion,
   "inscripciones.update": updateInscripcion,
   "inscripciones.delete": deleteInscripcion,
+  "inscripciones.retirar": updateInscripcion,
+  "inscripciones.solicitud.create": createSolicitudInscripcion,
+  "inscripciones.solicitud.list": listSolicitudesInscripcion,
+  "inscripciones.solicitud.approve": approveSolicitudInscripcion,
+  "inscripciones.solicitud.reject": rejectSolicitudInscripcion,
 
   // Asignaciones Docentes
   "asignaciones.list": listAsignaciones,
@@ -85,7 +94,7 @@ function buildQueryString(payload: any): string {
     if (
       value !== undefined &&
       value !== null &&
-      !["params", "authorization", "token", "headers", "body"].includes(key)
+      !["params", "authToken", "authorization", "token", "headers", "body"].includes(key)
     ) {
       params.set(key, String(value));
     }
@@ -123,7 +132,8 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
 
     try {
       const token = extractBearerToken(
-        payload?.authorization ??
+        payload?.authToken ??
+          payload?.authorization ??
           payload?.token ??
           payload?.headers?.Authorization ??
           payload?.headers?.authorization,
@@ -136,14 +146,15 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
         return;
       }
 
-      const isWrite = /\.(create|update|delete)$/.test(eventType);
-      if (isWrite && !["director", "control"].includes(claims.role)) {
+      const isStudentRequest = eventType === "inscripciones.solicitud.create";
+      const isWrite = /\.(create|update|delete|approve|reject|retirar)$/.test(eventType);
+      if (isWrite && !["director", "control"].includes(claims.role) && !isStudentRequest) {
         resultStatus = 403;
         resultError = "No tiene permisos para esta operación";
         await sendWebhookCallback(callbackUrl, eventId, resultStatus, null, resultError);
         return;
       }
-      if (!isWrite && claims.role === "estudiante") {
+      if (!isWrite && claims.role === "estudiante" && eventType !== "inscripciones.solicitud.list") {
         resultStatus = 403;
         resultError = "No tiene permisos para esta operación";
         await sendWebhookCallback(callbackUrl, eventId, resultStatus, null, resultError);

@@ -44,7 +44,7 @@ export async function getEntrega(ctx: Context): Promise<void> {
 
 import {
   buildEntregaObjectKey,
-  resolveNivelFromEncargo,
+  resolveCursoInfoFromEncargo,
   sanitizeLevel,
 } from "../utils/fileNaming.ts";
 
@@ -60,7 +60,6 @@ export async function createEntrega(ctx: Context): Promise<void> {
       const encargoId = form.get("encargoId")?.toString();
       const comentario = form.get("comentario")?.toString() ?? null;
       const estudianteId = form.get("estudianteId")?.toString() ?? undefined;
-      const nivelPayload = form.get("nivel")?.toString();
 
       if (!encargoId) {
         throw new HttpError(400, "encargoId es requerido");
@@ -71,10 +70,8 @@ export async function createEntrega(ctx: Context): Promise<void> {
 
       const fileBuffer = new Uint8Array(await file.arrayBuffer());
       const subId = claims?.sub ?? "estudiante";
-      const nivel = nivelPayload
-        ? sanitizeLevel(nivelPayload)
-        : await resolveNivelFromEncargo(encargoId);
-      const objectKey = buildEntregaObjectKey(nivel, encargoId, subId, file.name);
+      const cursoInfo = await resolveCursoInfoFromEncargo(encargoId);
+      const objectKey = buildEntregaObjectKey(cursoInfo, encargoId, subId, file.name);
 
       // Validación MinIO de 150MB y formatos PDF/Word/Excel
       const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);

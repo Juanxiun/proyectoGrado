@@ -18,9 +18,28 @@ import {
   readFilePart,
   readMultipartForm,
 } from "../../utils/multipart.ts";
-// deno-lint-ignore no-explicit-any
 import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
+
+interface TutorUpdateInput {
+  nombre?: string;
+  apellidoPaterno?: string;
+  apellidoMaterno?: string;
+  ci?: string;
+  celular?: string;
+  telefono?: string;
+  parentesco?: string;
+}
+
+interface DynamicUsuarioUpdate {
+  nivel?: string;
+  grado?: string;
+  estudiante?: { nivel?: string; grado?: string };
+  apoderado?: TutorUpdateInput;
+  tutor?: TutorUpdateInput;
+  parentesco?: string;
+  ocupacion?: string;
+}
 
 /**
  * PUT /usuarios/:id
@@ -142,12 +161,13 @@ export async function updateUsuario(
     }
 
     const current = currentRes.rows[0];
+    const dynamicData = datos as DynamicUsuarioUpdate;
     const viewerRole = ctx.state.auth?.role;
     const isSelf = String(ctx.state.auth?.sub) === String(id);
     const targetRole = current.rol.trim().toLowerCase();
     const canManage = viewerRole === "director" ||
       (viewerRole === "control" &&
-        ["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole));
+        ["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor", "control", "administrativo", "gerencia", "secretaria", "secretario", "editor"].includes(targetRole));
 
     if (!isSelf && !canManage) {
       ctx.response.status = 403;
@@ -157,11 +177,11 @@ export async function updateUsuario(
 
     if (
       viewerRole === "control" && !isSelf &&
-      !["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor"].includes(targetRole)
+      !["profesor", "maestro", "docente", "estudiante", "padre", "padres", "apoderado", "tutor", "control", "administrativo", "gerencia", "secretaria", "secretario", "editor"].includes(targetRole)
     ) {
       ctx.response.status = 403;
       ctx.response.body = {
-        error: "Control solo puede gestionar profesores y estudiantes",
+        error: "Control puede gestionar docentes, estudiantes y personal de control",
       };
       return;
     }
@@ -180,6 +200,11 @@ export async function updateUsuario(
       maestro,
       rolId,
     } = datos;
+    const normalizedEstado = estado === 1 || estado === "activo"
+      ? "activo"
+      : estado === 0 || estado === "inactivo"
+      ? "inactivo"
+      : estado;
 
     // Un estudiante/apoderado sólo administra su foto, contraseña, contactos y dirección.
     // Esta validación es deliberadamente del lado del servidor para que no pueda
@@ -201,7 +226,7 @@ export async function updateUsuario(
 
     if (rolId !== undefined) {
       const roleRes = await query<{ id: bigint; rol: string }>(
-        `SELECT id, rol FROM roles WHERE id = $1`,
+        `SELECT id, rol FROM roles WHERE id = $1 AND COALESCE(activo, true) = true`,
         [rolId],
       );
       if (roleRes.rows.length === 0) {
@@ -211,13 +236,13 @@ export async function updateUsuario(
       }
       if (
         ctx.state.auth?.role === "control" &&
-        !["profesor", "maestro", "docente", "estudiante"].includes(
+        !["profesor", "maestro", "docente", "estudiante", "apoderado", "tutor", "control", "administrativo", "gerencia", "secretaria", "secretario", "editor"].includes(
           roleRes.rows[0].rol.trim().toLowerCase(),
         )
       ) {
         ctx.response.status = 403;
         ctx.response.body = {
-          error: "Control solo puede asignar roles de profesor o estudiante",
+          error: "Control no puede asignar el rol de director",
         };
         return;
       }
@@ -256,6 +281,8 @@ export async function updateUsuario(
       const usedApellido = (apellidoPaterno ?? current.apellido_paterno).trim();
       const rolNombre = current.rol.toLowerCase().trim();
 
+      const nivel = dynamicData.nivel || dynamicData.estudiante?.nivel;
+      const grado = dynamicData.grado || dynamicData.estudiante?.grado;
       for (const file of documentFiles) {
         const doc = updatedDocumentos[file.index];
         if (doc) {
@@ -264,12 +291,15 @@ export async function updateUsuario(
             usedApellido,
             rolNombre,
             doc.tipoDoc,
+            nivel,
+            grado,
           );
           doc.docUrl = await uploadFile(docKey, file.bytes, "application/pdf");
         }
       }
     }
 
+    let onboarding: { datosPersonalesActualizados: boolean; contactoTutorActualizado: boolean } | undefined;
     await sTransaction(async (tx) => {
       const sets: string[] = [];
       const vals: unknown[] = [];
@@ -319,6 +349,22 @@ export async function updateUsuario(
         await tx.queryObject(
           "UPDATE usuarios SET " + sets.join(", ") + " WHERE id = $" + p,
           [...vals, id],
+        );
+      }
+
+      if (estado !== undefined) {
+        const active = normalizedEstado === "activo";
+        await tx.queryObject(
+          `UPDATE maestros
+           SET estado = $2, fecha_actualizacion = NOW()
+           WHERE usuario_id = $1`,
+          [id, active ? "activo" : "inactivo"],
+        );
+        await tx.queryObject(
+          `UPDATE estudiantes
+           SET estado = $2, fecha_actualizacion = NOW()
+           WHERE usuario_id = $1`,
+          [id, active ? "activo" : "retirado"],
         );
       }
 
@@ -398,12 +444,47 @@ export async function updateUsuario(
         );
       }
 
-      if (datos.ocupacion !== undefined) {
+      if (Array.isArray(maestro?.materias)) {
+        const maestroRes = await tx.queryObject<{ id: bigint; materiasConfiguradas: boolean }>(
+          `SELECT id, materias_configuradas AS "materiasConfiguradas"
+           FROM maestros WHERE usuario_id = $1 LIMIT 1`,
+          [id],
+        );
+        if (maestroRes.rows[0]) {
+          const maestroId = maestroRes.rows[0].id;
+          const materiaIds = [...new Set(
+            maestro.materias
+              .map((value: unknown) => String(value).trim())
+              .filter((value: string) => /^\d+$/.test(value)),
+          )];
+          // Un docente legacy sin catálogo explícito conserva su catálogo
+          // vigente si el formulario no selecciona ninguna materia. Sólo una
+          // lista no vacía, o un docente ya configurado, autoriza replace.
+          if (materiaIds.length > 0 || maestroRes.rows[0].materiasConfiguradas) {
+            await tx.queryObject(
+              `UPDATE maestros SET materias_configuradas = true, fecha_actualizacion = NOW() WHERE id = $1`,
+              [maestroId],
+            );
+            await tx.queryObject(`DELETE FROM maestro_materias WHERE maestro_id = $1`, [maestroId]);
+            if (materiaIds.length) {
+              await tx.queryObject(
+                `INSERT INTO maestro_materias (maestro_id, materia_id)
+                 SELECT $1, v.materia_id::bigint
+                 FROM UNNEST($2::bigint[]) AS v(materia_id)
+                 ON CONFLICT (maestro_id, materia_id) DO NOTHING`,
+                [maestroId, materiaIds],
+              );
+            }
+          }
+        }
+      }
+
+      if (dynamicData.ocupacion !== undefined) {
         await tx.queryObject(
           `INSERT INTO apoderados (usuario_id, ocupacion)
            VALUES ($1, $2)
            ON CONFLICT (usuario_id) DO UPDATE SET ocupacion = EXCLUDED.ocupacion`,
-          [id, datos.ocupacion],
+          [id, dynamicData.ocupacion],
         );
       }
 
@@ -411,6 +492,8 @@ export async function updateUsuario(
         for (const doc of updatedDocumentos) {
           if (!doc?.tipoDoc || !doc?.numeroDoc) continue;
           if (doc.id) {
+            // El frontend envió el id de fila: actualizar directamente usando ON CONFLICT
+            // en numero_doc para evitar duplicados si el número cambia.
             await tx.queryObject(
               `UPDATE usuario_documentos
                SET tipo_doc = $1, numero_doc = $2, doc_url = COALESCE($3, doc_url)
@@ -418,31 +501,24 @@ export async function updateUsuario(
               [doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null, doc.id, id],
             );
           } else {
-            const existing = await tx.queryObject<{ id: bigint }>(
-              `SELECT id FROM usuario_documentos WHERE usuario_id = $1 AND tipo_doc = $2 LIMIT 1`,
-              [id, doc.tipoDoc],
+            // Sin id: upsert por (usuario_id, tipo_doc). Si el numero_doc ya pertenece
+            // a otra fila del mismo usuario lo actualiza; si pertenece a otro usuario
+            // el constraint lo impedirá y el error llegará al catch con código 409.
+            await tx.queryObject(
+              `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT (usuario_id, tipo_doc) DO UPDATE
+                 SET numero_doc = EXCLUDED.numero_doc,
+                     doc_url    = COALESCE(EXCLUDED.doc_url, usuario_documentos.doc_url)`,
+              [id, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null],
             );
-            if (existing.rows.length > 0) {
-              await tx.queryObject(
-                `UPDATE usuario_documentos
-                 SET numero_doc = $1, doc_url = COALESCE($2, doc_url)
-                 WHERE id = $3`,
-                [doc.numeroDoc, doc.docUrl ?? null, existing.rows[0].id],
-              );
-            } else {
-              await tx.queryObject(
-                `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url)
-                 VALUES ($1, $2, $3, $4)`,
-                [id, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null],
-              );
-            }
           }
         }
       }
 
       // Actualizar datos del tutor/apoderado si se envían para el estudiante
-      const tutorData = (datos as any).apoderado ?? (datos as any).tutor;
-      const parentescoInput = (datos as any).parentesco;
+      const tutorData = dynamicData.apoderado ?? dynamicData.tutor;
+      const parentescoInput = dynamicData.parentesco;
       if (tutorData || parentescoInput !== undefined) {
         const apodRes = await tx.queryObject<{ estudianteId: bigint; apoderadoId: bigint; usuarioId: bigint }>(
           `SELECT ea.estudiante_id AS "estudianteId", ea.apoderado_id AS "apoderadoId", a.usuario_id AS "usuarioId"
@@ -485,21 +561,14 @@ export async function updateUsuario(
 
             if (tutorData.ci?.trim()) {
               const ciVal = tutorData.ci.trim();
-              const ciCheck = await tx.queryObject<{ id: bigint }>(
-                `SELECT id FROM usuario_documentos WHERE usuario_id = $1 AND tipo_doc = 'CI' LIMIT 1`,
-                [tutorUsuarioId],
+              // Upsert CI del tutor/apoderado
+              await tx.queryObject(
+                `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc)
+                 VALUES ($1, 'CI', $2)
+                 ON CONFLICT (usuario_id, tipo_doc) DO UPDATE
+                   SET numero_doc = EXCLUDED.numero_doc`,
+                [tutorUsuarioId, ciVal],
               );
-              if (ciCheck.rows.length > 0) {
-                await tx.queryObject(
-                  `UPDATE usuario_documentos SET numero_doc = $1 WHERE id = $2`,
-                  [ciVal, ciCheck.rows[0].id],
-                );
-              } else {
-                await tx.queryObject(
-                  `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc) VALUES ($1, 'CI', $2)`,
-                  [tutorUsuarioId, ciVal],
-                );
-              }
             }
 
             const tCelular = tutorData.celular?.trim() ?? tutorData.telefono?.trim();
@@ -520,22 +589,107 @@ export async function updateUsuario(
                 );
               }
             }
+
+            const snapshotName = [tutorData?.nombre, tutorData?.apellidoPaterno, tutorData?.apellidoMaterno]
+              .filter(Boolean).join(" ").trim() || null;
+            const snapshotPhone = tutorData?.celular?.trim() ?? tutorData?.telefono?.trim() ?? null;
+            if (snapshotName || snapshotPhone) {
+              await tx.queryObject(
+                `UPDATE estudiantes
+                 SET tutor_nombre = COALESCE($2, tutor_nombre),
+                     tutor_telefono = COALESCE($3, tutor_telefono),
+                     tutor_parentesco = COALESCE($4, tutor_parentesco),
+                     fecha_actualizacion = NOW()
+                 WHERE id = $1`,
+                [estudianteTableId, snapshotName, snapshotPhone, pFinal ?? null],
+              );
+            }
+          }
+        } else {
+          const studentRes = await tx.queryObject<{ id: bigint }>(
+            `SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
+            [id],
+          );
+          const snapshotName = [tutorData?.nombre, tutorData?.apellidoPaterno, tutorData?.apellidoMaterno]
+            .filter(Boolean).join(" ").trim() || null;
+          const snapshotPhone = tutorData?.celular?.trim() ?? tutorData?.telefono?.trim() ?? null;
+          if (studentRes.rows.length && (snapshotName || snapshotPhone)) {
+            await tx.queryObject(
+              `UPDATE estudiantes
+               SET tutor_nombre = COALESCE($2, tutor_nombre),
+                   tutor_telefono = COALESCE($3, tutor_telefono),
+                   tutor_parentesco = COALESCE($4, tutor_parentesco),
+                   fecha_actualizacion = NOW()
+               WHERE id = $1`,
+              [studentRes.rows[0].id, snapshotName, snapshotPhone, parentescoInput?.trim() ?? tutorData?.parentesco?.trim() ?? null],
+            );
           }
         }
       }
     });
+
+    if (isSelf && ["estudiante", "alumno", "padre", "padres", "apoderado", "tutor"].includes(targetRole)) {
+      const readiness = await query<{ personal: boolean; tutor: boolean }>(
+        `SELECT
+          (u.nacimiento IS NOT NULL AND EXISTS (SELECT 1 FROM usuario_direcciones d WHERE d.usuario_id = u.id)
+             AND EXISTS (SELECT 1 FROM usuario_contactos c WHERE c.usuario_id = u.id)) AS personal,
+          (
+            EXISTS (
+              SELECT 1 FROM estudiantes e
+              JOIN estudiante_apoderado ea ON ea.estudiante_id = e.id
+              JOIN apoderados a ON a.id = ea.apoderado_id
+              WHERE e.usuario_id = u.id
+                AND EXISTS (SELECT 1 FROM usuario_contactos tc WHERE tc.usuario_id = a.usuario_id)
+            )
+            OR EXISTS (
+              SELECT 1 FROM estudiantes e
+              WHERE e.usuario_id = u.id
+                AND e.tutor_nombre IS NOT NULL
+                AND e.tutor_telefono IS NOT NULL
+            )
+            OR NOT EXISTS (SELECT 1 FROM estudiantes e2 WHERE e2.usuario_id = u.id)
+          ) AS tutor
+         FROM usuarios u WHERE u.id = $1`,
+        [id],
+      );
+      const row = readiness.rows[0];
+      onboarding = {
+        datosPersonalesActualizados: Boolean(row?.personal),
+        contactoTutorActualizado: Boolean(row?.tutor),
+      };
+      await query(
+        `UPDATE usuario_cuenta
+         SET datos_personales_actualizados = $2, contacto_tutor_actualizado = $3, fecha_actualizacion = NOW()
+         WHERE usuario_id = $1`,
+        [id, onboarding.datosPersonalesActualizados, onboarding.contactoTutorActualizado],
+      );
+    }
 
     ctx.response.status = 200;
     broadcastUserEvent({ action: "updated", userId: id });
     ctx.response.body = {
       message: "Usuario actualizado correctamente",
       fotoUrl: await resolveMediaUrl(newFotoUrl),
+      onboarding,
     };
   } catch (err) {
-    const msg = (err as Error)?.message?.toLowerCase() ?? "";
-    const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
+    // sTransaction wraps PostgresError inside a TransactionError (.cause).
+    // Leer el error real tanto del propio err como de err.cause.
+    // deno-lint-ignore no-explicit-any
+    const cause = (err as any)?.cause as any;
+    const msg = [
+      (err as Error)?.message ?? "",
+      cause?.message ?? "",
+    ].join(" ").toLowerCase();
+    const constraint = [
+      String((err as { constraint?: string })?.constraint ?? ""),
+      String(cause?.fields?.constraint ?? ""),
+      String(cause?.constraint ?? ""),
+    ].join(" ").toLowerCase();
+
     console.error("[updateUsuario]", err);
-    if (msg.includes("unique") || msg.includes("duplicate") || constraint.length > 0) {
+
+    if (msg.includes("unique") || msg.includes("duplicate") || msg.includes("23505") || constraint.trim().length > 0) {
       let field = "general";
       let error = "Ya existe un dato registrado para otro usuario";
       if (constraint.includes("username") || msg.includes("username") || msg.includes("uq_usuario_username")) {
@@ -546,7 +700,7 @@ export async function updateUsuario(
         error = "El correo electrónico ya está registrado";
       } else if (constraint.includes("numero_doc") || msg.includes("numero_doc") || msg.includes("documentos")) {
         field = "numeroDoc";
-        error = "El número de documento ya está registrado";
+        error = "El número de documento ya está registrado para otro usuario";
       }
       ctx.response.status = 409;
       ctx.response.body = { error, message: error, field };
