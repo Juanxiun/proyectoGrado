@@ -1,191 +1,188 @@
-import { Image, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../../context/AuthContext';
-import { BentoCard } from '../../../displays/components/BentoCard';
-import { HeroBanner } from '../../../displays/components/HeroBanner';
-import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { BentoCard, HeroBanner, KpiCard, StatusBadge } from '../../../shared/ui';
 import { getFullName } from '../../../utils/validation';
 import { useResponsive } from '../../../utils/responsive';
 
-const SUBJECTS = [
-  { name: 'Psicología del Aprendizaje', teacher: 'Dra. Elena Ruiz', progress: 85 },
-  { name: 'Didáctica General', teacher: 'Prof. Marco Torres', progress: 72 },
-  { name: 'Metodología Investigación', teacher: 'Dr. Luis Mendez', progress: 90 },
-  { name: 'Tecnología Educativa', teacher: 'Ing. Ana López', progress: 68 },
+interface MateriaProgreso {
+  nombre: string;
+  docente: string;
+  promedio: number;
+  encargosEntregados: string;
+}
+
+const MATERIAS_ESTUDIANTE: MateriaProgreso[] = [
+  { nombre: 'Matemática', docente: 'Prof. Carlos Morales', promedio: 88, encargosEntregados: '4/4 entregados' },
+  { nombre: 'Lenguaje y Literatura', docente: 'Prof. Laura Méndez', promedio: 92, encargosEntregados: '3/3 entregados' },
+  { nombre: 'Ciencias Naturales', docente: 'Prof. Roberto Silva', promedio: 85, encargosEntregados: '3/4 entregados' },
+  { nombre: 'Historia y Geografía', docente: 'Prof. Ana Torres', promedio: 90, encargosEntregados: '2/2 entregados' },
 ];
 
-const DEADLINES = [
-  { title: 'Ensayo: Teorías Cognitivas', due: 'MAÑANA, 23:59', tag: 'Psicología', color: '#2563EB' },
-  { title: 'Proyecto: Plan de Clase', due: '25 JUN, 18:00', tag: 'Didáctica', color: '#16A34A' },
-  { title: 'Informe de Práctica', due: '28 JUN, 23:59', tag: 'Metodología', color: '#EAB308' },
+const PROXIMAS_ENTREGAS = [
+  { materia: 'Ciencias Naturales', titulo: 'Informe: La Célula Vegetal', fecha: 'Mañana, 23:59', ponderacion: '15 pts', pendiente: true },
+  { materia: 'Matemática', titulo: 'Ejercicios de Fracciones #4', fecha: 'Viernes, 18:00', ponderacion: '20 pts', pendiente: true },
+  { materia: 'Lenguaje', titulo: 'Redacción: Crónica Escolar', fecha: 'Próx. Lunes', ponderacion: '15 pts', pendiente: false },
 ];
 
-const DAYS = ['LUN', 'MAR', 'MIE', 'JUE', 'VIE'];
-const ATTENDANCE = ['present', 'present', 'present', 'late', 'present'];
-
-const QUICK_LINKS = [
-  { label: 'Inscripciones', icon: 'document-text' as const },
-  { label: 'Biblioteca', icon: 'library' as const },
-  { label: 'Certificados', icon: 'ribbon' as const },
-  { label: 'Pagos', icon: 'card' as const },
-  { label: 'Evaluaciones', icon: 'clipboard' as const },
-  { label: 'Soporte IT', icon: 'headset' as const },
+const ACCESOS_ESTUDIANTE = [
+  { title: 'Aula y Evaluaciones', desc: 'Tareas, guías y entregas de archivos', icon: 'clipboard-outline' as const, tag: 'TAREAS' },
+  { title: 'Mis Materias', desc: 'Contenido y material de apoyo', icon: 'book-outline' as const, tag: 'MATERIAS' },
+  { title: 'Horario Escolar', desc: 'Distribución semanal de períodos', icon: 'time-outline' as const, tag: 'HORARIOS' },
+  { title: 'Expediente y Apoderado', desc: 'Datos personales y contactos', icon: 'person-outline' as const, tag: 'PERFIL' },
 ];
 
 export function UsuariosDashboard() {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
   const fullName = user ? getFullName(user.nombre, user.apellidoPaterno, user.apellidoMaterno) : 'Estudiante';
+  const roleName = user?.rol?.toLowerCase().includes('padre') ? 'Apoderado' : 'Estudiante';
 
   return (
-    <View className="gap-4">
-      <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
-        <View className={isMobile ? '' : 'flex-[2]'}>
-          <HeroBanner
-            badge="Ciclo Escolar 2024-1"
-            title={`¡Hola de nuevo, ${user?.nombre ?? 'Estudiante'}!`}
-            subtitle="Has completado el 78% de tus actividades este periodo. ¡Sigue así!"
-            primaryAction={{ label: 'Ver Horario Completo', onPress: () => {} }}
-            secondaryAction={{ label: 'Descargar Boleta', onPress: () => {} }}
-          />
-        </View>
+    <View className="gap-5">
+      {/* Hero Banner */}
+      <HeroBanner
+        badge={`Portal ${roleName}`}
+        badgeSecondary="Ciclo Lectivo Activo"
+        title={`¡Hola, ${user?.nombre ?? 'Estudiante'}!`}
+        subtitle="Revisa tus actividades escolares, calificaciones del trimestre y las próximas tareas asignadas."
+        variant="maroon"
+      />
 
-        <BentoCard className={`p-5 bg-cream ${isMobile ? '' : 'flex-1'}`}>
-          <View className="items-center">
-            {user?.fotoUrl ? <Image source={{ uri: user.fotoUrl }} className="w-20 h-20 rounded-full bg-gray-100 mb-3" /> : <View className="w-20 h-20 rounded-full bg-maroon items-center justify-center mb-3"><Text className="text-white text-2xl font-bold">{user?.nombre?.charAt(0) ?? 'E'}</Text></View>}
-            <Text className="text-lg font-bold text-gray-900">{fullName}</Text>
-            <Text className="text-xs text-gray-400 mt-1">STU-2024-{user?.id?.padStart(4, '0') ?? '0892'}</Text>
-            <StatusBadge label="Estudiante Regular" variant="success" />
-            <View className="w-full mt-4 gap-2">
-              <View className="flex-row justify-between">
-                <Text className="text-xs text-gray-500">Carrera</Text>
-                <Text className="text-xs font-semibold text-gray-800">
-                  {user?.nivel ?? 'Lic. Educación Primaria'}
-                </Text>
-              </View>
-              <View className="flex-row justify-between">
-                <Text className="text-xs text-gray-500">Semestre</Text>
-                <Text className="text-xs font-semibold text-gray-800">
-                  {user?.grado ? `${user.grado}° ${user.paralelo ?? ''}` : '4to Semestre'}
-                </Text>
-              </View>
-            </View>
-            <Text className="text-4xl font-bold text-maroon mt-4">9.4</Text>
-            <Text className="text-xs text-gray-400 uppercase tracking-widest">Promedio General</Text>
-          </View>
-        </BentoCard>
+      {/* KPI Bento Grid */}
+      <View className="flex-row flex-wrap gap-3">
+        <KpiCard label="Materias Activas" value="4" trend="1° Trimestre" icon="book-outline" />
+        <KpiCard label="Promedio General" value="88.7" trend="Aprobado destacado" icon="ribbon-outline" />
+        <KpiCard label="Tareas Pendientes" value="2" trend="Por entregar" trendUp={false} icon="document-text-outline" />
+        <KpiCard label="Asistencia" value="96%" trend="24 asistencias" icon="checkmark-circle-outline" />
       </View>
 
+      {/* Bento Main Grid */}
       <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
+        {/* Mis Materias y Rendimiento */}
         <BentoCard className={`p-5 ${isMobile ? '' : 'flex-[2]'}`}>
-          <Text className="text-lg font-bold text-gray-900 mb-4">Materias Actuales</Text>
-          <View className={`gap-3 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
-            {SUBJECTS.map((subject) => (
-              <View key={subject.name} className={`bg-gray-50 rounded-xl p-4 ${isMobile ? '' : 'w-[48%]'}`}>
-                <View className="flex-row justify-between items-start mb-2">
-                  <Ionicons name="book" size={18} color="#801529" />
-                  <StatusBadge label="Activa" variant="success" />
-                </View>
-                <Text className="font-semibold text-gray-800 text-sm">{subject.name}</Text>
-                <Text className="text-xs text-gray-400 mt-1">{subject.teacher}</Text>
-                <View className="h-1.5 bg-gray-200 rounded-full mt-3 overflow-hidden">
-                  <View className="h-full bg-maroon rounded-full" style={{ width: `${subject.progress}%` }} />
-                </View>
-                <Text className="text-xs text-maroon font-semibold mt-1">{subject.progress}%</Text>
-              </View>
-            ))}
+          <View className="flex-row items-center justify-between mb-4">
+            <View>
+              <Text className="text-lg font-bold text-gray-900">Mis Materias y Calificaciones</Text>
+              <Text className="text-xs text-gray-500">Progreso en las materias del trimestre</Text>
+            </View>
+            <View className="bg-maroon/10 px-2.5 py-1 rounded-lg">
+              <Text className="text-maroon text-xs font-bold uppercase">Trimestre 1</Text>
+            </View>
           </View>
-        </BentoCard>
 
-        <View className={`gap-4 ${isMobile ? '' : 'flex-1'}`}>
-          <BentoCard className="p-5">
-            <Text className="text-lg font-bold text-gray-900 mb-4">Asistencia Semanal</Text>
-            <View className="flex-row justify-between mb-4">
-              {DAYS.map((day, i) => (
-                <View key={day} className="items-center">
-                  <View className={`w-10 h-10 rounded-full items-center justify-center ${
-                    ATTENDANCE[i] === 'present' ? 'bg-green-100' : 'bg-red-100'
-                  }`}>
-                    <Ionicons
-                      name={ATTENDANCE[i] === 'present' ? 'checkmark' : 'time'}
-                      size={18}
-                      color={ATTENDANCE[i] === 'present' ? '#16A34A' : '#DC2626'}
-                    />
+          <View className="gap-3">
+            {MATERIAS_ESTUDIANTE.map((materia) => (
+              <View key={materia.nombre} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                <View className="flex-row items-start justify-between mb-2">
+                  <View>
+                    <Text className="font-bold text-gray-900 text-base">{materia.nombre}</Text>
+                    <Text className="text-xs text-gray-500 mt-0.5">{materia.docente} · {materia.encargosEntregados}</Text>
                   </View>
-                  <Text className="text-[10px] text-gray-400 mt-1">{day}</Text>
+                  <View className="items-end">
+                    <Text className="text-xs text-gray-400 font-semibold uppercase">Nota</Text>
+                    <Text className="text-base font-bold text-maroon">{materia.promedio} / 100</Text>
+                  </View>
                 </View>
-              ))}
-            </View>
-            <View className="flex-row justify-between items-center">
-              <Text className="text-sm text-gray-600">Total del mes <Text className="font-bold">96%</Text></Text>
-              <TouchableOpacity>
-                <Text className="text-red-500 text-xs font-semibold">DETALLES</Text>
-              </TouchableOpacity>
-            </View>
-          </BentoCard>
 
-          <BentoCard className="p-5">
-            <Text className="text-lg font-bold text-gray-900 mb-4">Próximas Entregas</Text>
-            {DEADLINES.map((item) => (
-              <View key={item.title} className="mb-3 pb-3 border-b border-gray-50">
-                <Text className="text-[10px] text-red-500 font-semibold">VENCE: {item.due}</Text>
-                <View className="flex-row justify-between items-center mt-1">
-                  <Text className="text-sm text-gray-800 flex-1">{item.title}</Text>
-                  <View className="px-2 py-0.5 rounded" style={{ backgroundColor: `${item.color}20` }}>
-                    <Text className="text-xs font-semibold" style={{ color: item.color }}>{item.tag}</Text>
+                <View className="mt-1">
+                  <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                    <View className="h-full bg-maroon rounded-full" style={{ width: `${materia.promedio}%` }} />
                   </View>
                 </View>
               </View>
             ))}
-            <TouchableOpacity className="bg-maroon/10 rounded-xl py-2.5 items-center">
-              <Text className="text-maroon text-sm font-semibold">Abrir Calendario Académico</Text>
-            </TouchableOpacity>
-          </BentoCard>
-        </View>
-      </View>
-
-      <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
-        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-[2]'}`}>
-          <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-lg font-bold text-gray-900">Evolución de Notas</Text>
-            <View className="bg-maroon/10 px-3 py-1 rounded-lg">
-              <Text className="text-maroon text-xs font-semibold">Meta: 9.5</Text>
-            </View>
-          </View>
-          <View className="h-36 bg-gray-50 rounded-xl items-center justify-center">
-            <Ionicons name="analytics" size={40} color="#801529" />
-            <Text className="text-gray-400 text-sm mt-2">Rendimiento académico mensual</Text>
           </View>
         </BentoCard>
 
-        <LinearGradient colors={['#8B6914', '#5c4510']} style={{ borderRadius: 16, padding: 20, flex: isMobile ? undefined : 1 }}>
-          <Ionicons name="star" size={28} color="#FFD700" />
-          <Text className="text-white font-bold text-lg mt-3">Estudiante Destacado</Text>
-          <Text className="text-white/70 text-sm mt-1">Top 5% de tu generación este mes.</Text>
-          <View className="mt-4">
-            <Text className="text-white/60 text-xs">Nivel 4</Text>
-            <View className="h-2 bg-white/20 rounded-full mt-1 overflow-hidden">
-              <View className="h-full bg-yellow-400 rounded-full" style={{ width: '75%' }} />
+        {/* Ficha del Estudiante */}
+        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
+          <View className="items-center text-center pb-4 border-b border-gray-100">
+            <View className="w-16 h-16 rounded-2xl bg-maroon items-center justify-center mb-3">
+              <Text className="text-white text-2xl font-bold">{user?.nombre?.charAt(0) ?? 'E'}</Text>
             </View>
-            <Text className="text-white/60 text-xs mt-1">12,450 XP</Text>
+            <Text className="text-base font-bold text-gray-900">{fullName}</Text>
+            <Text className="text-xs text-gray-400 mt-0.5">Estudiante Regular · ID {user?.id ?? '—'}</Text>
+            <View className="mt-2">
+              <StatusBadge label="Matrícula Activa" variant="success" />
+            </View>
           </View>
-        </LinearGradient>
+
+          <View className="gap-2.5 mt-4">
+            <View className="flex-row justify-between py-1 border-b border-gray-50">
+              <Text className="text-xs text-gray-500">Nivel</Text>
+              <Text className="text-xs font-semibold text-gray-800">{user?.nivel ?? 'Secundaria'}</Text>
+            </View>
+            <View className="flex-row justify-between py-1 border-b border-gray-50">
+              <Text className="text-xs text-gray-500">Grado y Paralelo</Text>
+              <Text className="text-xs font-semibold text-gray-800">
+                {user?.grado ? `${user.grado}° ${user.paralelo ?? 'A'}` : '3° A'}
+              </Text>
+            </View>
+            <View className="flex-row justify-between py-1 border-b border-gray-50">
+              <Text className="text-xs text-gray-500">Turno</Text>
+              <Text className="text-xs font-semibold text-gray-800">Mañana</Text>
+            </View>
+            <View className="flex-row justify-between py-1">
+              <Text className="text-xs text-gray-500">Modalidad</Text>
+              <Text className="text-xs font-semibold text-gray-800">Presencial</Text>
+            </View>
+          </View>
+        </BentoCard>
       </View>
 
-      <BentoCard className="p-4">
-        <Text className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wide">Accesos Directos</Text>
-        <View className="flex-row flex-wrap gap-3">
-          {QUICK_LINKS.map((link) => (
-            <TouchableOpacity key={link.label} className="items-center w-[30%] min-w-[80px]">
-              <View className="w-12 h-12 bg-gray-50 rounded-xl items-center justify-center mb-1">
-                <Ionicons name={link.icon} size={22} color="#801529" />
+      {/* Bento Grid Row 2: Próximas Entregas */}
+      <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
+        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
+          <View className="flex-row items-center justify-between mb-4">
+            <View>
+              <Text className="text-lg font-bold text-gray-900">Próximas Tareas y Evaluaciones</Text>
+              <Text className="text-xs text-gray-500">Encargos pendientes de entrega</Text>
+            </View>
+            <Ionicons name="calendar-outline" size={20} color="#801529" />
+          </View>
+
+          <View className="gap-3">
+            {PROXIMAS_ENTREGAS.map((entrega, idx) => (
+              <View key={idx} className="p-3.5 bg-gray-50 rounded-xl border border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
+                <View className="flex-1 min-w-[180px]">
+                  <Text className="text-xs font-bold text-maroon uppercase">{entrega.materia}</Text>
+                  <Text className="font-bold text-gray-900 text-sm mt-0.5">{entrega.titulo}</Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">Vence: {entrega.fecha}</Text>
+                </View>
+
+                <View className="items-end">
+                  <StatusBadge
+                    label={entrega.pendiente ? 'Pendiente' : 'Entregado'}
+                    variant={entrega.pendiente ? 'warning' : 'success'}
+                  />
+                  <Text className="text-xs font-bold text-gray-700 mt-1">{entrega.ponderacion}</Text>
+                </View>
               </View>
-              <Text className="text-[10px] text-gray-600 text-center">{link.label}</Text>
-            </TouchableOpacity>
+            ))}
+          </View>
+        </BentoCard>
+      </View>
+
+      {/* Accesos Rápidos Escolares */}
+      <BentoCard className="p-5">
+        <Text className="text-lg font-bold text-gray-900 mb-4">Accesos Rápidos del Estudiante</Text>
+        <View className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {ACCESOS_ESTUDIANTE.map((item) => (
+            <View key={item.title} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="w-9 h-9 rounded-lg bg-maroon/10 items-center justify-center">
+                  <Ionicons name={item.icon} size={19} color="#801529" />
+                </View>
+                <Text className="text-[10px] font-bold text-maroon uppercase">{item.tag}</Text>
+              </View>
+              <Text className="font-bold text-gray-900 text-sm">{item.title}</Text>
+              <Text className="text-xs text-gray-500 mt-0.5">{item.desc}</Text>
+            </View>
           ))}
         </View>
       </BentoCard>
     </View>
   );
 }
+

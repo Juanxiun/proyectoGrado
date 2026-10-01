@@ -12,6 +12,7 @@ import {
   resend2FACode,
 } from "../../services/twoFactor.service.ts";
 import { createSession } from "../../services/session.service.ts";
+import { publicarEventoAsync } from "../../utils/events.ts";
 
 let _jwtSecretKey: Uint8Array | null = null;
 function getSecretKey(): Uint8Array {
@@ -91,6 +92,7 @@ export async function verify2FA(ctx: Context): Promise<void> {
       .sign(getSecretKey());
 
     ctx.response.status = 200;
+    publicarEventoAsync("usuarios.2fa", { usuarioId: String(sData.userId) });
     ctx.response.body = serialize({
       token,
       sessionId: session.sessionId,

@@ -16,6 +16,22 @@ import {
   updateCurso,
 } from "./cursos/cursos.ts";
 import {
+  deleteMateriaGrado,
+  getGrados,
+  getMateriasGrado,
+  postMateriaGrado,
+  putMateriasGrado,
+} from "./grados/grados.ts";
+import {
+  deleteTema,
+  getMalla,
+  getMallaMateria,
+  getMallaResumen,
+  postTema,
+  putMallaMateria,
+  putTema,
+} from "./malla/malla.ts";
+import {
   createMateria,
   deleteMateria,
   getMateria,
@@ -42,6 +58,13 @@ import {
   postHorarioManual,
   postMalla,
 } from "./gestion/gestion.ts";
+import {
+  getLibro,
+  getPanelCurso,
+  getPanelEstudiante,
+  getRiesgo,
+  getUmbrales,
+} from "./seguimiento/seguimiento.ts";
 
 export interface WebhookEventPayload {
   eventId: string;
@@ -76,6 +99,22 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "cursos.get": getCurso,
   "cursos.create": createCurso,
   "cursos.update": updateCurso,
+
+  // Grados: materias compartidas por todos los paralelos
+  "grados.list": getGrados,
+  "grados.materias": getMateriasGrado,
+  "grados.materias.agregar": postMateriaGrado,
+  "grados.materias.reemplazar": putMateriasGrado,
+  "grados.materias.quitar": deleteMateriaGrado,
+
+  // Maya curricular: temas por grado y materia
+  "malla.list": getMalla,
+  "malla.resumen": getMallaResumen,
+  "malla.materia": getMallaMateria,
+  "malla.materia.guardar": putMallaMateria,
+  "malla.tema.create": postTema,
+  "malla.tema.update": putTema,
+  "malla.tema.delete": deleteTema,
   "cursos.delete": deleteCurso,
   "materias.list": listMaterias,
   "materias.get": getMateria,
@@ -92,6 +131,13 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "trimestres.list": listTrimestres,
   "aulas.list": getAulas,
   "aulas.create": postAula,
+
+  // Seguimiento Académico
+  "seguimiento.libro": getLibro,
+  "seguimiento.panel-curso": getPanelCurso,
+  "seguimiento.panel-estudiante": getPanelEstudiante,
+  "seguimiento.riesgo": getRiesgo,
+  "seguimiento.umbrales": getUmbrales,
 };
 
 // deno-lint-ignore no-explicit-any

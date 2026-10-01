@@ -9,6 +9,7 @@ import {
 } from "../utils/http.ts";
 import * as asignacionService from "../services/asignacion.service.ts";
 import type { CreateAsignacionInput, UpdateAsignacionInput } from "../models/enrollment.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function listAsignaciones(ctx: Context): Promise<void> {
   try {
@@ -44,7 +45,13 @@ export async function getAsignacion(ctx: Context): Promise<void> {
 export async function createAsignacion(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<CreateAsignacionInput>(ctx);
-    respond(ctx, 201, await asignacionService.createAsignacion(body));
+    const created = await asignacionService.createAsignacion(body);
+    publicarEventoAsync("asignaciones.create", {
+      asignacionId: created.id,
+      materiaId: created.materiaId,
+      maestroId: created.maestroId,
+    });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al asignar materia/carga horaria a docente");
   }

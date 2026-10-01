@@ -205,6 +205,38 @@ class AppWebSocketClient {
     });
   }
 
+  /**
+   * Entra al grupo de notificaciones del usuario y escucha el push en tiempo
+   * real. El socket se abre sin credenciales, así que la identidad se valida en
+   * el hub con el token que ya está en el SecureStore.
+   */
+  public subscribeToNotifications(
+    usuarioId: string | number,
+    callback: (notificacion: DataChangePayload & Record<string, unknown>) => void,
+  ): () => void {
+    const unsub = this.on<Record<string, unknown>>('NotificacionNueva', (payload) => {
+      callback(payload as DataChangePayload & Record<string, unknown>);
+    });
+
+    this.connect()
+      .then(async () => {
+        const token = await storage.getToken();
+        if (!this.ws || !token) return;
+        this.ws.send(
+          JSON.stringify({
+            type: 1,
+            target: 'SuscribirNotificaciones',
+            arguments: [String(usuarioId), token],
+          }) + this.RECORD_SEP,
+        );
+      })
+      .catch(() => {
+        /* la bandeja HTTP sigue funcionando como respaldo */
+      });
+
+    return unsub;
+  }
+
   public async sendWsRequest<T>(action: string, payload?: unknown): Promise<T> {
     await this.connect();
 

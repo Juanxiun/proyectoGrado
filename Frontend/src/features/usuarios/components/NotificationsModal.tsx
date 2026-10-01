@@ -20,6 +20,14 @@ interface NotificationsModalProps {
   onSelectNotification?: (notif: NotificationItem) => void;
 }
 
+/** Etiqueta legible para notificaciones que no traen `publicoTexto`. */
+const ETIQUETAS: Record<string, string> = {
+  sistema: 'Sistema',
+  academico: 'Académico',
+  usuarios: 'Usuarios',
+  horarios: 'Horarios',
+};
+
 export function NotificationsModal({
   visible,
   onClose,
@@ -28,6 +36,7 @@ export function NotificationsModal({
   const { user } = useAuth();
   const [notificaciones, setNotificaciones] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
 
   const fetchNotifs = async () => {
     if (!user?.id) return;
@@ -70,6 +79,17 @@ export function NotificationsModal({
     }
   };
 
+  const handleMarkAllRead = async () => {
+    if (!user?.id) return;
+    setMarkingAll(true);
+    try {
+      await notificacionesApi.markAllAsRead(user.id);
+      setNotificaciones((prev) => prev.map((n) => ({ ...n, leido: true })));
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
   const unreadCount = notificaciones.filter((n) => !n.leido).length;
 
   if (!visible) return null;
@@ -95,7 +115,7 @@ export function NotificationsModal({
                 </Text>
                 <Text className="text-gray-400 text-xs">
                   {unreadCount > 0 ? `${unreadCount} no leídas • ` : 'Al día • '}
-                  Persistencia Redis (30 días)
+                  Central de notificaciones (30 días)
                 </Text>
               </View>
             </View>
@@ -150,7 +170,7 @@ export function NotificationsModal({
                             }`}
                           />
                           <StatusBadge
-                            label={n.publicoTexto}
+                            label={n.publicoTexto ?? ETIQUETAS[n.canal] ?? 'Notificación'}
                             variant={n.tipo === 'material' ? 'info' : 'warning'}
                           />
                         </View>
@@ -159,30 +179,42 @@ export function NotificationsModal({
                         </Text>
                       </View>
 
-                      {/* Texto Estructurado Exacto Requerido */}
+                      {/* Contexto académico para materiales/encargos; si no
+                          aplica, se muestra el mensaje del evento. */}
                       <View className="mt-3 bg-white p-3 rounded-xl border border-gray-100 gap-1">
-                        <Text className="text-xs text-gray-700">
-                          <Text className="font-bold text-gray-900">Profesor: </Text>
-                          {n.profesorNombre} - {n.cursoParalelo}
-                        </Text>
-                        <Text className="text-xs text-gray-700">
-                          <Text className="font-bold text-gray-900">Materia: </Text>
-                          {n.materiaNombre}
-                        </Text>
+                        {n.materiaNombre ? (
+                          <>
+                            <Text className="text-xs text-gray-700">
+                              <Text className="font-bold text-gray-900">Profesor: </Text>
+                              {n.profesorNombre ?? 'Docente'} - {n.cursoParalelo ?? 'Curso'}
+                            </Text>
+                            <Text className="text-xs text-gray-700">
+                              <Text className="font-bold text-gray-900">Materia: </Text>
+                              {n.materiaNombre}
+                            </Text>
+                          </>
+                        ) : (
+                          <Text className="text-xs text-gray-700">
+                            <Text className="font-bold text-gray-900">Detalle: </Text>
+                            {n.mensaje}
+                          </Text>
+                        )}
                         <Text className="text-xs text-gray-700">
                           <Text className="font-bold text-gray-900">Título: </Text>
                           {n.titulo}
                         </Text>
-                        <Text className="text-xs text-gray-700">
-                          <Text className="font-bold text-gray-900">Publicó: </Text>
-                          {n.publicoTexto}
-                        </Text>
-                        <Text className="text-xs text-gray-700">
-                          <Text className="font-bold text-gray-900">Fecha límite: </Text>
-                          {n.fechaLimite
-                            ? n.fechaLimite.replace('T', ' ').slice(0, 16)
-                            : 'Sin fecha límite'}
-                        </Text>
+                        {n.publicoTexto ? (
+                          <Text className="text-xs text-gray-700">
+                            <Text className="font-bold text-gray-900">Publicó: </Text>
+                            {n.publicoTexto}
+                          </Text>
+                        ) : null}
+                        {n.fechaLimite !== undefined && n.fechaLimite !== null ? (
+                          <Text className="text-xs text-gray-700">
+                            <Text className="font-bold text-gray-900">Fecha límite: </Text>
+                            {n.fechaLimite.replace('T', ' ').slice(0, 16)}
+                          </Text>
+                        ) : null}
                       </View>
 
                       <View className="flex-row items-center justify-between mt-3 pt-2 border-t border-gray-100/60">
@@ -202,7 +234,23 @@ export function NotificationsModal({
           </ScrollView>
 
           {/* Footer */}
-          <View className="p-3.5 bg-gray-50 border-t border-gray-200 flex-row justify-end">
+          <View className="p-3.5 bg-gray-50 border-t border-gray-200 flex-row items-center justify-between">
+            <TouchableOpacity
+              onPress={handleMarkAllRead}
+              disabled={unreadCount === 0 || markingAll}
+              className={`px-4 py-2 rounded-xl ${
+                unreadCount === 0 ? 'bg-gray-100' : 'bg-maroon'
+              }`}
+            >
+              <Text
+                className={`text-xs font-bold ${
+                  unreadCount === 0 ? 'text-gray-400' : 'text-white'
+                }`}
+              >
+                {markingAll ? 'Marcando…' : 'Marcar todas como leídas'}
+              </Text>
+            </TouchableOpacity>
+
             <TouchableOpacity
               onPress={onClose}
               className="bg-gray-200 hover:bg-gray-300 px-5 py-2 rounded-xl"

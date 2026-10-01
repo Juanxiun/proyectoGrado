@@ -1,4 +1,4 @@
-import { query } from "../connects/Database/transaction.ts";
+﻿import { query } from "../connects/Database/transaction.ts";
 import {
   CreateCursoInput,
   Curso,
@@ -19,6 +19,7 @@ interface CursoRow {
   capacidadMaxima: number;
   activo: boolean;
   caratulaUrl?: string | null;
+  totalMaterias?: string | number;
 }
 
 function mapCurso(row: CursoRow): Curso {
@@ -30,6 +31,7 @@ function mapCurso(row: CursoRow): Curso {
     capacidadMaxima: Number(row.capacidadMaxima),
     activo: Boolean(row.activo),
     caratulaUrl: row.caratulaUrl ?? null,
+    totalMaterias: Number(row.totalMaterias ?? 0),
   });
 }
 
@@ -41,16 +43,22 @@ function parseNivel(value: unknown): NivelEducativo {
   return nivel;
 }
 
+// El conteo de materias viene con el listado para que la interfaz pueda
+// advertir qué grados quedan fuera de la próxima gestión, sin una consulta
+// extra por curso. La materia es por GRADO: 1°A y 1°B muestran el mismo
+// número aunque sean filas distintas.
 const SELECT = `
   SELECT
-    id,
-    nivel,
-    grado,
-    paralelo,
-    capacidad_maxima AS "capacidadMaxima",
-    activo,
-    caratula_url AS "caratulaUrl"
-  FROM cursos
+    c.id,
+    c.nivel,
+    c.grado,
+    c.paralelo,
+    c.capacidad_maxima AS "capacidadMaxima",
+    c.activo,
+    c.caratula_url AS "caratulaUrl",
+    (SELECT COUNT(*) FROM grado_materias gm
+      WHERE gm.nivel = c.nivel AND gm.grado = c.grado) AS "totalMaterias"
+  FROM cursos c
 `;
 
 export async function listCursos(
@@ -63,15 +71,15 @@ export async function listCursos(
 
   if (filters.nivel) {
     const nivel = parseNivel(filters.nivel);
-    conditions.push(`nivel = $${idx++}`);
+    conditions.push(`c.nivel = $${idx++}`);
     params.push(nivel);
   }
   if (filters.activo === "true" || filters.activo === "false") {
-    conditions.push(`activo = $${idx++}`);
+    conditions.push(`c.activo = $${idx++}`);
     params.push(filters.activo === "true");
   }
   if (filters.buscar) {
-    conditions.push(`(grado ILIKE $${idx} OR paralelo ILIKE $${idx})`);
+    conditions.push(`(c.grado ILIKE $${idx} OR c.paralelo ILIKE $${idx})`);
     params.push(`%${filters.buscar}%`);
     idx++;
   }
@@ -84,7 +92,7 @@ export async function listCursos(
         `${SELECT} ${where} ORDER BY nivel, grado, paralelo LIMIT $${idx} OFFSET $${idx + 1}`,
         [...params, pagination.limit, pagination.offset],
       ),
-      query<{ total: string }>(`SELECT COUNT(*) AS total FROM cursos ${where}`, params),
+      query<{ total: string }>(`SELECT COUNT(*) AS total FROM cursos c ${where}`, params),
     ]);
     const total = Number(countRes.rows[0]?.total ?? 0);
     return {
@@ -121,7 +129,7 @@ export async function createCurso(input: CreateCursoInput): Promise<Curso> {
     const res = await query<CursoRow>(
       `INSERT INTO cursos (nivel, grado, paralelo, capacidad_maxima, activo, caratula_url)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl"`,
+       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl", 0 AS "totalMaterias"`,
       [nivel, grado, paralelo, capacidad, input.activo !== false, input.caratulaUrl ?? null],
     );
     return mapCurso(res.rows[0]);
@@ -176,7 +184,9 @@ export async function updateCurso(id: string, input: UpdateCursoInput): Promise<
     const res = await query<CursoRow>(
       `UPDATE cursos SET ${fields.join(", ")}
        WHERE id = $${idx}
-       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl"`,
+       RETURNING id, nivel, grado, paralelo, capacidad_maxima AS "capacidadMaxima", activo, caratula_url AS "caratulaUrl",
+         (SELECT COUNT(*) FROM grado_materias gm
+           WHERE gm.nivel = cursos.nivel AND gm.grado = cursos.grado) AS "totalMaterias"`,
       params,
     );
     return mapCurso(res.rows[0]);

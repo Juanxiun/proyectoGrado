@@ -7,6 +7,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useUsuarioDetail, useUsuarioUpdate } from '../../hooks/useUsuarios';
 import { usuariosApi } from '../../api/usuarios.api';
 import { BentoCard } from '../components/BentoCard';
+import { TextField } from '../../shared/ui';
+import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../shared/validation/credentials';
 import { BirthDatePicker } from '../../features/usuarios/components/BirthDatePicker';
 import { DocumentInput } from '../../features/usuarios/components/DocumentInput';
 import { ProfilePhotoPicker } from '../../features/usuarios/components/ProfilePhotoPicker';
@@ -352,11 +354,29 @@ export function ProfileScreen() {
             </View>
             {editMode ? (
               <View className="gap-3 md:flex-row md:flex-wrap">
-                <Field label="Usuario" value={form.username} onChangeText={setField('username')} container="md:w-1/2" required editable={!isStudent} />
+                <Field
+                  label="Usuario"
+                  value={form.username}
+                  onChangeText={(v) => setField('username')(sanitizeUsername(v))}
+                  container="md:w-1/2"
+                  required
+                  editable={!isStudent}
+                  maxLength={USERNAME_MAX}
+                  autoCapitalize="none"
+                  hint="Sólo letras y números"
+                />
                 <Field label="Correo electrónico" value={form.email} onChangeText={setField('email')} keyboardType="email-address" container="md:w-1/2" required editable={!isStudent} />
                 <Field label="Celular" value={form.celular} onChangeText={(v) => setField('celular')(v.replace(/[^0-9]/g, ''))} keyboardType="phone-pad" container="md:w-1/2" required />
                 <Field label="WhatsApp" value={form.whatsapp} onChangeText={(v) => setField('whatsapp')(v.replace(/[^0-9]/g, ''))} keyboardType="phone-pad" container="md:w-1/2" />
-                <Field label="Nueva contraseña (opcional)" value={form.password} onChangeText={setField('password')} secureTextEntry placeholder="Mínimo 8 caracteres" container="md:w-1/2" />
+                <Field
+                  label="Nueva contraseña (opcional)"
+                  value={form.password}
+                  onChangeText={(v) => setField('password')(sanitizePassword(v))}
+                  secureTextEntry
+                  placeholder="Mínimo 8 caracteres"
+                  container="md:w-1/2"
+                  maxLength={PASSWORD_MAX}
+                />
               </View>
             ) : (
               <View className="gap-3 md:grid md:grid-cols-2">
@@ -536,6 +556,9 @@ function Field({
   container = '',
   required = false,
   editable = true,
+  maxLength,
+  autoCapitalize,
+  hint,
 }: {
   label: string;
   value: string;
@@ -546,23 +569,24 @@ function Field({
   container?: string;
   required?: boolean;
   editable?: boolean;
+  maxLength?: number;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  hint?: string;
 }) {
   return (
-    <View className={container}>
-      <Text className="text-xs font-semibold text-gray-500 uppercase mb-1.5 flex-row items-center gap-1">
-        {label}
-        {required && <Text className="text-red-500">*</Text>}
-      </Text>
-      <TextInput
-        className="bg-gray-50 rounded-xl px-4 py-3 text-gray-800 border border-gray-200"
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        secureTextEntry={secureTextEntry}
-        editable={editable}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-      />
-    </View>
+    <TextField
+      label={label}
+      value={value}
+      onChangeText={onChangeText}
+      keyboardType={keyboardType}
+      secureTextEntry={secureTextEntry}
+      placeholder={placeholder}
+      containerClassName={container}
+      required={required}
+      editable={editable}
+      maxLength={maxLength}
+      autoCapitalize={autoCapitalize}
+      hint={hint}
+    />
   );
 }

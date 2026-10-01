@@ -12,6 +12,7 @@ import {
   crearGestionPeriodo,
   crearMalla,
   desactivarGestion,
+  eliminarMalla,
   generarEstructura,
   generarHorarios,
   generarPlanPagos,
@@ -30,8 +31,10 @@ import type {
   GenerarPlanPagoInput,
   GuardarHorarioManualInput,
 } from "../../models/academic.ts";
+import { publicarEventoAsync } from "../../utils/events.ts";
 
 export async function clonePeriodo(ctx: Context): Promise<void> {
+
   try {
     const sourceId = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
     const body = await readJsonBody<CreatePeriodoInput>(ctx);
@@ -81,7 +84,17 @@ export async function postHorarioManual(ctx: Context): Promise<void> {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id") ?? "");
     const body = await readJsonBody<GuardarHorarioManualInput & { periodoId?: string }>(ctx);
     const periodoId = id || parseNumericId(body.periodoId ?? "");
-    respond(ctx, 200, await guardarHorariosManual(periodoId, body));
+    const resultado = await guardarHorariosManual(periodoId, body);
+
+    // Se publica un único evento: ServiceNotification resuelve los destinatarios
+    // curso por curso, así que este servicio no necesita armar la lista.
+    publicarEventoAsync("horarios.create", {
+      periodoId,
+      cursoPeriodoId: body.cursoPeriodoId,
+      totalHorarios: body.slots?.length ?? resultado.totalHorarios,
+    });
+
+    respond(ctx, 200, resultado);
   } catch (err) {
     handleControllerError(ctx, err, "Error al guardar el horario manual");
   }
@@ -120,7 +133,16 @@ export async function deactivatePeriodo(ctx: Context): Promise<void> {
 export async function activatePeriodo(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
-    respond(ctx, 200, await activarGestion(id));
+    const activated = await activarGestion(id);
+
+    // La activación es institucional: ServiceNotification la difunde a todos.
+    publicarEventoAsync("periodos.activar", {
+      periodoId: id,
+      nombre: activated?.nombre,
+      anio: activated?.anio,
+    });
+
+    respond(ctx, 200, activated);
   } catch (err) {
     handleControllerError(ctx, err, "Error al activar la gestión académica");
   }
@@ -182,7 +204,8 @@ export async function listHorarios(ctx: Context): Promise<void> {
 
 export async function listMallas(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(ctx.request.url.searchParams.get("periodoId") ?? "");
+    const rawId = ctx.request.url.searchParams.get("periodoId");
+    const id = rawId ? parseNumericId(rawId) : undefined;
     respond(ctx, 200, await listarMallas(id));
   } catch (err) {
     handleControllerError(ctx, err, "Error al listar la malla curricular");
@@ -201,7 +224,7 @@ export async function listPlanes(ctx: Context): Promise<void> {
 export async function postMalla(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<{
-      periodoId: string;
+      periodoId?: string;
       nivel: "inicial" | "primaria" | "secundaria" | "bachillerato";
       grado: string;
       materiaId: string;
@@ -209,11 +232,21 @@ export async function postMalla(ctx: Context): Promise<void> {
       cargaHorariaSemanal?: number;
       pesoSintactico?: number;
     }>(ctx);
-    const periodoId = parseNumericId(body.periodoId);
+    const periodoId = body.periodoId ? parseNumericId(body.periodoId) : undefined;
     const { periodoId: _ignored, ...malla } = body;
     respond(ctx, 201, await crearMalla(periodoId, malla));
   } catch (err) {
     handleControllerError(ctx, err, "Error al guardar la malla curricular");
+  }
+}
+
+export async function deleteMalla(ctx: Context): Promise<void> {
+  try {
+    const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
+    await eliminarMalla(id);
+    respond(ctx, 200, { ok: true, id });
+  } catch (err) {
+    handleControllerError(ctx, err, "Error al eliminar la materia de la malla curricular");
   }
 }
 
@@ -228,7 +261,9 @@ export async function getAulas(ctx: Context): Promise<void> {
 export async function postAula(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<{ codigo: string; nombre: string; capacidad?: number }>(ctx);
-    respond(ctx, 201, await crearAula(body));
+    const created = await crearAula(body);
+    publicarEventoAsync("aulas.create", { id: created.id, codigo: created.codigo, nombre: created.nombre });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error al crear aula");
   }

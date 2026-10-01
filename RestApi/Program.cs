@@ -23,7 +23,10 @@ builder.Services.AddHttpClient<UserServiceClient>();
 builder.Services.AddHttpClient<AcademicServiceClient>();
 builder.Services.AddHttpClient<EnrollmentServiceClient>();
 builder.Services.AddHttpClient<HomeworkServiceClient>();
+builder.Services.AddHttpClient<NotificationServiceClient>();
+builder.Services.AddHttpClient<DashboardServiceClient>();
 builder.Services.AddHttpClient<WebhookDispatcherService>();
+builder.Services.AddSingleton<JwtTokenValidator>();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -54,6 +57,9 @@ app.Use(async (context, next) =>
         && !HttpMethods.IsHead(context.Request.Method)
         && context.Request.Path.StartsWithSegments("/api")
         && !context.Request.Path.StartsWithSegments("/api/webhooks")
+        // /api/internal es el push de la central de notificaciones: ya emite su
+        // propio evento NotificacionNueva y no debe generar un DataChanged.
+        && !context.Request.Path.StartsWithSegments("/api/internal")
         && context.Response.StatusCode is >= 200 and < 300;
     if (isApiWrite)
     {

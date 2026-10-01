@@ -10,6 +10,7 @@ import { DocentesManagementScreen } from '../features/usuarios/screens/DocentesM
 import { EstudiantesManagementScreen } from '../features/usuarios/screens/EstudiantesManagementScreen';
 import { AdministrativoManagementScreen } from '../features/usuarios/screens/AdministrativoManagementScreen';
 import { AcademicServicesScreen } from '../features/academico/screens/AcademicServicesScreen';
+import { DashboardScreen } from '../features/dashboard/screens/DashboardScreen';
 import { MaestroCursosScreen } from '../features/maestros/screens/MaestroCursosScreen';
 import { MaestroMateriasScreen } from '../features/maestros/screens/MaestroMateriasScreen';
 import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroEvaluacionesScreen';
@@ -17,22 +18,29 @@ import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteC
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
 import { ScheduleScreen } from '../features/academico/screens/ScheduleScreen';
+import { SeguimientoScreen } from '../features/academico/screens/SeguimientoScreen';
 import { ForcePasswordChangeModal } from '../features/usuarios/components/ForcePasswordChangeModal';
 import { FirstLoginProfileModal } from '../features/usuarios/components/FirstLoginProfileModal';
 
 interface RoleShellProps {
   navItems: NavItem[];
-  dashboardComponent: React.ComponentType;
+  /**
+   * @deprecated El inicio usa `DashboardScreen` (ServiceDashboard). El
+   * componente queda por si algún rol necesita un panel propio.
+   */
+  dashboardComponent?: React.ComponentType;
   panelTitle?: string;
 }
 
-export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle = 'Panel Administrativo' }: RoleShellProps) {
+export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: RoleShellProps) {
   const { user } = useAuth();
   const [activeRoute, setActiveRoute] = useState('Dashboard');
   const [schedulePeriodoId, setSchedulePeriodoId] = useState('');
+  const [seguimientoPeriodoId, setSeguimientoPeriodoId] = useState('');
 
   const handleNavigate = (route: string, params?: { periodoId?: string }) => {
     if (route === 'Horarios' && params?.periodoId) setSchedulePeriodoId(params.periodoId);
+    if (route === 'Seguimiento' && params?.periodoId) setSeguimientoPeriodoId(params.periodoId);
     setActiveRoute(route);
   };
 
@@ -48,7 +56,10 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
   const renderContent = () => {
     switch (activeRoute) {
       case 'Dashboard':
-        return <Dashboard />;
+        // El tablero de inicio lo alimenta ServiceDashboard (sólo lectura y
+        // recortado por rol). Los dashboards de cada rol siguen disponibles
+        // en sus rutas propias.
+        return <DashboardScreen />;
       case 'Profile':
         return <ProfileScreen />;
       case 'Docentes':
@@ -65,8 +76,6 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
         if (isTeacher) return <MaestroEvaluacionesScreen />;
         if (isStudent) return <EstudianteEvaluacionesScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
-      case 'Tesoreria':
-        return <PlaceholderScreen title="Económico" />;
       case 'Cursos':
         if (isTeacher) return <MaestroCursosScreen />;
         if (isStudent) return <EstudianteCursosScreen />;
@@ -78,11 +87,11 @@ export function RoleShell({ navItems, dashboardComponent: Dashboard, panelTitle 
         if (isTeacher) return <MaestroMateriasScreen />;
         if (isStudent) return <EstudianteMateriasScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
-      case 'Pagos':
-        return <PlaceholderScreen title="Económico" />;
       case 'Horarios':
       case 'Horario':
         return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;
+      case 'Seguimiento':
+        return <SeguimientoScreen initialPeriodoId={seguimientoPeriodoId} />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />

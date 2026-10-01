@@ -1,24 +1,34 @@
-import { Text, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
-import { BentoCard } from '../../../displays/components/BentoCard';
-import { HeroBanner } from '../../../displays/components/HeroBanner';
-import { KpiCard } from '../../../displays/components/KpiCard';
-import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { BentoCard, HeroBanner, KpiCard, StatusBadge } from '../../../shared/ui';
 import { getFullName } from '../../../utils/validation';
 import { useResponsive } from '../../../utils/responsive';
 
-const DEPARTMENTS = [
-  { name: 'Académico', lead: 'Dra. Elena Ruiz', budget: 78, status: 'success' as const },
-  { name: 'Finanzas', lead: 'Lic. Marco Torres', budget: 92, status: 'success' as const },
-  { name: 'RR.HH.', lead: 'Ing. Ana López', budget: 65, status: 'warning' as const },
-  { name: 'Infraestructura', lead: 'Arq. Luis Mendez', budget: 45, status: 'danger' as const },
+interface NivelStat {
+  nivel: string;
+  cursos: number;
+  estudiantes: number;
+  promedio: number;
+  asistencia: number;
+}
+
+const NIVELES_DATA: NivelStat[] = [
+  { nivel: 'Primaria', cursos: 12, estudiantes: 240, promedio: 82.5, asistencia: 94 },
+  { nivel: 'Secundaria', cursos: 12, estudiantes: 228, promedio: 76.8, asistencia: 91 },
 ];
 
-const PRIORITIES = [
-  { title: 'Aprobación de presupuesto', tag: 'TESORERÍA', urgent: true },
-  { title: 'Informe de acreditación', tag: 'MINISTERIO DE EDUCACIÓN', urgent: false },
-  { title: 'Evaluación docente 95%', tag: 'RR.HH.', urgent: false },
+const ALERTAS_SEGUIMIENTO = [
+  { estudiante: 'Camila Rodriguez', curso: '3° Sec. A', causa: 'Promedio bajo (48 pts)', tipo: 'danger' as const },
+  { estudiante: 'Lucas Fernández', curso: '2° Sec. B', causa: 'Inasistencias recurrentes (4)', tipo: 'warning' as const },
+  { estudiante: 'Mateo Vargas', curso: '5° Prim. A', causa: 'Encargos sin entregar (3)', tipo: 'warning' as const },
+];
+
+const ACCESOS_DIRECTOS = [
+  { title: 'Plantel Docente', desc: 'Asignaciones y materias', icon: 'school-outline' as const, tag: 'DOCENTES' },
+  { title: 'Matrícula Escolar', desc: 'Inscripciones y cupos', icon: 'people-outline' as const, tag: 'ESTUDIANTES' },
+  { title: 'Seguimiento Académico', desc: 'Cálculo de riesgo en tiempo real', icon: 'analytics-outline' as const, tag: 'CALIFICACIONES' },
+  { title: 'Generador de Horarios', desc: 'Distribución semanal de aulas', icon: 'time-outline' as const, tag: 'HORARIOS' },
 ];
 
 export function DireccionDashboard() {
@@ -27,110 +37,126 @@ export function DireccionDashboard() {
   const name = user ? getFullName(user.nombre, user.apellidoPaterno) : 'Director';
 
   return (
-    <View className="gap-4">
+    <View className="gap-5">
+      {/* Hero Banner */}
       <HeroBanner
-        badge="Nivel Ejecutivo"
-        badgeSecondary="Ciclo Académico 2024-2025"
-        title="Control Institucional Global"
-        subtitle={`Bienvenido, ${name}. La matrícula global creció un 5.4% y la retención académica se mantiene en 97.8%.`}
-        primaryAction={{ label: 'Descargar Informe Anual', onPress: () => {} }}
-        secondaryAction={{ label: 'Configurar Alertas', onPress: () => {} }}
+        badge="Dirección General"
+        badgeSecondary="Gestión Académica Activa"
+        title="Supervisión y Control Institucional"
+        subtitle={`Bienvenido, ${name}. El sistema académico reporta 468 estudiantes activos con una asistencia promedio del 92.5%.`}
+        variant="maroon"
       />
 
-      <View className={`flex-row flex-wrap gap-3 ${isMobile ? '' : ''}`}>
-        <KpiCard label="Matrícula Global" value="3,412" trend="+ 5.4%" icon="people" />
-        <KpiCard label="Ingresos Proyectados" value="$1.2M" trend="+ 8.2%" icon="cash" />
-        <KpiCard label="Retención Académica" value="97.8%" trend="+ 0.5%" icon="trending-up" />
-        <KpiCard label="Personal Docente" value="245" trend="+ 12" icon="business" />
+      {/* KPI Bento Grid */}
+      <View className="flex-row flex-wrap gap-3">
+        <KpiCard label="Cursos Activos" value="24" trend="Primaria & Secundaria" icon="book-outline" />
+        <KpiCard label="Estudiantes" value="468" trend="+4.2% este ciclo" icon="people-outline" />
+        <KpiCard label="Docentes" value="28" trend="100% Asignados" icon="school-outline" />
+        <KpiCard label="Alertas de Riesgo" value="3" trend="Requieren atención" trendUp={false} icon="alert-circle-outline" iconColor="#DC2626" />
       </View>
 
+      {/* Bento Main Grid */}
       <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
+        {/* Nivel Educativo Overview */}
         <BentoCard className={`p-5 ${isMobile ? '' : 'flex-[2]'}`}>
-          <View className="flex-row justify-between items-center mb-4">
-            <Text className="text-lg font-bold text-gray-900">Rendimiento Financiero</Text>
-            <View className="flex-row gap-2">
-              <View className="bg-maroon/10 px-3 py-1 rounded-lg">
-                <Text className="text-maroon text-xs font-semibold">Trimestral</Text>
-              </View>
-            </View>
-          </View>
-          <View className="h-40 bg-gray-50 rounded-xl items-center justify-center">
-            <Ionicons name="analytics" size={48} color="#801529" />
-            <Text className="text-gray-400 text-sm mt-2">Ingresos reales vs proyectados</Text>
-          </View>
-        </BentoCard>
-
-        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
-          <Text className="text-lg font-bold text-gray-900 mb-4">Indicadores Académicos</Text>
-          {['Primaria', 'Secundaria', 'Bachillerato'].map((level, i) => (
-            <View key={level} className="mb-3">
-              <View className="flex-row justify-between mb-1">
-                <Text className="text-sm text-gray-600">{level}</Text>
-                <Text className="text-sm font-semibold text-maroon">{[8.5, 8.8, 9.1][i]}</Text>
-              </View>
-              <View className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <View className="h-full bg-maroon rounded-full" style={{ width: `${[85, 88, 91][i]}%` }} />
-              </View>
-            </View>
-          ))}
-        </BentoCard>
-      </View>
-
-      <View className={`gap-4 ${isMobile ? '' : 'flex-row'}`}>
-        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-[2]'}`}>
-          <Text className="text-lg font-bold text-gray-900 mb-4">Supervisión Departamental</Text>
-          {DEPARTMENTS.map((dept) => (
-            <View key={dept.name} className="flex-row items-center py-3 border-b border-gray-50">
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-800">{dept.name}</Text>
-                <Text className="text-xs text-gray-400">{dept.lead}</Text>
-              </View>
-              <View className="w-20 mr-3">
-                <View className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <View className="h-full bg-maroon rounded-full" style={{ width: `${dept.budget}%` }} />
-                </View>
-                <Text className="text-[10px] text-gray-400 text-center mt-0.5">{dept.budget}%</Text>
-              </View>
-              <StatusBadge
-                label={dept.status === 'success' ? 'Al día' : dept.status === 'warning' ? 'Revisión' : 'Crítico'}
-                variant={dept.status}
-              />
-            </View>
-          ))}
-        </BentoCard>
-
-        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
-          <Text className="text-lg font-bold text-gray-900 mb-4">Prioridades Directivas</Text>
-          {PRIORITIES.map((item) => (
-            <View key={item.title} className="mb-4 pb-3 border-b border-gray-50">
-              <View className="flex-row items-start gap-2">
-                <Ionicons
-                  name={item.urgent ? 'alert-circle' : 'information-circle'}
-                  size={18}
-                  color={item.urgent ? '#DC2626' : '#2563EB'}
-                />
-                <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-800">{item.title}</Text>
-                  <Text className="text-[10px] text-maroon font-semibold mt-1">{item.tag}</Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </BentoCard>
-      </View>
-
-      <BentoCard className="p-4 bg-tan/20 border-tan/30">
-        <View className="flex-row items-center justify-between flex-wrap gap-3">
-          <View className="flex-row items-center gap-3 flex-1">
-            <Ionicons name="business" size={24} color="#801529" />
+          <View className="flex-row items-center justify-between mb-4">
             <View>
-              <Text className="font-semibold text-gray-800">Expansión Laboratorio de Ciencias</Text>
-              <Text className="text-xs text-gray-500">Progreso: 85% completado</Text>
+              <Text className="text-lg font-bold text-gray-900">Rendimiento por Nivel Educativo</Text>
+              <Text className="text-xs text-gray-500">Métricas consolidadas del trimestre en curso</Text>
+            </View>
+            <View className="bg-maroon/10 px-2.5 py-1 rounded-lg">
+              <Text className="text-maroon text-xs font-bold uppercase">Trimestre Actual</Text>
             </View>
           </View>
-          <Text className="text-sm font-bold text-maroon">$450,000 / $700,000</Text>
+
+          <View className="gap-4">
+            {NIVELES_DATA.map((item) => (
+              <View key={item.nivel} className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                <View className="flex-row items-center justify-between mb-2">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="school" size={18} color="#801529" />
+                    <Text className="font-bold text-gray-900 text-base">Nivel {item.nivel}</Text>
+                  </View>
+                  <Text className="text-xs font-semibold text-gray-500">{item.cursos} Cursos · {item.estudiantes} Alumnos</Text>
+                </View>
+
+                {/* Progress Indicators */}
+                <View className="gap-2.5 mt-2">
+                  <View>
+                    <View className="flex-row justify-between text-xs mb-1">
+                      <Text className="text-xs text-gray-600">Promedio General de Calificaciones</Text>
+                      <Text className="text-xs font-bold text-maroon">{item.promedio} / 100 pts</Text>
+                    </View>
+                    <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <View className="h-full bg-maroon rounded-full" style={{ width: `${item.promedio}%` }} />
+                    </View>
+                  </View>
+
+                  <View>
+                    <View className="flex-row justify-between text-xs mb-1">
+                      <Text className="text-xs text-gray-600">Asistencia Efectiva</Text>
+                      <Text className="text-xs font-bold text-green-700">{item.asistencia}%</Text>
+                    </View>
+                    <View className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                      <View className="h-full bg-green-600 rounded-full" style={{ width: `${item.asistencia}%` }} />
+                    </View>
+                  </View>
+                </View>
+              </View>
+            ))}
+          </View>
+        </BentoCard>
+
+        {/* Alertas de Seguimiento */}
+        <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
+          <View className="flex-row items-center justify-between mb-4">
+            <Text className="text-lg font-bold text-gray-900">Alertas de Seguimiento</Text>
+            <Ionicons name="warning-outline" size={20} color="#DC2626" />
+          </View>
+
+          <View className="gap-3">
+            {ALERTAS_SEGUIMIENTO.map((alerta, idx) => (
+              <View key={idx} className="p-3 bg-gray-50 rounded-xl border border-gray-100">
+                <View className="flex-row items-center justify-between">
+                  <Text className="font-semibold text-gray-900 text-sm">{alerta.estudiante}</Text>
+                  <StatusBadge
+                    label={alerta.tipo === 'danger' ? 'Crítico' : 'Observación'}
+                    variant={alerta.tipo}
+                  />
+                </View>
+                <Text className="text-xs text-gray-500 mt-0.5">{alerta.curso}</Text>
+                <Text className="text-xs text-red-600 font-medium mt-1">{alerta.causa}</Text>
+              </View>
+            ))}
+          </View>
+
+          <View className="mt-4 pt-3 border-t border-gray-100">
+            <Text className="text-[11px] text-gray-500 leading-tight">
+              Los promedios se calculan sobre encargos publicados y ponderaciones en tiempo real.
+            </Text>
+          </View>
+        </BentoCard>
+      </View>
+
+      {/* Bento Grid: Accesos Rápidos Institucionales */}
+      <BentoCard className="p-5">
+        <Text className="text-lg font-bold text-gray-900 mb-4">Gestión Institucional y Accesos Rápidos</Text>
+        <View className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          {ACCESOS_DIRECTOS.map((item) => (
+            <View key={item.title} className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+              <View className="flex-row items-center justify-between mb-2">
+                <View className="w-9 h-9 rounded-lg bg-maroon/10 items-center justify-center">
+                  <Ionicons name={item.icon} size={19} color="#801529" />
+                </View>
+                <Text className="text-[10px] font-bold text-maroon uppercase">{item.tag}</Text>
+              </View>
+              <Text className="font-bold text-gray-900 text-sm">{item.title}</Text>
+              <Text className="text-xs text-gray-500 mt-0.5">{item.desc}</Text>
+            </View>
+          ))}
         </View>
       </BentoCard>
     </View>
   );
 }
+

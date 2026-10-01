@@ -13,6 +13,11 @@ import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
 import { generateUsername, generateEmail, generatePassword } from "../../utils/username.ts";
 import { sendWelcomeCredentialsEmail } from "../../services/credentialsEmail.service.ts";
+import { publicarEventoAsync } from "../../utils/events.ts";
+import {
+  validatePasswordPolicy,
+  validateUsernamePolicy,
+} from "../auth/changePassword.ts";
 
 /**
  * POST /usuarios
@@ -177,6 +182,24 @@ export async function createUsuario(ctx: Context): Promise<void> {
       fotoUrl = await uploadImage(photoKey, fotoBytes, mimeFromExt(fotoExt));
     }
 
+    // El usuario sólo admite letras y números, hasta 20 caracteres, y la
+    // contraseña respeta la política institucional (ver changePassword.ts).
+    if (cuentaFinal) {
+      const usernameCheck = validateUsernamePolicy(cuentaFinal.username);
+      if (!usernameCheck.valid) {
+        ctx.response.status = 400;
+        ctx.response.body = { error: usernameCheck.error, field: "username" };
+        return;
+      }
+    }
+
+    const passwordCheck = validatePasswordPolicy(password);
+    if (!passwordCheck.valid) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: passwordCheck.error, field: "password" };
+      return;
+    }
+
     // deno-lint-ignore no-explicit-any
     const passwordHash: string | null = await (bcrypt as any).hash(password, 12);
 
@@ -303,6 +326,12 @@ export async function createUsuario(ctx: Context): Promise<void> {
 
     ctx.response.status = 201;
     broadcastUserEvent({ action: "created", userId: String(usuarioId) });
+    publicarEventoAsync("usuarios.create", {
+      usuarioId: String(usuarioId),
+      nombre: datos?.nombre,
+      apellido: datos?.apellidoPaterno,
+      rol: rolNombre,
+    });
     ctx.response.body = serialize({
       message: "Usuario creado correctamente",
       id: usuarioId,

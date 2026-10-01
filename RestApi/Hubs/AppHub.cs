@@ -8,11 +8,16 @@ public sealed class AppHub : Hub
 {
     private readonly PendingRequestTracker _tracker;
     private readonly WebhookDispatcherService _webhookDispatcher;
+    private readonly JwtTokenValidator _jwtValidator;
 
-    public AppHub(PendingRequestTracker tracker, WebhookDispatcherService webhookDispatcher)
+    public AppHub(
+        PendingRequestTracker tracker,
+        WebhookDispatcherService webhookDispatcher,
+        JwtTokenValidator jwtValidator)
     {
         _tracker = tracker;
         _webhookDispatcher = webhookDispatcher;
+        _jwtValidator = jwtValidator;
     }
 
     public async Task ExecuteAction(string requestId, string action, object? payload)
@@ -55,6 +60,41 @@ public sealed class AppHub : Hub
                 error = "No se pudo entregar el Webhook al servicio Backend"
             });
         }
+    }
+
+    /// <summary>
+    /// Une la conexión al grupo de notificaciones del usuario. El socket arrives
+    /// sin credenciales (el cliente usa el WebSocket nativo), así que la
+    /// identidad se valida aquí con el token que ya tiene en el SecureStore.
+    /// </summary>
+    public async Task SuscribirNotificaciones(string usuarioId, string authToken)
+    {
+        if (!_jwtValidator.TryValidate(authToken, out var subject))
+        {
+            await Clients.Caller.SendAsync("NotificacionSuscripcion", new
+            {
+                ok = false,
+                error = "Token inválido o expirado"
+            });
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(usuarioId) && usuarioId != subject)
+        {
+            await Clients.Caller.SendAsync("NotificacionSuscripcion", new
+            {
+                ok = false,
+                error = "El token no corresponde al usuario solicitado"
+            });
+            return;
+        }
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, NotificationGroups.ForUser(subject));
+        await Clients.Caller.SendAsync("NotificacionSuscripcion", new
+        {
+            ok = true,
+            usuarioId = subject
+        });
     }
 
     private static bool HasAuthenticationToken(object? payload)

@@ -18,6 +18,7 @@ import {
   readFilePart,
   readMultipartForm,
 } from "../../utils/multipart.ts";
+import { validateUsernamePolicy } from "../auth/changePassword.ts";
 import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
 
@@ -220,6 +221,15 @@ export async function updateUsuario(
         ctx.response.body = {
           error: "El estudiante sólo puede actualizar su foto, contraseña, contactos y dirección",
         };
+        return;
+      }
+    }
+
+    if (cuenta?.username !== undefined) {
+      const usernameCheck = validateUsernamePolicy(cuenta.username);
+      if (!usernameCheck.valid) {
+        ctx.response.status = 400;
+        ctx.response.body = { error: usernameCheck.error, field: "username" };
         return;
       }
     }
