@@ -37,6 +37,7 @@ import {
   type ScheduleSession,
 } from "../utils/horarioAlgoritmo.ts";
 import { notifyStudentsOfEnrollmentOpening } from "./gestionNotification.service.ts";
+import { gradoTieneMaterias, obtenerMateriasPorGrado } from "./gradoMateria.service.ts";
 
 interface PeriodoRow {
   id: bigint;
@@ -604,6 +605,19 @@ export async function generarEstructura(
   if (!Number.isInteger(capacidadMaxima) || capacidadMaxima < 1 || capacidadMaxima > 1000) {
     throw new HttpError(400, "capacidadMaxima debe ser un entero entre 1 y 1000");
   }
+  // Grados que ya tienen materia asignada. Los cursos de un grado sin materias
+  // se crean igual como curso base, pero NO se cargan a la gestión: sin
+  // materia no hay nada que cursar ni que planificar.
+  const gradosConMateria = new Set<string>();
+  for (const level of normalizados) {
+    for (const grade of level.grados) {
+      if (await gradoTieneMaterias(level.nivel, grade)) {
+        gradosConMateria.add(`${level.nivel}:${grade}`);
+      }
+    }
+  }
+  const cursosSinMaterias: string[] = [];
+
   try {
     await sTransaction(async (tx) => {
       await assertEditableTx(tx, periodoId);
@@ -623,6 +637,13 @@ export async function generarEstructura(
                RETURNING id`,
               [level.nivel, grade, parallel, capacidadMaxima],
             );
+            const cursoId = String(course.rows[0].id);
+
+            if (!gradosConMateria.has(`${level.nivel}:${grade}`)) {
+              cursosSinMaterias.push(`${grade} ${parallel} ${level.nivel}`);
+              continue;
+            }
+
             const turnoCode = input.turnoPorCurso?.[`${level.nivel}:${grade}:${parallel}`] ?? input.turnoPorNivel?.[level.nivel] ?? "manana";
             if (turnoCode !== "manana" && turnoCode !== "tarde") {
               throw new HttpError(400, `Turno inválido para ${level.nivel} ${grade} ${parallel}`);
@@ -637,14 +658,21 @@ export async function generarEstructura(
                  capacidad_maxima = EXCLUDED.capacidad_maxima,
                  estado = 'activo'
                RETURNING id`,
-              [course.rows[0].id, periodoId, capacidadMaxima, turno.id],
+              [cursoId, periodoId, capacidadMaxima, turno.id],
             );
             // El offering queda listo; la matrícula se habilita al activar la gestión.
           }
         }
       }
 
-      for (const malla of input.mallasCurriculares ?? []) {
+      // Si la interfaz no manda la malla, se arma con las materias que el grado
+      // ya tiene asignadas. Así queda alineada con lo que realmente se cursa,
+      // sin un paso manual extra.
+      const mallas = input.mallasCurriculares?.length
+        ? input.mallasCurriculares
+        : (await construirMallasDesdeGrados(normalizados));
+
+      for (const malla of mallas) {
         if (!String(malla.grado ?? "").trim()) throw new HttpError(400, "grado de malla curricular es obligatorio");
         if (!["inicial", "primaria", "secundaria", "bachillerato"].includes(malla.nivel)) {
           throw new HttpError(400, `Nivel no válido en malla curricular: ${malla.nivel}`);
@@ -745,7 +773,54 @@ export async function generarEstructura(
   } catch (err) {
     throw mapDbError(err, "Error al generar la estructura académica");
   }
-  return obtenerEstadoGestion(periodoId);
+
+  const estado = await obtenerEstadoGestion(periodoId);
+
+  if (cursosSinMaterias.length > 0) {
+    // No es un error: el curso base queda creado pero fuera de esta gestión
+    // hasta que se le asignen materias. Se devuelve la lista para que la
+    // interfaz pueda explicar cuál es el motivo.
+    console.warn(
+      `[generarEstructura] ${periodoId}: ${cursosSinMaterias.length} curso(s) sin materias, omitidos: ${
+        cursosSinMaterias.join(", ")
+      }`,
+    );
+    return {
+      ...estado,
+      cursosSinMaterias,
+    };
+  }
+
+  return estado;
+}
+
+/**
+ * Arma la malla curricular de la gestión a partir de las materias que cada
+ * grado tiene asignadas. Un grado queda fuera si no tiene ninguna, que es
+ * justo el caso que la interfaz marca con advertencia.
+ */
+async function construirMallasDesdeGrados(
+  normalizados: Array<{ nivel: NivelEducativo; grados: string[] }>,
+): Promise<MallaCurricularInput[]> {
+  const mallas: MallaCurricularInput[] = [];
+
+  for (const level of normalizados) {
+    for (const grade of level.grados) {
+      const delGrado = await obtenerMateriasPorGrado(level.nivel, grade);
+
+      for (const materia of delGrado) {
+        mallas.push({
+          nivel: level.nivel,
+          grado: grade,
+          materiaId: materia.materiaId,
+          tipoMateria: materia.tipoMateria,
+          cargaHorariaSemanal: materia.cargaHorariaSemanal,
+        });
+      }
+    }
+  }
+
+  return mallas;
 }
 
 export async function generarHorarios(
@@ -1310,14 +1385,23 @@ export async function crearAula(input: { codigo: string; nombre: string; capacid
 }
 
 export async function crearMalla(
-  periodoId: string,
-  input: MallaCurricularInput,
+  periodoIdInput?: string,
+  input?: MallaCurricularInput,
 ): Promise<MallaCurricular> {
+  const mallaInput = input ?? ({} as MallaCurricularInput);
+  let periodoId = periodoIdInput;
+  if (!periodoId) {
+    const pRes = await query<{ id: bigint }>(
+      `SELECT id FROM periodos_academicos WHERE activo = true OR estado IN ('borrador', 'configuracion') ORDER BY activo DESC, anio DESC LIMIT 1`,
+    );
+    if (!pRes.rows.length) throw new HttpError(400, "No hay ningún periodo académico disponible para asociar la malla");
+    periodoId = toId(pRes.rows[0].id);
+  }
   await assertEditable(periodoId);
-  const materiaId = idValue(input.materiaId, "materiaId");
-  const grado = String(input.grado ?? "").trim();
+  const materiaId = idValue(mallaInput.materiaId, "materiaId");
+  const grado = String(mallaInput.grado ?? "").trim();
   if (!grado) throw new HttpError(400, "grado es obligatorio");
-  if (!["inicial", "primaria", "secundaria", "bachillerato"].includes(input.nivel)) {
+  if (!["inicial", "primaria", "secundaria", "bachillerato"].includes(mallaInput.nivel)) {
     throw new HttpError(400, "nivel inválido en malla curricular");
   }
   const materia = await query<{ id: bigint; tipoMateria: "principal" | "extracurricular"; cargaHorariaSemanal: number; pesoSintactico: number }>(
@@ -1327,16 +1411,16 @@ export async function crearMalla(
     [materiaId],
   );
   if (!materia.rows.length) throw new HttpError(404, "La materia no existe o está inactiva");
-  const tipo = input.tipoMateria ?? materia.rows[0].tipoMateria;
+  const tipo = mallaInput.tipoMateria ?? materia.rows[0].tipoMateria;
   if (tipo !== "principal" && tipo !== "extracurricular") throw new HttpError(400, "tipoMateria inválido");
-  const carga = Number(input.cargaHorariaSemanal ?? materia.rows[0].cargaHorariaSemanal);
-  const peso = Number(input.pesoSintactico ?? (tipo === "extracurricular" ? 1 : materia.rows[0].pesoSintactico));
+  const carga = Number(mallaInput.cargaHorariaSemanal ?? materia.rows[0].cargaHorariaSemanal);
+  const peso = Number(mallaInput.pesoSintactico ?? (tipo === "extracurricular" ? 1 : materia.rows[0].pesoSintactico));
   if (!Number.isInteger(carga) || carga < 1 || carga > 40) throw new HttpError(400, "La carga horaria debe estar entre 1 y 40");
   if (!Number.isInteger(peso) || peso < 1 || peso > 100) throw new HttpError(400, "El peso sintáctico debe estar entre 1 y 100");
   if (tipo === "extracurricular" && peso >= 3) throw new HttpError(400, "Las extracurriculares deben tener menor peso sintáctico");
   try {
     const row = await sTransaction(async (tx) => {
-      await assertEditableTx(tx, periodoId);
+      await assertEditableTx(tx, periodoId!);
       const result = await tx.queryObject<{ id: bigint; periodoId: bigint; nivel: NivelEducativo; grado: string; materiaId: bigint; tipoMateria: "principal" | "extracurricular"; cargaHorariaSemanal: number; pesoSintactico: number; materiaCodigo: string; materiaNombre: string }>(
         `INSERT INTO mallas_curriculares
            (periodo_id, nivel, grado, materia_id, tipo_materia, carga_horaria_semanal, peso_sintactico)
@@ -1350,7 +1434,7 @@ export async function crearMalla(
            peso_sintactico AS "pesoSintactico",
            (SELECT codigo FROM materias WHERE id = $4) AS "materiaCodigo",
            (SELECT nombre FROM materias WHERE id = $4) AS "materiaNombre"`,
-        [periodoId, input.nivel, grado, materiaId, tipo, carga, peso],
+        [periodoId, mallaInput.nivel, grado, materiaId, tipo, carga, peso],
       );
       await tx.queryObject(
         `UPDATE periodos_academicos
@@ -1371,7 +1455,31 @@ export async function crearMalla(
   }
 }
 
-export async function listarMallas(periodoId: string): Promise<MallaCurricular[]> {
+export async function eliminarMalla(id: string): Promise<void> {
+  const mallaId = idValue(id, "id");
+  await sTransaction(async (tx) => {
+    const existing = await tx.queryObject<{ periodoId: bigint }>(
+      `SELECT periodo_id AS "periodoId" FROM mallas_curriculares WHERE id = $1`,
+      [mallaId],
+    );
+    if (!existing.rows.length) throw new HttpError(404, "Malla curricular no encontrada");
+    await assertEditableTx(tx, toId(existing.rows[0].periodoId));
+    await tx.queryObject(`DELETE FROM mallas_curriculares WHERE id = $1`, [mallaId]);
+  });
+}
+
+export async function listarMallas(periodoId?: string): Promise<MallaCurricular[]> {
+  let targetPeriodoId = periodoId;
+  if (!targetPeriodoId) {
+    const pRes = await query<{ id: bigint }>(
+      `SELECT id FROM periodos_academicos ORDER BY activo DESC, anio DESC LIMIT 1`,
+    );
+    if (pRes.rows.length) {
+      targetPeriodoId = toId(pRes.rows[0].id);
+    }
+  }
+  if (!targetPeriodoId) return [];
+
   const result = await query<{ id: bigint; periodoId: bigint; nivel: NivelEducativo; grado: string; materiaId: bigint; tipoMateria: "principal" | "extracurricular"; cargaHorariaSemanal: number; pesoSintactico: number; materiaCodigo: string; materiaNombre: string }>(
     `SELECT mc.id, mc.periodo_id AS "periodoId", mc.nivel, mc.grado,
        mc.materia_id AS "materiaId", mc.tipo_materia AS "tipoMateria",
@@ -1379,13 +1487,13 @@ export async function listarMallas(periodoId: string): Promise<MallaCurricular[]
        m.codigo AS "materiaCodigo", m.nombre AS "materiaNombre"
      FROM mallas_curriculares mc JOIN materias m ON m.id = mc.materia_id AND m.activo = true
      WHERE mc.periodo_id = $1 AND mc.activo = true ORDER BY mc.nivel, mc.grado, m.nombre`,
-    [periodoId],
+    [targetPeriodoId],
   );
   return result.rows.map((row) => ({
     id: toId(row.id), periodoId: toId(row.periodoId), nivel: row.nivel, grado: row.grado,
     materiaId: toId(row.materiaId), tipoMateria: row.tipoMateria,
     cargaHorariaSemanal: Number(row.cargaHorariaSemanal), pesoSintactico: Number(row.pesoSintactico),
-    materia: { id: toId(row.materiaId), nombre: row.materiaNombre } as MallaCurricular["materia"],
+    materia: { id: toId(row.materiaId), codigo: row.materiaCodigo, nombre: row.materiaNombre } as MallaCurricular["materia"],
   }));
 }
 

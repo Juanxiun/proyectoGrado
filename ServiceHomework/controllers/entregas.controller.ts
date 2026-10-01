@@ -47,6 +47,7 @@ import {
   resolveCursoInfoFromEncargo,
   sanitizeLevel,
 } from "../utils/fileNaming.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function createEntrega(ctx: Context): Promise<void> {
   try {
@@ -89,13 +90,25 @@ export async function createEntrega(ctx: Context): Promise<void> {
         claims,
       );
 
+      publicarEventoAsync("entregas.create", {
+        encargoId,
+        estudianteId: created.estudianteId,
+        titulo: "Nueva entrega",
+      });
+
       respond(ctx, 201, created);
       return;
     }
 
     // Creación mediante JSON estándar
     const body = await readJsonBody<CreateEncargoEntregaInput>(ctx);
-    respond(ctx, 201, await entregaService.createOrUpdateEntrega(body, claims));
+    const created = await entregaService.createOrUpdateEntrega(body, claims);
+    publicarEventoAsync("entregas.create", {
+      encargoId: created.encargoId,
+      estudianteId: created.estudianteId,
+      titulo: "Nueva entrega",
+    });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al enviar la tarea");
   }

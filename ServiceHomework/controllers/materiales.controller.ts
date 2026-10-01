@@ -11,7 +11,7 @@ import * as materialService from "../services/material.service.ts";
 import { deleteMaterialFile, uploadMaterialFile } from "../connects/Storage/minio.ts";
 import { HttpError } from "../utils/errors.ts";
 import type { CreateMateriaMaterialInput, UpdateMateriaMaterialInput } from "../models/homework.ts";
-import { createAndDispatchNotification } from "../services/notification.service.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function listMateriales(ctx: Context): Promise<void> {
   try {
@@ -79,12 +79,11 @@ export async function createMaterial(ctx: Context): Promise<void> {
         activo: true,
       });
 
-      createAndDispatchNotification({
-        tipo: "material",
+      publicarEventoAsync("materiales.create", {
         titulo: created.titulo,
         asignacionId: created.asignacionId,
         itemId: created.id,
-      }).catch((e) => console.warn("[Material] Error enviando notificación:", e));
+      });
 
       respond(ctx, 201, created);
       return;
@@ -93,12 +92,11 @@ export async function createMaterial(ctx: Context): Promise<void> {
     // Creación mediante JSON estándar
     const body = await readJsonBody<CreateMateriaMaterialInput>(ctx);
     const created = await materialService.createMaterial(body);
-    createAndDispatchNotification({
-      tipo: "material",
+    publicarEventoAsync("materiales.create", {
       titulo: created.titulo,
       asignacionId: created.asignacionId,
       itemId: created.id,
-    }).catch((e) => console.warn("[Material] Error enviando notificación:", e));
+    });
     respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al subir material");

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,9 +10,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { academicManagementApi, academicServicesApi, type EstadoGestion } from '../../../api/academicServices.api';
+import { academicManagementApi, academicServicesApi, type EstadoGestion, type NivelEducativo } from '../../../api/academicServices.api';
 import { BirthDatePicker } from '../../usuarios/components/BirthDatePicker';
-import { getFallbackGradient } from './CoverImagePicker';
 
 interface GestionWizardModalProps {
   visible: boolean;
@@ -25,25 +24,75 @@ const GRADOS = ['1°', '2°', '3°', '4°', '5°', '6°'];
 const dateString = (year: number, month: number, day: number) =>
   `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
-function matchesBoliviaCurriculum(materiaName: string, nivel: 'primaria' | 'secundaria', grado: string): boolean {
-  const name = materiaName.toLowerCase();
-  const gNum = parseInt(grado) || 1;
+// La heurística que sugería materias por grado ("Sugerencia Bolivia") se
+// eliminó junto con la selección manual: las materias se configuran una vez por
+// curso en Estructura Académica → Cursos base y esta pantalla sólo las informa.
 
-  if (nivel === 'primaria') {
-    if (name.includes('química') || name.includes('quimica') || name.includes('física') || name.includes('fisica') || name.includes('filosofía') || name.includes('filosofia')) {
-      return false;
-    }
-    return true;
+/** Materias ya asignadas a un curso base. Sólo lectura: se configuran en otro lado. */
+function MateriasDelCurso({
+  cursoId,
+  cargando,
+  fallback,
+}: {
+  cursoId: string;
+  cargando: boolean;
+  fallback?: Array<{ codigo: string; nombre: string; cargaHorariaSemanal: number; tipoMateria: string }>;
+}) {
+  if (cargando && !fallback) {
+    return (
+      <View className="px-3.5 py-3 flex-row items-center gap-2">
+        <ActivityIndicator size="small" color="#801529" />
+        <Text className="text-xs text-gray-500">Cargando materias…</Text>
+      </View>
+    );
   }
 
-  if (nivel === 'secundaria') {
-    if ((name.includes('química') || name.includes('quimica') || name.includes('física') || name.includes('fisica')) && gNum < 3) {
-      return false;
-    }
-    return true;
+  const materias = fallback ?? [];
+
+  if (materias.length === 0) {
+    return (
+      <View className="px-3.5 py-3 flex-row items-center gap-2 bg-red-600">
+        <Ionicons name="warning" size={16} color="#FFFFFF" />
+        <Text className="text-[15px] font-bold text-white">
+          Este curso no tiene materias: no se cargará a la gestión
+        </Text>
+      </View>
+    );
   }
 
-  return true;
+  const principales = materias.filter((m) => m.tipoMateria !== 'extracurricular');
+  const extracurriculares = materias.filter((m) => m.tipoMateria === 'extracurricular');
+
+  return (
+    <View className="px-3.5 py-2.5 gap-2">
+      {[
+        { titulo: 'Principales', items: principales },
+        { titulo: 'Extracurriculares', items: extracurriculares },
+      ].map((seccion) =>
+        seccion.items.length === 0 ? null : (
+          <View key={seccion.titulo}>
+            <Text className="text-[10px] font-bold text-gray-500 uppercase mb-1">
+              {seccion.titulo} ({seccion.items.length})
+            </Text>
+            <View className="flex-row flex-wrap gap-1.5">
+              {seccion.items.map((materia) => (
+                <View
+                  key={materia.codigo}
+                  className="flex-row items-center gap-1.5 bg-maroon/5 border border-maroon/20 rounded-lg px-2 py-1"
+                >
+                  <Ionicons name="book-outline" size={11} color="#801529" />
+                  <Text className="text-[11px] font-medium text-gray-800" numberOfLines={1}>
+                    {materia.nombre}
+                  </Text>
+                  <Text className="text-[9px] text-gray-400">{materia.cargaHorariaSemanal}h</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ),
+      )}
+    </View>
+  );
 }
 
 export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizardModalProps) {
@@ -79,39 +128,95 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
   });
   const [capacidadPorCurso, setCapacidadPorCurso] = useState('30');
 
-  // ── Paso 3: Asignación de Materias por Curso / Malla Bolivia ────────────
-  const [materiasList, setMateriasList] = useState<Array<Record<string, any>>>([]);
+  // ── Paso 3: Vista previa de los cursos y sus materias ───────────────────
+  // Las materias están asignadas por GRADO, así que este paso sólo informa: la
+  // malla la arma el backend al generar la estructura. La clave es el id del
+  // curso para poder pintar cada fila, pero la lista es la del grado completo.
+  const [cursosBase, setCursosBase] = useState<Array<Record<string, any>>>([]);
+  const [cursoMaterias, setCursoMaterias] = useState<
+    Record<string, Array<{ codigo: string; nombre: string; cargaHorariaSemanal: number; tipoMateria: string }>>
+  >({});
+  const [cursosLoading, setCursosLoading] = useState(false);
   const [selectedNivelTab, setSelectedNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
   const [selectedGradoTab, setSelectedGradoTab] = useState<string>('1°');
-  // mallasPorCurso: key = `${nivel}:${grado}`, value = { [materiaId]: boolean }
-  const [mallasPorCurso, setMallasPorCurso] = useState<Record<string, Record<string, boolean>>>({});
-
-  const initMallasBolivia = (list: Array<Record<string, any>>) => {
-    const initialMap: Record<string, Record<string, boolean>> = {};
-    ['primaria', 'secundaria'].forEach((nivel) => {
-      GRADOS.forEach((grado) => {
-        const key = `${nivel}:${grado}`;
-        initialMap[key] = {};
-        list.forEach((m) => {
-          initialMap[key][String(m.id)] = matchesBoliviaCurriculum(m.nombre, nivel as any, grado);
-        });
-      });
-    });
-    setMallasPorCurso(initialMap);
-  };
 
   useEffect(() => {
-    if (visible) {
-      setStep(1);
-      academicServicesApi.list('materias', { activo: 'true', limit: 100 })
-        .then((res) => {
-          const list = (res.data ?? []) as Array<Record<string, any>>;
-          setMateriasList(list);
-          initMallasBolivia(list);
-        })
-        .catch(() => undefined);
-    }
+    if (!visible) return;
+    setStep(1);
+    setCursoMaterias({});
+
+    academicServicesApi
+      .list('cursos', { activo: 'true', limit: 200 })
+      .then((res) => setCursosBase((res.data ?? []) as Array<Record<string, any>>))
+      .catch(() => setCursosBase([]));
   }, [visible]);
+
+  // Las materias de cada curso se piden al abrir el paso 3, no antes.
+  useEffect(() => {
+    if (!visible || step !== 3) return;
+
+    const grado = selectedGradoTab;
+    const nivel = selectedNivelTab;
+    const delGrado = cursosBase.filter(
+      (curso) =>
+        String(curso.nivel ?? '').toLowerCase() === nivel &&
+        String(curso.grado ?? '').trim() === grado,
+    );
+
+    const faltantes = delGrado.filter((curso) => !cursoMaterias[String(curso.id)]);
+    if (faltantes.length === 0) return;
+
+    setCursosLoading(true);
+    let vigente = true;
+
+    Promise.allSettled(
+      faltantes.map(async () => {
+        // Las materias son por GRADO: 1°A y 1°B comparten la misma lista, así
+        // que alcanza con pedirla una vez por grado.
+        const materias = await academicServicesApi.gradoMaterias(
+          nivel as NivelEducativo,
+          grado,
+        );
+        return materias ?? [];
+      }),
+    ).then((resultados) => {
+      if (!vigente) return;
+      setCursoMaterias((prev) => {
+        const next = { ...prev };
+        for (const r of resultados) {
+          if (r.status === 'fulfilled') {
+            const resumen = r.value.map((m: any) => ({
+              codigo: m.codigo,
+              nombre: m.nombre,
+              cargaHorariaSemanal: m.cargaHorariaSemanal,
+              tipoMateria: m.tipoMateria,
+            }));
+            // Se guarda bajo cada clave de curso para que el paso 3 pueda
+            // leerlo sin volver a preguntar.
+            for (const curso of delGrado) next[String(curso.id)] = resumen;
+          } else {
+            for (const curso of delGrado) next[String(curso.id)] = [];
+          }
+        }
+        return next;
+      });
+      setCursosLoading(false);
+    });
+
+    return () => {
+      vigente = false;
+    };
+  }, [visible, step, selectedGradoTab, selectedNivelTab, cursosBase]);
+
+  const cursosDelGrado = useMemo(
+    () =>
+      cursosBase.filter(
+        (curso) =>
+          String(curso.nivel ?? '').toLowerCase() === selectedNivelTab &&
+          String(curso.grado ?? '').trim() === selectedGradoTab,
+      ),
+    [cursosBase, selectedGradoTab, selectedNivelTab],
+  );
 
   // Validaciones de paso 1
   const validateStep1 = () => {
@@ -180,9 +285,10 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
       });
       const periodoId = String((periodoRes as { id?: string }).id ?? '');
 
-      // 2. Construir niveles, cursos y mallas curriculares diferenciadas por curso
-      setLoadingStepText('2/4 Configurando cursos, paralelos y malla curricular Bolivia...');
-      const mallasCurriculares: Array<Record<string, any>> = [];
+      // 2. Construir niveles y cursos. La malla curricular NO se envía: el
+      // backend la arma con las materias que cada curso base ya tiene
+      // asignadas, y omite los cursos que no tengan ninguna.
+      setLoadingStepText('2/4 Configurando cursos y paralelos...');
       const nivelesInput: Array<{ nivel: string; grados: string[]; paralelos: Record<string, number> }> = [];
 
       const activePrimariaGrados = Object.keys(primariaGrados).filter((g) => primariaGrados[g]);
@@ -193,24 +299,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
           nivel: 'primaria',
           grados: activePrimariaGrados,
           paralelos: paralelosMap,
-        });
-
-        // Asignar materias marcadas para cada grado de primaria
-        activePrimariaGrados.forEach((grado) => {
-          const key = `primaria:${grado}`;
-          const gradeMateriaMap = mallasPorCurso[key] || {};
-          materiasList
-            .filter((m) => gradeMateriaMap[String(m.id)])
-            .forEach((mat) => {
-              mallasCurriculares.push({
-                nivel: 'primaria',
-                grado,
-                materiaId: String(mat.id),
-                tipoMateria: mat.tipoMateria ?? 'principal',
-                cargaHorariaSemanal: mat.cargaHorariaSemanal ?? 5,
-                pesoSintactico: mat.pesoSintactico ?? (mat.tipoMateria === 'extracurricular' ? 1 : 3),
-              });
-            });
         });
       }
 
@@ -223,31 +311,12 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
           grados: activeSecundariaGrados,
           paralelos: paralelosMap,
         });
-
-        // Asignar materias marcadas para cada grado de secundaria
-        activeSecundariaGrados.forEach((grado) => {
-          const key = `secundaria:${grado}`;
-          const gradeMateriaMap = mallasPorCurso[key] || {};
-          materiasList
-            .filter((m) => gradeMateriaMap[String(m.id)])
-            .forEach((mat) => {
-              mallasCurriculares.push({
-                nivel: 'secundaria',
-                grado,
-                materiaId: String(mat.id),
-                tipoMateria: mat.tipoMateria ?? 'principal',
-                cargaHorariaSemanal: mat.cargaHorariaSemanal ?? 5,
-                pesoSintactico: mat.pesoSintactico ?? (mat.tipoMateria === 'extracurricular' ? 1 : 3),
-              });
-            });
-        });
       }
 
       const structureState = await academicManagementApi.generateStructure(periodoId, {
         niveles: nivelesInput,
         capacidadMaxima: Number(capacidadPorCurso),
         turnoPorNivel: { primaria: turnoGeneral, secundaria: turnoGeneral },
-        mallasCurriculares,
       });
 
       // 3. Generar Plan de Pagos Mensual
@@ -277,26 +346,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
       setLoading(false);
       setLoadingStepText('');
     }
-  };
-
-  const currentMallaKey = `${selectedNivelTab}:${selectedGradoTab}`;
-  const currentMalla = mallasPorCurso[currentMallaKey] ?? {};
-  const toggleMateria = (materiaId: string) => {
-    setMallasPorCurso((prev) => ({
-      ...prev,
-      [currentMallaKey]: {
-        ...(prev[currentMallaKey] ?? {}),
-        [materiaId]: !prev[currentMallaKey]?.[materiaId],
-      },
-    }));
-  };
-  const resetMalla = () => {
-    setMallasPorCurso((prev) => ({
-      ...prev,
-      [currentMallaKey]: Object.fromEntries(
-        materiasList.map((materia) => [String(materia.id), matchesBoliviaCurriculum(materia.nombre, selectedNivelTab, selectedGradoTab)]),
-      ),
-    }));
   };
 
   return (
@@ -570,12 +619,18 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                 {/* ── PASO 3: ASIGNACIÓN DE MATERIAS POR CURSO ── */}
                 {step === 3 && (
                   <View className="gap-4">
-                    <View className="bg-maroon/5 border border-maroon/20 p-3.5 rounded-2xl">
-                      <View className="flex-row items-center gap-2 mb-1">
-                        <Ionicons name="school-outline" size={18} color="#801529" />
-                        <Text className="text-xs font-bold text-maroon uppercase">Malla curricular del curso</Text>
+                    <View className="bg-maroon/5 border border-maroon/20 p-3.5 rounded-2xl flex-row items-start gap-2.5">
+                      <Ionicons name="information-circle" size={19} color="#801529" />
+                      <View className="flex-1">
+                        <Text className="text-sm font-bold text-maroon">
+                          Materias que se cargarán al curso
+                        </Text>
+                        <Text className="text-[13px] text-gray-700 leading-5 mt-1">
+                          Sólo se muestran los cursos y las materias que ya tienen asignadas. Las
+                          materias se configuran una vez por curso en Estructura Académica → Cursos
+                          base, y esta gestión las reutiliza. Los cursos sin materias quedan fuera.
+                        </Text>
                       </View>
-                      <Text className="text-xs text-gray-600">Seleccione las materias que se impartirán en el grado elegido. La asignación docente se realizará en Construcción de horarios.</Text>
                     </View>
 
                     <View className="flex-row rounded-2xl bg-gray-100 p-1.5 gap-2">
@@ -590,10 +645,10 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                               const first = nivel === 'primaria' ? Object.keys(primariaGrados).find((grado) => primariaGrados[grado]) : Object.keys(secundariaGrados).find((grado) => secundariaGrados[grado]);
                               if (first) setSelectedGradoTab(first);
                             }}
-                            className={`flex-1 py-2.5 rounded-xl flex-row items-center justify-center gap-2 ${active ? (nivel === 'primaria' ? 'bg-emerald-700 shadow-sm' : 'bg-indigo-700 shadow-sm') : 'bg-transparent'}`}
+                            className={`flex-1 py-3 rounded-xl flex-row items-center justify-center gap-2 ${active ? 'bg-maroon shadow-sm' : 'bg-transparent'}`}
                           >
-                            <Ionicons name={nivel === 'primaria' ? 'school' : 'library'} size={16} color={active ? '#FFFFFF' : '#374151'} />
-                            <Text className={`text-xs font-bold ${active ? 'text-white' : 'text-gray-700'}`}>{label}</Text>
+                            <Ionicons name={nivel === 'primaria' ? 'school' : 'library'} size={17} color={active ? '#FFFFFF' : '#374151'} />
+                            <Text className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-700'}`}>{label}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -607,7 +662,7 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                             <TouchableOpacity
                               key={grado}
                               onPress={() => setSelectedGradoTab(grado)}
-                              className={`px-4 py-2 rounded-xl border ${active ? (selectedNivelTab === 'primaria' ? 'bg-emerald-700 border-emerald-700' : 'bg-indigo-700 border-indigo-700') : 'bg-white border-gray-200'}`}
+                              className={`px-4 py-2 rounded-xl border ${active ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'}`}
                             >
                               <Text className={`text-xs font-bold ${active ? 'text-white' : 'text-gray-800'}`}>{grado} {selectedNivelTab === 'primaria' ? 'Primaria' : 'Secundaria'}</Text>
                             </TouchableOpacity>
@@ -616,44 +671,61 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                       </View>
                     </ScrollView>
 
-                    <View className="flex-row items-center justify-between">
-                      <View>
-                        <Text className="text-xs font-bold text-gray-800">Materias de {selectedGradoTab} · {selectedNivelTab === 'primaria' ? 'Primaria' : 'Secundaria'}</Text>
-                        <Text className="text-[11px] text-gray-500">Las materias se guardarán en la malla del curso.</Text>
+                    {/* Cursos del grado con las materias que cada uno tiene. */}
+                    {cursosDelGrado.length === 0 ? (
+                      <View className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex-row items-start gap-3">
+                        <Ionicons name="warning" size={22} color="#B45309" />
+                        <View className="flex-1">
+                          <Text className="text-base font-bold text-amber-900">
+                            No hay cursos base para este grado
+                          </Text>
+                          <Text className="text-[15px] text-amber-900 leading-5 mt-1">
+                            Crealos en Estructura Académica → Cursos base y asígnales al menos una
+                            materia. Sin cursos, este grado no tendrá nada que cursar.
+                          </Text>
+                        </View>
                       </View>
-                      <TouchableOpacity onPress={resetMalla} className="px-2.5 py-1.5 bg-gray-100 rounded-lg flex-row items-center gap-1">
-                        <Ionicons name="refresh-outline" size={14} color="#374151" />
-                        <Text className="text-[11px] font-bold text-gray-700">Sugerencia Bolivia</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View className="gap-2">
-                      {materiasList.length === 0 ? (
-                        <Text className="text-xs text-gray-400 italic py-4 text-center">No hay materias activas registradas.</Text>
-                      ) : materiasList.map((materia) => {
-                        const id = String(materia.id);
-                        const active = Boolean(currentMalla[id]);
-                        const fallback = getFallbackGradient(materia.nombre);
-                        return (
-                          <TouchableOpacity
-                            key={id}
-                            onPress={() => toggleMateria(id)}
-                            className={`p-3 rounded-2xl border flex-row items-center justify-between ${active ? 'bg-maroon/5 border-maroon/300' : 'bg-gray-50 border-gray-200 opacity-60'}`}
+                    ) : (
+                      <View className="gap-3">
+                        {cursosDelGrado.map((curso) => (
+                          <View
+                            key={String(curso.id)}
+                            className="border border-gray-200 rounded-2xl overflow-hidden bg-white"
                           >
-                            <View className="flex-row items-center gap-3 flex-1 mr-2">
-                              <View className={`w-8 h-8 rounded-xl ${fallback.bg} items-center justify-center`}>
-                                <Ionicons name={fallback.icon} size={16} color="#FFFFFF" />
+                            <View className="flex-row items-center gap-2 px-3.5 py-2.5 bg-gray-50 border-b border-gray-100">
+                              <View className="w-8 h-8 rounded-lg bg-maroon items-center justify-center">
+                                <Text className="text-white font-bold text-xs">
+                                  {String(curso.paralelo ?? '').toUpperCase()}
+                                </Text>
                               </View>
-                              <View className="flex-1">
-                                <Text className="text-xs font-bold text-gray-900" numberOfLines={1}>{materia.nombre}</Text>
-                                <Text className="text-[11px] text-gray-500 mt-0.5">{materia.codigo} · {materia.cargaHorariaSemanal ?? 5} hrs/sem</Text>
-                              </View>
+                              <Text className="text-sm font-bold text-gray-800 flex-1">
+                                {curso.grado} {String(curso.paralelo ?? '').toUpperCase()}
+                              </Text>
+                              {Number(curso.totalMaterias ?? 0) === 0 ? (
+                                <View className="flex-row items-center gap-1 bg-red-600 px-2 py-1 rounded-md">
+                                  <Ionicons name="warning" size={12} color="#FFFFFF" />
+                                  <Text className="text-[10px] font-bold text-white">
+                                    Sin materias · no se cargará
+                                  </Text>
+                                </View>
+                              ) : (
+                                <View className="px-2 py-1 rounded-md bg-green-100">
+                                  <Text className="text-[10px] font-bold text-green-700">
+                                    {curso.totalMaterias} {Number(curso.totalMaterias) === 1 ? 'materia' : 'materias'}
+                                  </Text>
+                                </View>
+                              )}
                             </View>
-                            <Ionicons name={active ? 'checkbox' : 'square-outline'} size={20} color={active ? '#801529' : '#9CA3AF'} />
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+
+                            <MateriasDelCurso
+                              cursoId={String(curso.id)}
+                              cargando={cursosLoading}
+                              fallback={cursoMaterias[String(curso.id)]}
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                 )}
               </>

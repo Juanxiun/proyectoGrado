@@ -1,6 +1,20 @@
-const USERNAME_REGEX = /^[a-zA-Z0-9]+$/;
-const PASSWORD_MIN = 8;
-const PASSWORD_MAX = 50;
+/**
+ * Las reglas de credenciales viven en src/shared/validation/credentials.ts.
+ * Este módulo se conserva como punto de entrada compatible y además mantiene
+ * los formateadores de uso general que usan las pantallas.
+ */
+export {
+  USERNAME_MAX,
+  PASSWORD_MIN,
+  PASSWORD_MAX,
+  USERNAME_REGEX,
+  sanitizeUsername,
+  sanitizePassword,
+  validateUsername,
+  validatePassword,
+  validateLogin,
+} from '../shared/validation/credentials';
+export type { LoginValidation } from '../shared/validation/credentials';
 
 export function isUsuarioActivo(estado: unknown): boolean {
   return estado === 1 || estado === 'activo';
@@ -8,41 +22,6 @@ export function isUsuarioActivo(estado: unknown): boolean {
 
 export function isUsuarioInactivo(estado: unknown): boolean {
   return estado === 0 || estado === 2 || estado === 'inactivo' || estado === 'bloqueado';
-}
-
-export interface LoginValidation {
-  isValid: boolean;
-  usernameError: string | null;
-  passwordError: string | null;
-}
-
-export function validateUsername(value: string): string | null {
-  if (!value.trim()) return 'El usuario es obligatorio';
-  if (!USERNAME_REGEX.test(value)) {
-    return 'Solo letras (a-z, A-Z) y números (0-9)';
-  }
-  return null;
-}
-
-export function validatePassword(value: string): string | null {
-  if (!value) return 'La contraseña es obligatoria';
-  if (value.length < PASSWORD_MIN) {
-    return `Mínimo ${PASSWORD_MIN} caracteres`;
-  }
-  if (value.length > PASSWORD_MAX) {
-    return `Máximo ${PASSWORD_MAX} caracteres`;
-  }
-  return null;
-}
-
-export function validateLogin(username: string, password: string): LoginValidation {
-  const usernameError = validateUsername(username);
-  const passwordError = validatePassword(password);
-  return {
-    isValid: !usernameError && !passwordError,
-    usernameError,
-    passwordError,
-  };
 }
 
 export function getFullName(

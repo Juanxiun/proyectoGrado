@@ -78,3 +78,5 @@ export function requireAuth(roles?: AppRole[]) {
 
 export const ROLES_GESTION: AppRole[] = ["director", "control"];
 export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor", "estudiante"];
+/** También el cuerpo docente: puede cargar y ajustar el temario de su grado. */
+export const ROLES_DOCENTES: AppRole[] = ["director", "control", "profesor"];

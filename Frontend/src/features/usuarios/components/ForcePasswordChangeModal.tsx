@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { authApi } from '../../../api/auth.api';
 import { useAuth } from '../../../context/AuthContext';
+import { PASSWORD_MAX, sanitizePassword } from '../../../shared/validation/credentials';
 
 interface ForcePasswordChangeModalProps {
   visible: boolean;
@@ -104,11 +105,12 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
                 <TextInput
                   value={passwordNueva}
                   onChangeText={(v) => {
-                    setPasswordNueva(v);
+                    setPasswordNueva(sanitizePassword(v));
                     setErrorMsg('');
                   }}
                   secureTextEntry={!showPassword}
                   placeholder="Ingrese nueva contraseña"
+                  maxLength={PASSWORD_MAX}
                   className="flex-1 py-3 text-sm text-gray-900"
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} className="p-2">
@@ -128,11 +130,12 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
                 <TextInput
                   value={passwordConfirm}
                   onChangeText={(v) => {
-                    setPasswordConfirm(v);
+                    setPasswordConfirm(sanitizePassword(v));
                     setErrorMsg('');
                   }}
                   secureTextEntry={!showPassword}
                   placeholder="Confirme la contraseña"
+                  maxLength={PASSWORD_MAX}
                   className="flex-1 py-3 text-sm text-gray-900"
                 />
               </View>

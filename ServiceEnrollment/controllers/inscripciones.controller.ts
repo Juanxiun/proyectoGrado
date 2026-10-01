@@ -19,6 +19,7 @@ import type {
   CreateSolicitudInscripcionInput,
   UpdateInscripcionInput,
 } from "../models/enrollment.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function listInscripciones(ctx: Context): Promise<void> {
   try {
@@ -54,7 +55,12 @@ export async function getInscripcion(ctx: Context): Promise<void> {
 export async function createInscripcion(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<CreateInscripcionInput>(ctx);
-    respond(ctx, 201, await inscripcionService.createInscripcion(body));
+    const created = await inscripcionService.createInscripcion(body);
+    publicarEventoAsync("inscripciones.create", {
+      estudianteId: created.estudianteId,
+      cursoPeriodoId: created.cursoPeriodoId,
+    });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al matricular estudiante");
   }
@@ -84,15 +90,18 @@ export async function retirarInscripcion(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
     const body = await readJsonBody<{ observacion?: string; fechaRetiro?: string }>(ctx).catch(() => ({ observacion: undefined as string | undefined, fechaRetiro: undefined as string | undefined }));
-    respond(
-      ctx,
-      200,
-      await inscripcionService.updateInscripcion(id, {
-        estado: "retirado",
-        fechaRetiro: body.fechaRetiro,
-        observacion: body.observacion ?? "Retiro del curso solicitado",
-      }),
-    );
+    const updated = await inscripcionService.updateInscripcion(id, {
+      estado: "retirado",
+      fechaRetiro: body.fechaRetiro,
+      observacion: body.observacion ?? "Retiro del curso solicitado",
+    });
+
+    publicarEventoAsync("inscripciones.retirar", {
+      estudianteId: updated.estudianteId,
+      cursoPeriodoId: updated.cursoPeriodoId,
+    });
+
+    respond(ctx, 200, updated);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al retirar al estudiante");
   }
@@ -112,7 +121,13 @@ export async function createSolicitudInscripcion(ctx: Context): Promise<void> {
   try {
     const userId = String(ctx.state.auth?.sub ?? "");
     const body = await readJsonBody<CreateSolicitudInscripcionInput>(ctx);
-    respond(ctx, 201, await crearSolicitud(userId, body));
+    const created = await crearSolicitud(userId, body);
+    publicarEventoAsync("solicitudes.create", {
+      id: created.id,
+      tipo: created.tipo,
+      estado: created.estado,
+    });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al solicitar inscripción");
   }

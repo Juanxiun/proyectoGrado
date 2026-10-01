@@ -8,6 +8,14 @@ import { useAuth } from '../../../context/AuthContext';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { NotificationsModal } from './NotificationsModal';
 
+/** Etiqueta legible para notificaciones que no traen `publicoTexto`. */
+const ETIQUETAS: Record<string, string> = {
+  sistema: 'Sistema',
+  academico: 'Académico',
+  usuarios: 'Usuarios',
+  horarios: 'Horarios',
+};
+
 export function NotificationsInboxCard() {
   const { user } = useAuth();
   const [notificaciones, setNotificaciones] = useState<NotificationItem[]>([]);
@@ -88,10 +96,15 @@ export function NotificationsInboxCard() {
                 <Text className="font-bold text-xs text-gray-800" numberOfLines={1}>
                   {n.titulo}
                 </Text>
-                <StatusBadge label={n.publicoTexto} variant={n.tipo === 'material' ? 'info' : 'warning'} />
+                <StatusBadge
+                  label={n.publicoTexto ?? ETIQUETAS[n.canal] ?? 'Notificación'}
+                  variant={n.tipo === 'material' ? 'info' : 'warning'}
+                />
               </View>
               <Text className="text-[11px] text-gray-600 mt-1" numberOfLines={1}>
-                Prof. {n.profesorNombre} • {n.materiaNombre}
+                {n.materiaNombre
+                  ? `Prof. ${n.profesorNombre ?? 'Docente'} • ${n.materiaNombre}`
+                  : n.mensaje}
               </Text>
             </TouchableOpacity>
           ))}

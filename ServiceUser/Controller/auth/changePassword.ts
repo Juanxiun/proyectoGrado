@@ -2,10 +2,19 @@ import { Context } from "@oak/oak";
 import { query } from "../../connects/Database/transaction.ts";
 // deno-lint-ignore no-explicit-any
 import bcrypt from "bcryptjs";
+import { publicarEventoAsync } from "../../utils/events.ts";
+
+/** Límites de credenciales. Deben coincidir con Frontend/src/shared/validation/credentials.ts */
+export const USERNAME_MAX = 20;
+export const PASSWORD_MIN = 8;
+export const PASSWORD_MAX = 100;
 
 export function validatePasswordPolicy(password: string): { valid: boolean; error?: string } {
-  if (typeof password !== "string" || password.length < 8) {
-    return { valid: false, error: "La contraseña debe tener al menos 8 caracteres" };
+  if (typeof password !== "string" || password.length < PASSWORD_MIN) {
+    return { valid: false, error: `La contraseña debe tener al menos ${PASSWORD_MIN} caracteres` };
+  }
+  if (password.length > PASSWORD_MAX) {
+    return { valid: false, error: `La contraseña no puede superar los ${PASSWORD_MAX} caracteres` };
   }
   if (!/[A-Z]/.test(password)) {
     return { valid: false, error: "La contraseña debe incluir al menos una letra mayúscula" };
@@ -15,6 +24,24 @@ export function validatePasswordPolicy(password: string): { valid: boolean; erro
   }
   if (!/[@#$&]/.test(password)) {
     return { valid: false, error: "La contraseña debe incluir al menos un carácter especial entre (@, #, $, &)" };
+  }
+  return { valid: true };
+}
+
+/**
+ * El usuario sólo admite letras y números (A-Z, a-z, 0-9), hasta 20 caracteres.
+ */
+export function validateUsernamePolicy(username: string): { valid: boolean; error?: string } {
+  const value = String(username ?? "");
+
+  if (!value.trim()) {
+    return { valid: false, error: "El nombre de usuario es obligatorio" };
+  }
+  if (value.length > USERNAME_MAX) {
+    return { valid: false, error: `El nombre de usuario no puede superar los ${USERNAME_MAX} caracteres` };
+  }
+  if (!/^[A-Za-z0-9]+$/.test(value)) {
+    return { valid: false, error: "El nombre de usuario sólo admite letras y números" };
   }
   return { valid: true };
 }
@@ -81,6 +108,7 @@ export async function changePassword(ctx: Context): Promise<void> {
     );
 
     ctx.response.status = 200;
+    publicarEventoAsync("usuarios.password", { usuarioId: auth.sub });
     ctx.response.body = {
       success: true,
       message: "Contraseña actualizada exitosamente",

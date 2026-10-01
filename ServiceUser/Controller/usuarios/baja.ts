@@ -1,6 +1,7 @@
 import { RouterContext } from "@oak/oak";
 import { query } from "../../connects/Database/transaction.ts";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
+import { publicarEventoAsync } from "../../utils/events.ts";
 
 /**
  * PATCH /usuarios/:id/baja
@@ -17,8 +18,13 @@ export async function bajaUsuario(
       return;
     }
 
-    const userRes = await query<{ rol: string; estado: string | number }>(
-      `SELECT r.rol, u.estado
+    const userRes = await query<{
+      rol: string;
+      estado: string | number;
+      nombre?: string;
+      apellido?: string;
+    }>(
+      `SELECT r.rol, u.estado, u.nombre, u.apellido_paterno AS apellido
        FROM usuarios u JOIN roles r ON r.id = u.rol_id
        WHERE u.id = $1`,
       [id],
@@ -61,6 +67,12 @@ export async function bajaUsuario(
 
     ctx.response.status = 200;
     broadcastUserEvent({ action: "updated", userId: id });
+    publicarEventoAsync("usuarios.baja", {
+      usuarioId: id,
+      nombre: userRes.rows[0].nombre,
+      apellido: userRes.rows[0].apellido,
+      rol: targetRole,
+    });
     ctx.response.body = {
       message: `Usuario id=${id} dado de baja (estado inactivo)`,
       estado: "inactivo",

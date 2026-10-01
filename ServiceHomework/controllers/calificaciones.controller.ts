@@ -13,6 +13,7 @@ import type {
   CreateCalificacionInput,
   UpdateCalificacionInput,
 } from "../models/homework.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function listCalificaciones(ctx: Context): Promise<void> {
   try {
@@ -40,7 +41,17 @@ export async function getCalificacion(ctx: Context): Promise<void> {
 export async function createCalificacion(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<CreateCalificacionInput>(ctx);
-    respond(ctx, 201, await calificacionService.createCalificacion(body));
+    const created = await calificacionService.createCalificacion(body);
+    publicarEventoAsync("calificaciones.create", {
+      estudianteId: created.estudianteId,
+      nota: created.nota,
+      titulo: created.encargo?.titulo,
+      itemId: created.id,
+      // El seguimiento académico usa esto para reevaluar el riesgo del
+      // estudiante sin que el docente tenga que pedirlo.
+      evaluacionRiesgo: true,
+    });
+    respond(ctx, 201, created);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al registrar calificación");
   }
@@ -50,7 +61,15 @@ export async function updateCalificacion(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
     const body = await readJsonBody<UpdateCalificacionInput>(ctx);
-    respond(ctx, 200, await calificacionService.updateCalificacion(id, body));
+    const updated = await calificacionService.updateCalificacion(id, body);
+    publicarEventoAsync("calificaciones.update", {
+      estudianteId: updated.estudianteId,
+      nota: updated.nota,
+      titulo: updated.encargo?.titulo,
+      itemId: id,
+      evaluacionRiesgo: true,
+    });
+    respond(ctx, 200, updated);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al actualizar calificación");
   }
@@ -69,7 +88,13 @@ export async function deleteCalificacion(ctx: Context): Promise<void> {
 export async function bulkCalificaciones(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<BulkCalificacionInput>(ctx);
-    respond(ctx, 200, await calificacionService.saveBulkCalificaciones(body));
+    const result = await calificacionService.saveBulkCalificaciones(body);
+    publicarEventoAsync("calificaciones.bulk", {
+      encargoId: body.encargoId,
+      total: result.totalGuardados,
+      evaluacionRiesgo: true,
+    });
+    respond(ctx, 200, result);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al guardar calificaciones por lote");
   }

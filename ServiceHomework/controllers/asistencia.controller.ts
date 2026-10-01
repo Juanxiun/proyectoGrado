@@ -13,6 +13,7 @@ import type {
   CreateAsistenciaInput,
   UpdateAsistenciaInput,
 } from "../models/homework.ts";
+import { publicarEventoAsync } from "../utils/events.ts";
 
 export async function listAsistencias(ctx: Context): Promise<void> {
   try {
@@ -47,6 +48,9 @@ export async function createAsistencia(ctx: Context): Promise<void> {
   }
 }
 
+// La asistencia diaria no genera notificación individual: se emite un solo
+// evento por curso y ServiceNotification lo reparte a los estudiantes.
+
 export async function updateAsistencia(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
@@ -70,7 +74,15 @@ export async function deleteAsistencia(ctx: Context): Promise<void> {
 export async function bulkAsistencias(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<BulkAsistenciaInput>(ctx);
-    respond(ctx, 200, await asistenciaService.saveBulkAsistencias(body));
+    const result = await asistenciaService.saveBulkAsistencias(body);
+
+    publicarEventoAsync("asistencia.bulk", {
+      asignacionId: body.asignacionId,
+      fecha: body.fecha,
+      evaluacionRiesgo: true,
+    });
+
+    respond(ctx, 200, result);
   } catch (err) {
     handleControllerError(ctx, err, "Error interno al registrar asistencia por lote");
   }

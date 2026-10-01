@@ -42,6 +42,14 @@ public sealed class WebhooksController : ControllerBase
     public Task<IActionResult> HomeworkServiceCallback([FromBody] ServiceCallbackDto callback)
         => CompleteCallback(callback);
 
+    [HttpPost("notification-service")]
+    public Task<IActionResult> NotificationServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
+    [HttpPost("dashboard-service")]
+    public Task<IActionResult> DashboardServiceCallback([FromBody] ServiceCallbackDto callback)
+        => CompleteCallback(callback);
+
     private async Task<IActionResult> CompleteCallback(ServiceCallbackDto callback)
     {
         if (string.IsNullOrWhiteSpace(callback.EventId))

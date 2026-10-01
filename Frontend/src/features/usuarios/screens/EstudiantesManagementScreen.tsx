@@ -232,23 +232,40 @@ export function EstudiantesManagementScreen() {
     });
   }, [cursosPeriodo, selectedLevel]);
 
-  // Conteo de estudiantes inscritos por cursoPeriodoId
-  const inscripcionesMap = useMemo(() => {
+  // Conteo de estudiantes inscritos por cursoPeriodoId y mapeo de cursos por estudiante
+  const { inscripcionesMap, studentCourseMap } = useMemo(() => {
     const map: Record<string, number> = {};
     const studentIdsByCurso: Record<string, Set<string>> = {};
+    const stCourseMap: Record<string, { cpId: string; cursoLabel: string; nivel: string; grado: string; paralelo: string }> = {};
+
     for (const ins of inscripciones) {
       if (ins.estado !== 'retirado') {
         const cpId = String(ins.cursoPeriodoId || ins.curso_periodo_id || '');
         const stId = String(ins.estudiante?.usuarioId || ins.estudianteId || ins.usuarioId || '');
+        const cp = cursosPeriodo.find((c) => String(c.id) === cpId);
+
         if (cpId) {
           map[cpId] = (map[cpId] || 0) + 1;
           if (!studentIdsByCurso[cpId]) studentIdsByCurso[cpId] = new Set();
           if (stId) studentIdsByCurso[cpId].add(stId);
         }
+
+        if (stId && cp) {
+          const nivel = String(cp.curso?.nivel || cp.nivel || '').toLowerCase();
+          const grado = String(cp.curso?.grado || cp.grado || '');
+          const paralelo = String(cp.curso?.paralelo || cp.paralelo || '');
+          stCourseMap[stId] = {
+            cpId,
+            cursoLabel: `${grado} "${paralelo}"`,
+            nivel,
+            grado,
+            paralelo,
+          };
+        }
       }
     }
-    return { countMap: map, studentIdsByCurso };
-  }, [inscripciones]);
+    return { inscripcionesMap: { countMap: map, studentIdsByCurso }, studentCourseMap: stCourseMap };
+  }, [inscripciones, cursosPeriodo]);
 
   // Estudiantes filtrados por nivel, curso seleccionado, búsqueda y estado
   const filteredStudents = useMemo(() => {
@@ -260,6 +277,21 @@ export function EstudiantesManagementScreen() {
     return students.filter((st) => {
       // Filtro por Estado
       if (statusFilter !== undefined && st.estado !== statusFilter) return false;
+
+      const courseInfo = studentCourseMap[String(st.id)];
+      const studentNivel = (courseInfo?.nivel || (st as any).nivel || '').toLowerCase();
+
+      // Filtro estricto por Nivel (Primaria vs Secundaria)
+      const isPrimaria = studentNivel.includes('primaria') || studentNivel.includes('inicial');
+      const isSecundaria = studentNivel.includes('secundaria') || studentNivel.includes('bachill');
+
+      if (selectedLevel === 'primaria') {
+        if (courseInfo && !isPrimaria) return false;
+        if (!courseInfo && (st as any).nivel && isSecundaria) return false;
+      } else {
+        if (courseInfo && !isSecundaria) return false;
+        if (!courseInfo && (st as any).nivel && isPrimaria) return false;
+      }
 
       // Filtro por Curso seleccionado
       if (selectedCursoPeriodoId !== 'all') {
@@ -281,7 +313,7 @@ export function EstudiantesManagementScreen() {
 
       return true;
     });
-  }, [data, statusFilter, selectedCursoPeriodoId, inscripcionesMap, search]);
+  }, [data, statusFilter, selectedLevel, selectedCursoPeriodoId, studentCourseMap, inscripcionesMap, search]);
 
   // Paginación
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
@@ -975,6 +1007,16 @@ export function EstudiantesManagementScreen() {
                       <Text className="text-xs font-mono text-maroon mt-0.5">
                         @{st.username || 'sin-cuenta'}
                       </Text>
+
+                      {/* Curso Asignado */}
+                      <View className="flex-row items-center gap-1.5 mt-2 bg-maroon/5 border border-maroon/20 px-2.5 py-1 rounded-lg self-start">
+                        <Ionicons name="school" size={12} color="#801529" />
+                        <Text className="text-xs font-bold text-maroon">
+                          {studentCourseMap[String(st.id)]
+                            ? `${studentCourseMap[String(st.id)].cursoLabel} · ${studentCourseMap[String(st.id)].nivel.charAt(0).toUpperCase() + studentCourseMap[String(st.id)].nivel.slice(1)}`
+                            : 'Sin curso asignado'}
+                        </Text>
+                      </View>
 
                       {/* Bloque: Documentos de Identificación */}
                       <View className="flex-row flex-wrap gap-1.5 mt-3">

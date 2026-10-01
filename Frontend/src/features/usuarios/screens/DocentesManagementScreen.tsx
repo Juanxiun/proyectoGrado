@@ -16,6 +16,7 @@ import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteMo
 import { MateriaSelectorModal } from '../components/MateriaSelectorModal';
 import { RemoteImage } from '../../../displays/components/RemoteImage';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
+import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../../shared/validation/credentials';
 import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
@@ -534,11 +535,12 @@ export function DocentesManagementScreen() {
                   <TextInput
                     value={form.username}
                     onChangeText={(v) => {
-                      setForm((f) => ({ ...f, username: v }));
+                      setForm((f) => ({ ...f, username: sanitizeUsername(v) }));
                       if (fieldErrors.username) setFieldErrors((f) => ({ ...f, username: '' }));
                     }}
                     placeholder="Nombre de Usuario *"
                     autoCapitalize="none"
+                    maxLength={USERNAME_MAX}
                     className={`bg-white rounded-xl px-3 py-2.5 border ${fieldErrors.username ? 'border-red-500' : 'border-gray-200'} text-sm`}
                   />
                   {fieldErrors.username ? <Text className="text-[11px] text-red-500 mt-1">{fieldErrors.username}</Text> : null}
@@ -560,9 +562,10 @@ export function DocentesManagementScreen() {
                 {editingDocente && (
                   <TextInput
                     value={form.password}
-                    onChangeText={(v) => setForm((f) => ({ ...f, password: v }))}
+                    onChangeText={(v) => setForm((f) => ({ ...f, password: sanitizePassword(v) }))}
                     placeholder="Nueva Contraseña (Opcional)"
                     secureTextEntry
+                    maxLength={PASSWORD_MAX}
                     className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
                   />
                 )}

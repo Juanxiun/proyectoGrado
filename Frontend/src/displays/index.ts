@@ -2,7 +2,7 @@ export { BentoCard } from './components/BentoCard';
 export { KpiCard } from './components/KpiCard';
 export { HeroBanner } from './components/HeroBanner';
 export { StatusBadge } from './components/StatusBadge';
-export { SearchBar, AppHeader } from './components/AppHeader';
+export { AppHeader } from './components/AppHeader';
 export { Sidebar, type NavItem } from './components/Sidebar';
 export { BottomNav } from './components/BottomNav';
 export { AppLayout } from './layouts/AppLayout';

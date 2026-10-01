@@ -1,4 +1,4 @@
-import { Context } from "@oak/oak";
+﻿import { Context } from "@oak/oak";
 import {
   handleControllerError,
   parseNumericId,
@@ -8,7 +8,10 @@ import {
   routeParam,
 } from "../../utils/http.ts";
 import * as cursoService from "../../services/curso.service.ts";
-import type { CreateCursoInput, UpdateCursoInput } from "../../models/academic.ts";
+import type {
+  CreateCursoInput,
+  UpdateCursoInput,
+} from "../../models/academic.ts";
 
 export async function listCursos(ctx: Context): Promise<void> {
   try {
@@ -61,3 +64,4 @@ export async function deleteCurso(ctx: Context): Promise<void> {
     handleControllerError(ctx, err, "Error interno al eliminar el curso");
   }
 }
+

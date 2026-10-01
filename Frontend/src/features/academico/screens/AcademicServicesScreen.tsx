@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,11 +14,15 @@ import { BirthDatePicker } from '../../usuarios/components/BirthDatePicker';
 import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
 import { AcademicManagementPanel } from './AcademicManagementPanel';
 import { CoverImagePicker, getFallbackGradient } from '../components/CoverImagePicker';
+import { MateriasGradoModal } from '../components/MateriasGradoModal';
+import { MayaCurricularScreen } from '../components/MayaCurricularScreen';
+import { NIVEL_LABEL, numeroGrado, type Nivel } from '../utils/niveles';
+import { Button } from '../../../shared/ui';
 
 type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'choice' | 'image';
 type ReferenceSource = 'periodos' | 'cursos' | 'materias' | 'cursos-periodo' | 'asignaciones' | 'encargos' | 'materiales' | 'estudiantes' | 'docentes';
 type Field = { key: string; label: string; type?: FieldType; required?: boolean; options?: string[]; hint?: string; reference?: ReferenceSource; multiple?: boolean };
-type Definition = { title: string; resource: ServiceResource; fields: Field[]; management?: boolean; bulk?: boolean; withdraw?: boolean };
+type Definition = { title: string; resource: ServiceResource; fields: Field[]; management?: boolean; bulk?: boolean; withdraw?: boolean; /** No es una tabla CRUD: dibuja un panel propio. */ custom?: boolean };
 type Item = Record<string, any>;
 
 const definitions: Definition[] = [
@@ -37,6 +41,9 @@ const definitions: Definition[] = [
     { key: 'codigo', label: 'Código único', required: true }, { key: 'nombre', label: 'Nombre de la materia', required: true }, { key: 'descripcion', label: 'Descripción' },
     { key: 'tipoMateria', label: 'Tipo', type: 'choice', options: ['principal', 'extracurricular'] }, { key: 'cargaHorariaSemanal', label: 'Horas semanales', type: 'number' }, { key: 'pesoSintactico', label: 'Peso sintáctico', type: 'number' }, { key: 'materiaPesada', label: 'Materia pesada', type: 'boolean' }, { key: 'activo', label: 'Activo', type: 'boolean' }, { key: 'caratulaUrl', label: 'Carátula / Portada', type: 'image' },
   ] },
+  // Debajo de Materias y a propósito: se apoya en ellas. Reusa el recurso
+  // `cursos` porque comparte permisos, pero dibuja su propio panel.
+  { title: 'Maya curricular', resource: 'cursos', custom: true, fields: [] },
   { title: 'Cursos por periodo', resource: 'cursos-periodo', management: true, fields: [
     { key: 'cursoId', label: 'Curso', required: true, reference: 'cursos' }, { key: 'periodoId', label: 'Periodo académico', required: true, reference: 'periodos' }, { key: 'capacidadMaxima', label: 'Capacidad máxima', type: 'number', required: true }, { key: 'turnoId', label: 'Turno (ID)', type: 'number' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'cerrado', 'cancelado'] },
   ] },
@@ -128,13 +135,188 @@ const referenceLabel = (source: ReferenceSource, item: Item) => {
 
 function ReferencePicker({ field, items, value, onChange }: { field: Field; items: Item[]; value: string | string[]; onChange: (value: string | string[]) => void }) {
   const [open, setOpen] = useState(false);
+  const [activeNivelTab, setActiveNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
   const selected = Array.isArray(value) ? value : value ? [value] : [];
   const toggle = (id: string) => {
     if (field.multiple) onChange(selected.includes(id) ? selected.filter((current) => current !== id) : [...selected, id]);
     else { onChange(id); setOpen(false); }
   };
   const selectedLabel = selected.length ? selected.map((id) => referenceLabel(field.reference!, items.find((item) => String(item.id) === id) ?? { id })).join(', ') : `Seleccionar ${field.label.toLowerCase()}`;
-  return <View className="min-w-0"><TouchableOpacity onPress={() => setOpen(!open)} className="bg-gray-100 rounded-xl px-3 py-3 flex-row items-center justify-between"><Text className={`flex-1 ${selected.length ? 'text-gray-800' : 'text-gray-400'}`} numberOfLines={2}>{selectedLabel}</Text><Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#801529" /></TouchableOpacity>{open && <View className="mt-1 max-h-48 rounded-xl border border-gray-200 bg-white overflow-hidden">{items.length ? <ScrollView nestedScrollEnabled>{items.map((item) => { const isSelected = selected.includes(String(item.id)); return <TouchableOpacity key={item.id} onPress={() => toggle(String(item.id))} className={`px-3 py-2.5 border-b border-gray-100 flex-row items-center ${isSelected ? 'bg-maroon/10' : ''}`}><Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={17} color="#801529" /><Text className="ml-2 text-sm text-gray-700 flex-1">{referenceLabel(field.reference!, item)}</Text></TouchableOpacity>; })}</ScrollView> : <Text className="p-3 text-sm text-gray-500">No hay registros disponibles. Complete primero el paso anterior.</Text>}</View>}</View>;
+
+  const isCursoReference = field.reference === 'cursos-periodo' || field.reference === 'cursos';
+
+  // Agrupar cursos por nivel y grado
+  const cursosPorNivel = useMemo(() => {
+    if (!isCursoReference) return null;
+    const primariaItems = items.filter((item) => {
+      const nivel = String(item.curso?.nivel || item.nivel || '').toLowerCase();
+      return nivel.includes('primaria') || nivel.includes('inicial');
+    });
+    const secundariaItems = items.filter((item) => {
+      const nivel = String(item.curso?.nivel || item.nivel || '').toLowerCase();
+      return nivel.includes('secundaria') || nivel.includes('bachill');
+    });
+
+    const agrupar = (lista: Item[]) => {
+      const grupos: Record<string, Item[]> = {};
+      for (const item of lista) {
+        const grado = String(item.curso?.grado || item.grado || 'Otros');
+        if (!grupos[grado]) grupos[grado] = [];
+        grupos[grado].push(item);
+      }
+      return grupos;
+    };
+
+    return {
+      primaria: agrupar(primariaItems),
+      secundaria: agrupar(secundariaItems),
+    };
+  }, [items, isCursoReference]);
+
+  return (
+    <View className="min-w-0">
+      <TouchableOpacity
+        onPress={() => setOpen(!open)}
+        className="bg-gray-100 rounded-xl px-3.5 py-3 flex-row items-center justify-between border border-gray-200"
+      >
+        <Text className={`flex-1 text-sm ${selected.length ? 'text-gray-900 font-semibold' : 'text-gray-400'}`} numberOfLines={2}>
+          {selectedLabel}
+        </Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={18} color="#801529" />
+      </TouchableOpacity>
+
+      {open && (
+        <View className="mt-1.5 rounded-2xl border border-gray-200 bg-white overflow-hidden shadow-lg p-3">
+          {items.length === 0 ? (
+            <Text className="p-3 text-sm text-gray-500 text-center">No hay registros disponibles.</Text>
+          ) : isCursoReference && cursosPorNivel ? (
+            <View className="gap-3">
+              {/* Selector de Nivel Primaria / Secundaria */}
+              <View className="flex-row gap-2 bg-gray-100 p-1 rounded-xl">
+                <TouchableOpacity
+                  onPress={() => setActiveNivelTab('primaria')}
+                  className={`flex-1 py-2 rounded-lg items-center ${activeNivelTab === 'primaria' ? 'bg-maroon shadow-sm' : ''}`}
+                >
+                  <Text className={`text-xs font-bold ${activeNivelTab === 'primaria' ? 'text-white' : 'text-gray-600'}`}>
+                    Primaria
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setActiveNivelTab('secundaria')}
+                  className={`flex-1 py-2 rounded-lg items-center ${activeNivelTab === 'secundaria' ? 'bg-maroon shadow-sm' : ''}`}
+                >
+                  <Text className={`text-xs font-bold ${activeNivelTab === 'secundaria' ? 'text-white' : 'text-gray-600'}`}>
+                    Secundaria
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* Lista de Grados y Paralelos */}
+              <ScrollView nestedScrollEnabled className="max-h-56">
+                {Object.keys(cursosPorNivel[activeNivelTab]).length === 0 ? (
+                  <Text className="p-3 text-xs text-gray-400 text-center">No hay cursos en este nivel.</Text>
+                ) : (
+                  <View className="gap-2.5">
+                    {Object.entries(cursosPorNivel[activeNivelTab]).map(([grado, cursosDelGrado]) => (
+                      <View key={grado} className="bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                        <Text className="text-xs font-bold text-gray-700 mb-1.5">{grado}° Grado</Text>
+                        <View className="flex-row flex-wrap gap-2">
+                          {cursosDelGrado.map((curso) => {
+                            const isSelected = selected.includes(String(curso.id));
+                            const paralelo = curso.curso?.paralelo || curso.paralelo || 'A';
+                            return (
+                              <TouchableOpacity
+                                key={curso.id}
+                                onPress={() => toggle(String(curso.id))}
+                                className={`px-3 py-1.5 rounded-lg border flex-row items-center gap-1.5 ${
+                                  isSelected
+                                    ? 'bg-maroon border-maroon'
+                                    : 'bg-white border-gray-200 hover:border-maroon/40'
+                                }`}
+                              >
+                                <Ionicons
+                                  name={isSelected ? 'checkmark-circle' : 'school-outline'}
+                                  size={14}
+                                  color={isSelected ? '#FFFFFF' : '#801529'}
+                                />
+                                <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-800'}`}>
+                                  Paralelo {paralelo}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          ) : (
+            <ScrollView nestedScrollEnabled className="max-h-48">
+              {items.map((item) => {
+                const isSelected = selected.includes(String(item.id));
+                return (
+                  <TouchableOpacity
+                    key={item.id}
+                    onPress={() => toggle(String(item.id))}
+                    className={`px-3 py-2.5 border-b border-gray-100 flex-row items-center rounded-lg ${
+                      isSelected ? 'bg-maroon/10' : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={17} color="#801529" />
+                    <Text className="ml-2 text-sm text-gray-700 flex-1">{referenceLabel(field.reference!, item)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+/**
+ * Texto en el que se busca dentro de un registro. Se recorren los campos que
+ * la persona realmente ve en la tarjeta, no todo el objeto: los ids y las
+ * fechas harían que cualquier número pareciera coincidir.
+ */
+const camposBuscables = [
+  'nombre', 'titulo', 'codigo', 'descripcion', 'detalle', 'observacion',
+  'anio', 'grado', 'paralelo', 'nivel', 'tipo', 'estado', 'justificacion',
+];
+
+const textoBuscable = (item: Item): string =>
+  camposBuscables
+    .map((campo) => {
+      const valor = item[campo];
+      return valor === undefined || valor === null ? '' : String(valor);
+    })
+    .join(' ')
+    .toLowerCase();
+
+/**
+ * El buscador filtra mientras se escribe, en el cliente: la lista ya está
+ * descargada, así que el resultado aparece al instante y no hace falta
+ * apretar la lupa. Se posterga un poco para no filtrar en cada tecla.
+ */
+function useBusquedaEnVivo(rows: Item[], resource: ServiceResource, termino: string) {
+  const [aplazado, setAplazado] = useState(termino);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setAplazado(termino.trim().toLowerCase()), 200);
+    return () => clearTimeout(timer);
+  }, [termino]);
+
+  return useMemo(() => {
+    if (!aplazado) return rows;
+    const terminos = aplazado.split(/\s+/).filter(Boolean);
+    return rows.filter((item) => {
+      const texto = `${textoBuscable(item)} ${String(labelFor(item, resource)).toLowerCase()}`;
+      return terminos.every((parte) => texto.includes(parte));
+    });
+  }, [rows, resource, aplazado]);
 }
 
 export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area?: 'academic' | 'enrollment' | 'learning'; onNavigate?: (route: string, params?: { periodoId?: string }) => void }) {
@@ -146,8 +328,11 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   const canWrite = area === 'academic' || area === 'enrollment'
     ? managementRoles.includes(role)
     : teachingRoles.includes(role);
-  const available = useMemo(() => definitions.filter((d) => area === 'academic' ? ['periodos', 'cursos', 'materias', 'asesores'].includes(d.resource) : area === 'enrollment' ? ['cursos-periodo', 'inscripciones'].includes(d.resource) : ['materiales', 'encargos', 'calificaciones', 'asistencia'].includes(d.resource)), [area]);
+  const available = useMemo(() => definitions.filter((d) => area === 'academic' ? (d.custom || ['periodos', 'cursos', 'materias', 'asesores'].includes(d.resource)) : area === 'enrollment' ? ['cursos-periodo', 'inscripciones'].includes(d.resource) : ['materiales', 'encargos', 'calificaciones', 'asistencia'].includes(d.resource)), [area]);
   const [selected, setSelected] = useState(available[0]);
+  // La Maya curricular no es una tabla CRUD: dibuja su propio panel y no pide
+  // el listado genérico ni el formulario de alta/edición.
+  const esMayaCurricular = Boolean(selected.custom);
   const [rows, setRows] = useState<Item[]>([]); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState(''); const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<Item | null>(null);
   const [values, setValues] = useState<Record<string, any>>(initialValues(available[0])); const [file, setFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
@@ -174,16 +359,28 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   const [detalleAsignaciones, setDetalleAsignaciones] = useState<Item[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
 
+  // Materias del GRADO (compartidas por 1°A, 1°B y el resto de paralelos).
+  const [gradoMaterias, setGradoMaterias] = useState<{
+    nivel: Nivel;
+    grado: string;
+    paralelos: string[];
+  } | null>(null);
+
   // Asignaciones docentes: Segmentación de nivel educativo
   const [nivelFiltroAsignacion, setNivelFiltroAsignacion] = useState<'todos' | 'primaria' | 'secundaria'>('todos');
   const [cursoNivelTab, setCursoNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
+  // Grado con el que se abre la Maya curricular al entrar desde una tarjeta.
+  const [gradoMaya, setGradoMaya] = useState<string>('');
 
   // Paginación Estricta
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
+  // El buscador vive arriba de los filtros de nivel/nivel de asignación.
+  const rowsPorBusqueda = useBusquedaEnVivo(rows, selected.resource, search);
+
   const filteredRows = useMemo(() => {
-    return rows.filter((item) => {
+    return rowsPorBusqueda.filter((item) => {
       if (selected.resource === 'cursos') {
         return String(item.nivel ?? '').toLowerCase() === cursoNivelTab;
       }
@@ -192,7 +389,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       }
       return true;
     });
-  }, [rows, selected.resource, nivelFiltroAsignacion, cursoNivelTab]);
+  }, [rowsPorBusqueda, selected.resource, nivelFiltroAsignacion, cursoNivelTab]);
 
   const displayedPeriod = periodosList.find((period) => String(period.id) === periodoGestionId)
     ?? periodosList.find((period) => period.activo)
@@ -202,6 +399,45 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
     const start = (currentPage - 1) * pageSize;
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, currentPage, pageSize]);
+
+  /**
+   * Un bloque por GRADO, no por paralelo: 1°A y 1°B cursan lo mismo, así que
+   * se muestran juntos con sus paralelos adentro. Dentro de cada bloque los
+   * cursos siguen siendo filas propias porque horarios, inscripciones y
+   * asignaciones sí son por paralelo.
+   */
+  const cursosPorGrado = useMemo(() => {
+    const mapa = new Map<string, { nivel: Nivel; grado: string; cursos: Item[] }>();
+    for (const item of filteredRows) {
+      const nivel = String(item.nivel ?? '').toLowerCase() as Nivel;
+      const grado = String(item.grado ?? '').trim();
+      const clave = `${nivel}|${grado}`;
+      if (!mapa.has(clave)) mapa.set(clave, { nivel, grado, cursos: [] });
+      mapa.get(clave)!.cursos.push(item);
+    }
+    return [...mapa.values()]
+      .map((grupo) => ({
+        ...grupo,
+        cursos: grupo.cursos.slice().sort((a, b) =>
+          String(a.paralelo ?? '').localeCompare(String(b.paralelo ?? ''))
+        ),
+      }))
+      .sort((a, b) => {
+        const ordenNivel = ['inicial', 'primaria', 'secundaria', 'bachillerato'];
+        const porNivel = ordenNivel.indexOf(a.nivel) - ordenNivel.indexOf(b.nivel);
+        if (porNivel !== 0) return porNivel;
+        return (numeroGrado(a.grado) ?? 99) - (numeroGrado(b.grado) ?? 99);
+      });
+  }, [filteredRows]);
+
+  const paginatedGrados = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return cursosPorGrado.slice(start, start + pageSize);
+  }, [cursosPorGrado, currentPage, pageSize]);
+
+  // Lo que cuenta como "un registro" depende de la pestaña: en Cursos base es
+  // un grado con todos sus paralelos, en el resto es una fila.
+  const totalRegistros = selected.resource === 'cursos' ? cursosPorGrado.length : filteredRows.length;
 
   useEffect(() => {
     setCurrentPage(1);
@@ -228,9 +464,14 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   }, [selected.resource]);
 
   const load = async () => {
+    // La Maya curricular carga sola desde su propio panel.
+    if (esMayaCurricular) return;
     setLoading(true);
     try {
-      const queryParams: Record<string, any> = { buscar: search };
+      // `buscar` NO se manda al servidor: el filtrado es del cliente y en
+      // vivo. Mandarlo además dejaría la lista recortada para siempre, y al
+      // borrar el texto no volverían a aparecer los registros.
+      const queryParams: Record<string, any> = {};
       if (selected.resource === 'cursos-periodo') {
         if (periodoSeleccionadoFiltro === 'activo') {
           // El microservicio filtra por periodo activo si periodoId o anio no se especifica, pero lo forzamos con estado activo
@@ -279,6 +520,9 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   });
 
   useEffect(() => { setSelected(available[0]); }, [area]);
+  // La búsqueda es por pestaña: un término de "cursos" no debe filtrar
+  // "materias" si después se cambia de pestaña.
+  useEffect(() => { setSearch(''); }, [selected.title]);
   useEffect(() => {
     setValues(initialValues(selected));
     if (selected.resource === 'cursos') {
@@ -437,14 +681,47 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
 
   if (!allowed) return <BentoCard className="p-6 items-center"><Ionicons name="lock-closed-outline" size={38} color="#801529" /><Text className="text-lg font-bold text-gray-800 mt-3">Acceso de consulta restringido</Text><Text className="text-center text-gray-500 mt-1">Su rol no tiene permisos para administrar esta sección.</Text></BentoCard>;
   return <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8 min-w-0">
-    {area !== 'learning' && <AcademicManagementPanel onNavigate={onNavigate} />}
-    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones de estudiantes' : 'Aula y seguimiento'}</Text><Text className="text-sm text-gray-500 mt-1">Gestión conectada a los microservicios, con controles de acceso y validación previa.</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.resource} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.resource === d.resource ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.resource === d.resource ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
+    {area === 'academic' && <AcademicManagementPanel onNavigate={onNavigate} />}
+    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones de estudiantes' : 'Aula y seguimiento'}</Text><Text className="text-sm text-gray-500 mt-1">Gestión conectada a los microservicios, con controles de acceso y validación previa.</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.title} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.title === d.title ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.title === d.title ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
+
+    {esMayaCurricular ? (
+      <MayaCurricularScreen
+        nivelInicial={cursoNivelTab}
+        gradoInicial={gradoMaya || undefined}
+        canEdit={canWrite || teachingRoles.includes(role)}
+      />
+    ) : (
+    <>
     <BentoCard className="p-4">
       <View className="flex-row gap-2">
-        <TextInput value={search} onChangeText={setSearch} onSubmitEditing={load} placeholder="Buscar registros" className="flex-1 bg-gray-100 rounded-xl px-4 py-3" />
-        <TouchableOpacity onPress={load} className="p-3 bg-gray-100 rounded-xl">
-          <Ionicons name="search" size={20} color="#801529" />
+        <View className="flex-1 flex-row items-center bg-gray-100 rounded-xl px-3.5 py-1 border border-gray-200">
+          <Ionicons name="search" size={18} color="#801529" />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Buscar mientras escribes…"
+            className="flex-1 px-2.5 py-3 text-gray-800"
+            autoCorrect={false}
+          />
+          {search ? (
+            <TouchableOpacity
+              onPress={() => setSearch('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel="Limpiar búsqueda"
+              className="w-6 h-6 rounded-full bg-gray-300 items-center justify-center"
+            >
+              <Ionicons name="close" size={14} color="#FFFFFF" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+        <TouchableOpacity onPress={load} className="px-4 bg-gray-100 rounded-xl" accessibilityLabel="Recargar">
+          <Ionicons name="refresh" size={20} color="#801529" />
         </TouchableOpacity>
+        {search ? (
+          <View className="px-3 bg-maroon/10 rounded-xl items-center justify-center">
+            <Text className="text-xs font-bold text-maroon">{totalRegistros}</Text>
+          </View>
+        ) : null}
         {canWrite && selected.resource !== 'periodos' && (
           <TouchableOpacity
             onPress={() => {
@@ -529,23 +806,70 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
 
       {/* Cursos base: Segmentación por nivel */}
       {selected.resource === 'cursos' && (
-        <View className="mt-3 pt-3 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
-          <Text className="text-xs font-bold text-gray-700">Nivel educativo</Text>
-          <View className="flex-row items-center bg-gray-100 rounded-lg p-0.5">
-            {(['primaria', 'secundaria'] as const).map((nivel) => (
-              <TouchableOpacity
-                key={nivel}
-                onPress={() => {
-                  setCursoNivelTab(nivel);
-                  if (!editing && selected.resource === 'cursos') setValue('nivel', nivel);
-                }}
-                className={`px-3 py-1 rounded-md ${cursoNivelTab === nivel ? 'bg-maroon' : ''}`}
-              >
-                <Text className={`text-xs font-bold ${cursoNivelTab === nivel ? 'text-white' : 'text-gray-600'}`}>
-                  {nivel.charAt(0).toUpperCase() + nivel.slice(1)}
-                </Text>
-              </TouchableOpacity>
-            ))}
+        <View className="mt-3 pt-3 border-t border-gray-100">
+          <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">
+            Nivel educativo
+          </Text>
+          <View className="flex-row flex-wrap gap-2">
+            {(['primaria', 'secundaria'] as const).map((nivel) => {
+              const activo = cursoNivelTab === nivel;
+              const total = cursosPorGrado.filter((grupo) => grupo.nivel === nivel).length;
+              const sinMaterias = cursosPorGrado.filter(
+                (grupo) => grupo.nivel === nivel && Number(grupo.cursos[0]?.totalMaterias ?? 0) === 0,
+              ).length;
+
+              return (
+                <TouchableOpacity
+                  key={nivel}
+                  onPress={() => {
+                    setCursoNivelTab(nivel);
+                    if (!editing && selected.resource === 'cursos') setValue('nivel', nivel);
+                  }}
+                  activeOpacity={0.8}
+                  className={`flex-1 min-w-[150px] rounded-2xl border-2 px-4 py-3 ${
+                    activo ? 'bg-maroon border-maroon' : 'bg-white border-gray-200'
+                  }`}
+                >
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons
+                      name={nivel === 'primaria' ? 'school' : 'library'}
+                      size={18}
+                      color={activo ? '#FFFFFF' : '#801529'}
+                    />
+                    <Text
+                      className={`text-sm font-bold ${
+                        activo ? 'text-white' : 'text-gray-800'
+                      }`}
+                    >
+                      {nivel === 'primaria' ? 'Primaria' : 'Secundaria'}
+                    </Text>
+                  </View>
+                  <Text
+                    className={`text-[11px] mt-1 ${
+                      activo ? 'text-white/80' : 'text-gray-500'
+                    }`}
+                  >
+                    1° a 6° · {total} {total === 1 ? 'grado' : 'grados'} · {rows.filter((item) => String(item.nivel ?? '').toLowerCase() === nivel).length} paralelos
+                  </Text>
+                  {sinMaterias > 0 ? (
+                    <View className="flex-row items-center gap-1 mt-1.5">
+                      <Ionicons
+                        name="warning"
+                        size={12}
+                        color={activo ? '#FFD700' : '#B45309'}
+                      />
+                      <Text
+                        className={`text-[10px] font-bold ${
+                          activo ? 'text-white' : 'text-amber-700'
+                        }`}
+                      >
+                        {sinMaterias} sin materias
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}
@@ -773,6 +1097,16 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       </BentoCard>
     )}
 
+    {/* Materias del GRADO, compartidas por todos sus paralelos */}
+    <MateriasGradoModal
+      visible={Boolean(gradoMaterias)}
+      grado={gradoMaterias}
+      paralelos={gradoMaterias?.paralelos}
+      canEdit={canWrite}
+      onClose={() => setGradoMaterias(null)}
+      onChanged={load}
+    />
+
     {/* Modal Flotante para Detalle del Aula */}
     <Modal
       visible={Boolean(cursoPeriodoDetalle)}
@@ -885,7 +1219,9 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
     <View className="gap-3">
       <View className="flex-row items-center justify-between px-1">
         <Text className="text-lg font-black text-gray-900">
-          Registros ({filteredRows.length})
+          {selected.resource === 'cursos'
+            ? `Grados (${totalRegistros})`
+            : `Registros (${totalRegistros})`}
         </Text>
         <View className="bg-gold/20 border border-gold/40 px-3 py-1 rounded-full">
           <Text className="text-xs font-bold text-maroon">
@@ -899,17 +1235,203 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
           <ActivityIndicator size="large" color="#801529" />
           <Text className="text-xs text-gray-500 mt-3 font-medium">Cargando estructura académica...</Text>
         </View>
-      ) : filteredRows.length === 0 ? (
+      ) : totalRegistros === 0 ? (
         <View className="py-16 items-center justify-center bg-white rounded-3xl border border-gray-100 shadow-sm">
-          <Ionicons name="folder-open-outline" size={44} color="#D1D5DB" />
-          <Text className="text-base font-bold text-gray-700 mt-2">No hay registros para mostrar</Text>
-          <Text className="text-xs text-gray-400 mt-1">Utilice el botón superior para registrar un nuevo elemento.</Text>
+          <Ionicons name={search ? 'search' : 'folder-open-outline'} size={44} color="#D1D5DB" />
+          <Text className="text-base font-bold text-gray-700 mt-2">
+            {search ? 'Sin coincidencias' : 'No hay registros para mostrar'}
+          </Text>
+          <Text className="text-xs text-gray-400 mt-1">
+            {search
+              ? `Ningún registro de ${selected.title.toLowerCase()} contiene "${search}".`
+              : 'Utilice el botón superior para registrar un nuevo elemento.'}
+          </Text>
+          {search ? (
+            <Button
+              label="Limpiar búsqueda"
+              icon="close"
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              onPress={() => setSearch('')}
+            />
+          ) : null}
+        </View>
+      ) : selected.resource === 'cursos' ? (
+        // Un bloque por grado: los paralelos van adentro porque comparten
+        // materia y temario.
+        <View className="flex-row flex-wrap -mx-2 min-w-0">
+          {paginatedGrados.map((grupo) => {
+            const paralelos = grupo.cursos
+              .map((curso) => String(curso.paralelo ?? '').toUpperCase())
+              .filter(Boolean);
+            const totalMaterias = grupo.cursos[0]?.totalMaterias ?? 0;
+            const sinMaterias = Number(totalMaterias ?? 0) === 0;
+            const etiquetaGrado = `${grupo.grado} de ${NIVEL_LABEL[grupo.nivel] ?? grupo.nivel}`;
+
+            return (
+              <View key={`${grupo.nivel}|${grupo.grado}`} className="w-full md:w-1/2 lg:w-1/3 p-2 min-w-0">
+                <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm h-full justify-between">
+                  <View className="min-w-0">
+                    <View className="flex-row items-start justify-between gap-2 mb-2.5">
+                      <View className="w-10 h-10 rounded-2xl bg-maroon/10 border border-maroon/20 items-center justify-center">
+                        <Ionicons name="school-outline" size={20} color="#801529" />
+                      </View>
+                      <View className="items-end gap-1">
+                        {sinMaterias ? (
+                          <View className="px-2 py-0.5 bg-amber-100 rounded-md">
+                            <Text className="text-[10px] font-bold text-amber-800">Sin materias</Text>
+                          </View>
+                        ) : (
+                          <View className="px-2 py-0.5 bg-green-100 rounded-md">
+                            <Text className="text-[10px] font-bold text-green-700">
+                              {totalMaterias} materias
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+
+                    <Text className="font-bold text-gray-900 text-sm" numberOfLines={2}>
+                      {etiquetaGrado}
+                    </Text>
+
+                    {/* Paralelos: siguen siendo cursos aparte para horarios,
+                        inscripciones y asignaciones. */}
+                    <View className="bg-gray-50 border border-gray-200 rounded-2xl p-3 mt-3">
+                      <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">
+                        Paralelos · {grupo.cursos.length}
+                      </Text>
+                      <View className="flex-row flex-wrap gap-2">
+                        {grupo.cursos.map((curso) => (
+                          <View
+                            key={String(curso.id)}
+                            className={`flex-1 min-w-[76px] rounded-xl px-3 py-2.5 border-2 items-center ${
+                              curso.activo === false
+                                ? 'bg-gray-100 border-gray-300'
+                                : 'bg-maroon border-maroon'
+                            }`}
+                          >
+                            <Text
+                              className={`text-2xl font-black leading-8 ${
+                                curso.activo === false ? 'text-gray-500' : 'text-white'
+                              }`}
+                            >
+                              {String(curso.paralelo ?? '—').toUpperCase()}
+                            </Text>
+                            <Text
+                              className={`text-[10px] font-semibold mt-0.5 ${
+                                curso.activo === false ? 'text-gray-500' : 'text-white/80'
+                              }`}
+                            >
+                              {curso.activo === false ? 'inactivo' : `${curso.capacidadMaxima ?? 0} cupos`}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    </View>
+
+                    {/* Materias y Maya curricular son por grado, no por paralelo. */}
+                    <View className="flex-row flex-wrap gap-2 mt-3">
+                      <TouchableOpacity
+                        onPress={() =>
+                          setGradoMaterias({
+                            nivel: grupo.nivel,
+                            grado: grupo.grado,
+                            paralelos,
+                          })
+                        }
+                        className={`flex-1 min-w-[130px] py-2 px-3 rounded-xl flex-row items-center justify-center gap-1.5 ${
+                          sinMaterias ? 'bg-amber-50 border border-amber-300' : 'bg-maroon/10'
+                        }`}
+                      >
+                        <Ionicons
+                          name={sinMaterias ? 'warning-outline' : 'book-outline'}
+                          size={15}
+                          color={sinMaterias ? '#B45309' : '#801529'}
+                        />
+                        <Text
+                          className={`text-xs font-bold ${
+                            sinMaterias ? 'text-amber-800' : 'text-maroon'
+                          }`}
+                        >
+                          {sinMaterias ? 'Asignar materias' : 'Materias'}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => {
+                          setCursoNivelTab(grupo.nivel === 'secundaria' ? 'secundaria' : 'primaria');
+                          setGradoMaya(grupo.grado);
+                          setSelected(
+                            definitions.find((d) => d.title === 'Maya curricular') ?? selected
+                          );
+                        }}
+                        className="flex-1 min-w-[130px] py-2 px-3 rounded-xl bg-blue-50 flex-row items-center justify-center gap-1.5"
+                      >
+                        <Ionicons name="map-outline" size={15} color="#2563EB" />
+                        <Text className="text-xs font-bold text-blue-700">Maya curricular</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {canWrite ? (
+                      <View className="mt-3 pt-2.5 border-t border-gray-100">
+                        <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">
+                          Administrar paralelos
+                        </Text>
+                        <View className="gap-1.5">
+                          {grupo.cursos.map((curso) => (
+                            <View
+                              key={String(curso.id)}
+                              className="flex-row items-center justify-between gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2"
+                            >
+                              <View className="flex-row items-center gap-2 min-w-0">
+                                <View className="w-8 h-8 rounded-lg bg-maroon items-center justify-center">
+                                  <Text className="text-sm font-black text-white">
+                                    {String(curso.paralelo ?? '—').toUpperCase()}
+                                  </Text>
+                                </View>
+                                <Text className="text-xs font-bold text-gray-700" numberOfLines={1}>
+                                  Capacidad {curso.capacidadMaxima ?? 0}
+                                </Text>
+                              </View>
+                              <View className="flex-row items-center gap-1">
+                                <TouchableOpacity
+                                  onPress={() => edit(curso)}
+                                  className="px-3 py-2 bg-gray-100 rounded-lg flex-row items-center gap-1"
+                                  accessibilityLabel={`Editar paralelo ${curso.paralelo}`}
+                                >
+                                  <Ionicons name="create-outline" size={15} color="#801529" />
+                                  <Text className="text-[11px] font-bold text-maroon">Editar</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  onPress={() => remove(curso)}
+                                  className="px-3 py-2 bg-red-50 rounded-lg flex-row items-center gap-1"
+                                  accessibilityLabel={`Eliminar paralelo ${curso.paralelo}`}
+                                >
+                                  <Ionicons name="trash-outline" size={15} color="#DC2626" />
+                                  <Text className="text-[11px] font-bold text-red-600">Eliminar</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                </BentoCard>
+              </View>
+            );
+          })}
         </View>
       ) : (
         <View className="flex-row flex-wrap -mx-2 min-w-0">
           {paginatedRows.map((item) => {
             const isAsesor = selected.resource === 'asesores';
             const isCursoPeriodo = selected.resource === 'cursos-periodo';
+            // Sin materias el curso queda fuera de la próxima gestión; se avisa
+            // en la propia tarjeta para que se note antes de generar.
+            const sinMaterias = selected.resource === 'cursos' && Number(item.totalMaterias ?? 0) === 0;
             const isVigente = isAsesor && (item.cursoPeriodo?.periodo?.activo === true || item.fechaFin === null || item.fechaFin === undefined || item.fechaFin === '');
             const iconName = selected.resource === 'periodos' ? 'calendar-outline'
               : selected.resource === 'cursos' ? 'school-outline'
@@ -1119,11 +1641,11 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
         </View>
       )}
 
-      {/* Paginación */}
+      {/* Paginación: en "Cursos base" se pagina por GRADO, no por fila de curso. */}
       <Pagination
         currentPage={currentPage}
-        totalPages={Math.max(1, Math.ceil(filteredRows.length / pageSize))}
-        totalRecords={filteredRows.length}
+        totalPages={Math.max(1, Math.ceil(totalRegistros / pageSize))}
+        totalRecords={totalRegistros}
         pageSize={pageSize}
         onPageChange={setCurrentPage}
         onPageSizeChange={(newSize) => {
@@ -1161,6 +1683,8 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       onCancel={() => setDeletingItem(null)}
       onConfirm={handleConfirmDelete}
     />
+    </>
+    )}
   </ScrollView>;
 }
 

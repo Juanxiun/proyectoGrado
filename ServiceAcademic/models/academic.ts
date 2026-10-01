@@ -130,6 +130,68 @@ export interface Curso {
   capacidadMaxima: number;
   activo: boolean;
   caratulaUrl?: string | null;
+  /**
+   * Materias asignadas a este curso base. En 0 significa que el curso todavía
+   * no se cargará al generar una gestión: la interfaz debe advertirlo.
+   */
+  totalMaterias: number;
+}
+
+/** Materia asignada a un grado, compartida por todos sus paralelos. */
+export interface MateriaDelGrado {
+  materiaId: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string | null;
+  pesoSintactico: number;
+  tipoMateria: TipoMateria;
+  cargaHorariaSemanal: number;
+  orden: number;
+}
+
+export interface AsignarMateriaGradoInput {
+  materiaId: string | number;
+  tipoMateria?: TipoMateria;
+  cargaHorariaSemanal?: number;
+}
+
+/** Bloque de la vista "Cursos base": un grado con todos sus paralelos juntos. */
+export interface GradoConParalelos {
+  nivel: NivelEducativo;
+  grado: string;
+  paralelos: string[];
+  totalMaterias: number;
+}
+
+export interface GradoSinMaterias {
+  nivel: NivelEducativo;
+  grado: string;
+  paralelos: string[];
+}
+
+// ── Maya curricular (temas por grado y materia) ─────────────────────────────
+
+export interface TemaMalla {
+  id: string;
+  nivel: NivelEducativo;
+  grado: string;
+  materiaId: string;
+  materia?: { codigo: string; nombre: string; tipoMateria: TipoMateria };
+  unidad: number;
+  titulo: string;
+  contenidos?: string | null;
+  horasPrevistas: number;
+  esEvaluacion: boolean;
+  orden: number;
+}
+
+export interface CrearTemaInput {
+  materiaId: string | number;
+  titulo: string;
+  contenidos?: string | null;
+  horasPrevistas?: number;
+  esEvaluacion?: boolean;
+  unidad?: number;
 }
 
 export interface CreateCursoInput {
@@ -259,6 +321,11 @@ export interface PlanPago {
 }
 
 export interface EstadoGestion extends PeriodoAcademico {
+  /**
+   * Cursos base que quedaron fuera de la última generación por no tener
+   * materias asignadas. Se llenan sólo en la respuesta de generarEstructura.
+   */
+  cursosSinMaterias?: string[];
   totalCursos: number;
   totalHorarios: number;
   totalPlanes: number;
@@ -278,6 +345,161 @@ export interface SolicitudInscripcion {
   fechaSolicitud: string;
   fechaProceso?: string | null;
   observacion?: string | null;
+}
+
+// ── Seguimiento académico ───────────────────────────────────────────────────
+
+export type NivelRiesgo = "sin_riesgo" | "observacion" | "riesgo" | "riesgo_alto";
+
+/** Una celda del libro: un estudiante dentro de una materia. */
+export interface LineaLibro {
+  estudianteId: string;
+  usuarioId: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno?: string | null;
+
+  /** Promedio ponderado de las tareas calificadas del trimestre (0-100). */
+  promedio: number | null;
+  /** Suma de las ponderaciones de los encargos que ya tienen nota. */
+  pesoAcumulado: number;
+  /** Ponderación total de los encargos publicados del trimestre. */
+  pesoTotal: number;
+  /** Tareas calificadas / tareas publicadas. */
+  tareasCalificadas: number;
+  tareasPublicadas: number;
+
+  desercion: number | null;
+
+  asistencia: ResumenAsistencia;
+  indice: number | null;
+  nivelRiesgo: NivelRiesgo;
+  observaciones: string[];
+}
+
+export interface ResumenAsistencia {
+  presentes: number;
+  ausentes: number;
+  atrasos: number;
+  justificadas: number;
+  total: number;
+  /** Porcentaje de asistencia efectiva (presentes + atrasos + justificadas). */
+  tasa: number | null;
+}
+
+export interface EncargoLibro {
+  id: string;
+  titulo: string;
+  tipo: string;
+  ponderacion: number;
+  fechaPublicacion?: string | null;
+  fechaLimite?: string | null;
+  estado: string;
+  /** Promedio del curso para este encargo. */
+  promedioCurso?: number | null;
+}
+
+/** Libro de notas de una materia en un trimestre. */
+export interface LibroNotas {
+  cursoPeriodoId: string;
+  materia: { id: string; nombre: string; codigo: string; tipo: string };
+  trimestre: { numero: number; inicio: string; fin: string } | null;
+  periodo: { id: string; nombre: string; anio: number };
+  curso: { id: string; grado: string; paralelo: string; nivel: string };
+  docente?: { maestroId: string; usuarioId: string; nombre: string } | null;
+  encargos: EncargoLibro[];
+  lineas: LineaLibro[];
+  resumen: {
+    estudiantes: number;
+    promedioCurso: number | null;
+    promedioMasAlto: number | null;
+    promedioMasBajo: number | null;
+    enRiesgo: number;
+    enRiesgoAlto: number;
+  };
+}
+
+/** Desempeño de un estudiante en una materia, para su panel personal. */
+export interface DesempenoMateria {
+  materiaId: string;
+  materia: string;
+  tipoMateria: string;
+  cursoParalelo: string;
+  promedio: number | null;
+  indice: number | null;
+  asistencia: ResumenAsistencia;
+  tareasCalificadas: number;
+  tareasPublicadas: number;
+  indiceDesempeno: number;
+  nivelRiesgo: NivelRiesgo;
+}
+
+/** Panel de desempeño de un curso-periodo completo. */
+export interface PanelCurso {
+  cursoPeriodoId: string;
+  curso: { id: string; grado: string; paralelo: string; nivel: string };
+  periodo: { id: string; nombre: string; anio: number };
+  estudiantes: number;
+  /** Número de materias evaluadas en el curso. */
+  totalMaterias: number;
+  promedioGeneral: number | null;
+  promedioAsistencia: number | null;
+  distribucionPromedios: RangoPromedio[];
+  materias: DesempenoMateriaResumen[];
+  riesgo: { total: number; observacion: number; alto: number };
+}
+
+export interface RangoPromedio {
+  rango: string;
+  minimo: number;
+  maximo: number;
+  estudiantes: number;
+}
+
+export interface DesempenoMateriaResumen {
+  materiaId: string;
+  materia: string;
+  tipoMateria: string;
+  promedio: number | null;
+  promedioAsistencia: number | null;
+  estudiantesEvaluados: number;
+  enRiesgo: number;
+}
+
+export interface PanelEstudiante {
+  estudianteId: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno?: string | null;
+  cursoParalelo: string;
+  indiceGeneral: number | null;
+  indiceDesempeno: number | null;
+  nivelRiesgo: NivelRiesgo;
+  periodos: PanelEstudiantePeriodo[];
+}
+
+export interface PanelEstudiantePeriodo {
+  periodoId: string;
+  nombre: string;
+  anio: number;
+  promedio: number | null;
+  indice: number | null;
+  asistencia: ResumenAsistencia;
+  indiceDesempeno: number;
+  nivelRiesgo: NivelRiesgo;
+  materias: DesempenoMateria[];
+}
+
+export interface AlertaRiesgo {
+  estudianteId: string;
+  nombre: string;
+  apellidoPaterno: string;
+  cursoParalelo: string;
+  materia: string;
+  promedio: number | null;
+  asistencia: number | null;
+  nivelRiesgo: NivelRiesgo;
+  motivos: string[];
 }
 
 export interface PaginationQuery {

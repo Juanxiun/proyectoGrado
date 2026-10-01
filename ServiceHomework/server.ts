@@ -42,10 +42,6 @@ import {
   getEntrega,
   listEntregas,
 } from "./controllers/entregas.controller.ts";
-import {
-  listNotificaciones,
-  readNotificacion,
-} from "./controllers/notificaciones.controller.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8883);
 
@@ -106,9 +102,10 @@ rt.post("/asistencia/bulk", requireAuth(ROLES_DOCENTES), bulkAsistencias);
 rt.put("/asistencia/:id", requireAuth(ROLES_DOCENTES), updateAsistencia);
 rt.delete("/asistencia/:id", requireAuth(ROLES_DOCENTES), deleteAsistencia);
 
-// ── Notificaciones en Redis (TTL 30 días + Tracking) ───────────────────────
-rt.get("/notificaciones", requireAuth(), listNotificaciones);
-rt.post("/notificaciones/:id/read", requireAuth(), readNotificacion);
+// ── Notificaciones ──────────────────────────────────────────────────────────
+// La bandeja de notificaciones del sistema la expone ServiceNotification (puerto
+// 8884). Este servicio sólo publica eventos de dominio en el canal de Redis
+// (`utils/events.ts`) y ServiceNotification decide a quién notifica.
 
 // ── Health Check ───────────────────────────────────────────────────────────
 rt.get("/health", (ctx: Context) => {
@@ -123,6 +120,7 @@ rt.get("/health", (ctx: Context) => {
       "Subida de Materiales y Archivos a MinIO (límite 150MB, PDF/Word/Excel)",
       "Registro y Evaluación de Calificaciones",
       "Control de Asistencia Diaria",
+      "Emisión de eventos de dominio hacia ServiceNotification",
     ],
   };
 });

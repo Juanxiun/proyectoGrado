@@ -135,6 +135,73 @@ export const academicManagementApi = {
     apiRequest<Record<string, unknown>>(`/api/inscripciones/solicitudes/${id}/rechazar`, { method: 'PATCH', body: { observacion } }),
 };
 
+// ── Materias y maya curricular por GRADO ─────────────────────────────────────
+// 1°A y 1°B cursan lo mismo, así que la materia y el temario se configuran una
+// sola vez a nivel de grado. Los paralelos siguen siendo cursos aparte para
+// horarios, inscripciones y asignaciones.
+
+export interface MateriaDelGrado {
+  materiaId: string;
+  codigo: string;
+  nombre: string;
+  descripcion?: string | null;
+  pesoSintactico: number;
+  tipoMateria: 'principal' | 'extracurricular';
+  cargaHorariaSemanal: number;
+  orden: number;
+}
+
+/** Bloque de "Cursos base": un grado con todos sus paralelos juntos. */
+export interface GradoConParalelos {
+  nivel: NivelEducativo;
+  grado: string;
+  paralelos: string[];
+  totalMaterias: number;
+}
+
+export interface GradoSinMaterias {
+  nivel: NivelEducativo;
+  grado: string;
+  paralelos: string[];
+}
+
+export interface ListaGrados {
+  conMaterias: GradoConParalelos[];
+  sinMaterias: GradoSinMaterias[];
+}
+
+export interface TemaMalla {
+  id: string;
+  nivel: NivelEducativo;
+  grado: string;
+  materiaId: string;
+  materia?: { codigo: string; nombre: string; tipoMateria: 'principal' | 'extracurricular' };
+  unidad: number;
+  titulo: string;
+  contenidos?: string | null;
+  horasPrevistas: number;
+  esEvaluacion: boolean;
+  orden: number;
+}
+
+/** La maya de un grado: una entrada por materia, con sus temas ya ordenados. */
+export interface MayaPorMateria {
+  materia: MateriaDelGrado;
+  temas: TemaMalla[];
+}
+
+export interface ResumenMalla {
+  materias: number;
+  conTemas: number;
+  totalTemas: number;
+  horasPrevistas: number;
+}
+
+export type NivelEducativo = 'inicial' | 'primaria' | 'secundaria' | 'bachillerato';
+
+const gradoQuery = (nivel: NivelEducativo, grado: string, extra: Record<string, string> = {}) =>
+  buildQuery({ nivel, grado, ...extra });
+
 export const academicServicesApi = {
   list: (
     resource: ServiceResource,
@@ -164,6 +231,65 @@ export const academicServicesApi = {
       `${paths.inscripciones}/${id}/retirar`,
       { method: "PATCH", body: payload },
     ),
+
+  // ── Materias por grado ─────────────────────────────────────────────────────
+  listGrados: (nivel?: NivelEducativo) =>
+    apiRequest<ListaGrados>(`/api/grados${buildQuery({ nivel })}`),
+  gradoMaterias: (nivel: NivelEducativo, grado: string) =>
+    apiRequest<MateriaDelGrado[]>(`/api/grados/materias${gradoQuery(nivel, grado)}`),
+  agregarMateriaGrado: (
+    nivel: NivelEducativo,
+    grado: string,
+    payload: { materiaId: string; tipoMateria?: 'principal' | 'extracurricular'; cargaHorariaSemanal?: number },
+  ) =>
+    apiRequest<MateriaDelGrado[]>(`/api/grados/materias${gradoQuery(nivel, grado)}`, {
+      method: 'POST',
+      body: payload,
+    }),
+  quitarMateriaGrado: (nivel: NivelEducativo, grado: string, materiaId: string) =>
+    apiRequest<MateriaDelGrado[]>(`/api/grados/materias/${materiaId}${gradoQuery(nivel, grado)}`, {
+      method: 'DELETE',
+    }),
+  setMateriasGrado: (
+    nivel: NivelEducativo,
+    grado: string,
+    materias: Array<{ materiaId: string; tipoMateria?: 'principal' | 'extracurricular'; cargaHorariaSemanal?: number }>,
+  ) =>
+    apiRequest<MateriaDelGrado[]>(`/api/grados/materias${gradoQuery(nivel, grado)}`, {
+      method: 'PUT',
+      body: { materias },
+    }),
+
+  // ── Maya curricular: temas por grado y materia ─────────────────────────────
+  getMalla: (nivel: NivelEducativo, grado: string) =>
+    apiRequest<MayaPorMateria[]>(`/api/malla${gradoQuery(nivel, grado)}`),
+  getResumenMalla: (nivel: NivelEducativo, grado: string) =>
+    apiRequest<ResumenMalla>(`/api/malla/resumen${gradoQuery(nivel, grado)}`),
+  getMallaMateria: (nivel: NivelEducativo, grado: string, materiaId: string) =>
+    apiRequest<TemaMalla[]>(`/api/malla/materia${gradoQuery(nivel, grado, { materiaId })}`),
+  guardarMallaMateria: (
+    nivel: NivelEducativo,
+    grado: string,
+    materiaId: string,
+    temas: Array<Partial<TemaMalla> & { titulo: string }>,
+  ) =>
+    apiRequest<TemaMalla[]>(`/api/malla/materia${gradoQuery(nivel, grado, { materiaId })}`, {
+      method: 'PUT',
+      body: { temas },
+    }),
+  crearTema: (
+    nivel: NivelEducativo,
+    grado: string,
+    payload: { materiaId: string; titulo: string; contenidos?: string | null; horasPrevistas?: number; esEvaluacion?: boolean; unidad?: number },
+  ) =>
+    apiRequest<TemaMalla>(`/api/malla/tema${gradoQuery(nivel, grado)}`, {
+      method: 'POST',
+      body: payload,
+    }),
+  actualizarTema: (id: string, payload: Record<string, unknown>) =>
+    apiRequest<TemaMalla>(`/api/malla/tema/${id}`, { method: 'PUT', body: payload }),
+  eliminarTema: (id: string) =>
+    apiRequest<{ message: string }>(`/api/malla/tema/${id}`, { method: 'DELETE' }),
   bulk: (
     resource: "calificaciones" | "asistencia",
     payload: Record<string, unknown>,
