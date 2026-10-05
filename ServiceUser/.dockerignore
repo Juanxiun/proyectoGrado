@@ -1,0 +1,8 @@
+.env
+deno.lock
+.git
+.gitignore
+*.log
+.DS_Store
+.vscode
+*.md

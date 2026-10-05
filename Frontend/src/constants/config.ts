@@ -1,6 +1,6 @@
-export const API_BASE_URL = __DEV__
-  ? 'http://localhost:5141'
-  : 'http://localhost:5141';
+export const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (__DEV__ ? 'http://localhost:5141' : 'http://localhost:5141');
 
 export const APP_VERSION = 'v1.0.0';
 
@@ -8,10 +8,8 @@ export const APP_VERSION = 'v1.0.0';
 // La API devuelve `fotoUrl`, `archivoUrl` y `caratulaUrl` ya como URL absoluta
 // (ver `buildPublicUrl` en ServiceUser/connects/Storage/minio.ts), así que acá
 // sólo hace falta la URL de la foto por defecto, que el usuario no carga nunca.
-//
-// Misma advertencia que API_BASE_URL: en un dispositivo físico o emulador hay que
-// poner la IP de la LAN, no `localhost`.
-export const MEDIA_BASE_URL = 'http://localhost:9000';
+export const MEDIA_BASE_URL =
+  process.env.EXPO_PUBLIC_MEDIA_URL || 'http://localhost:9000';
 export const MEDIA_BUCKET = 'usuarios';
 
 /**

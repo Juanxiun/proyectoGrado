@@ -68,7 +68,6 @@ interface EntregaItem {
 
 const ALLOWED_TYPES = [
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -211,7 +210,7 @@ export function MaestroMateriasScreen() {
     const r = await DocumentPicker.getDocumentAsync({ type: ALLOWED_TYPES, copyToCacheDirectory: true });
     if (r.canceled) return;
     const a = r.assets[0];
-    if ((a.size ?? 0) > 150 * 1024 * 1024) { Alert.alert('Archivo excedido', 'Máximo 150 MB.'); return; }
+    if ((a.size ?? 0) > 25 * 1024 * 1024) { Alert.alert('Archivo excedido', 'Máximo 25 MB.'); return; }
     setMatFile(a);
   };
 
@@ -573,7 +572,7 @@ export function MaestroMateriasScreen() {
             <View className="flex-row items-center justify-between">
               <View>
                 <Text className="text-base font-black text-gray-900">Material Pedagógico</Text>
-                <Text className="text-xs text-gray-500 mt-0.5">{materialesList.length} archivos · PDF, Word, Excel (máx. 150 MB)</Text>
+                <Text className="text-xs text-gray-500 mt-0.5">{materialesList.length} archivos · PDF, DOCX, Excel (máx. 25 MB)</Text>
               </View>
               <TouchableOpacity
                 onPress={showMaterialForm ? closeMaterialForm : openNewMaterial}
@@ -613,7 +612,7 @@ export function MaestroMateriasScreen() {
                         {matFile ? matFile.name : editingMaterial?.nombreArchivo ? `📎 ${editingMaterial.nombreArchivo}` : 'Seleccionar PDF, DOCX o XLSX'}
                       </Text>
                       <Text className="text-[10px] text-gray-400 mt-0.5">
-                        {matFile ? `${Math.round((matFile.size ?? 0) / 1024)} KB · Nuevo archivo seleccionado` : editingMaterial ? 'Toca para reemplazar' : 'Hasta 150 MB'}
+                        {matFile ? `${Math.round((matFile.size ?? 0) / 1024)} KB · Nuevo archivo seleccionado` : editingMaterial ? 'Toca para reemplazar' : 'Hasta 25 MB'}
                       </Text>
                     </View>
                     {matFile && (
@@ -794,4 +793,3 @@ export function MaestroMateriasScreen() {
     </ScrollView>
   );
 }
-

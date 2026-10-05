@@ -1,4 +1,4 @@
-// server.ts - ServiceNotification (Central de Notificaciones)
+// archivo -> central notificaciones
 import "./config/env.config.ts";
 
 import { Application, Context, Next, Router } from "@oak/oak";
@@ -23,7 +23,7 @@ import { iniciarBusEventos } from "./services/eventBus.service.ts";
 import { eventosRegistrados } from "./services/reglas.service.ts";
 import { notificationConfig } from "./config/notification.config.ts";
 
-// Rango de microservicios: 8880–8884.
+// config -> puerto servicio
 const PORT = Number(Deno.env.get("PORT") ?? 8884);
 
 const app = new Application();
@@ -44,11 +44,10 @@ app.use(async (ctx: Context, next: Next) => {
   console.log(`${ctx.request.method} ${ctx.request.url.pathname} → ${ctx.response.status} (${ms}ms)`);
 });
 
-// ── Webhook (el gateway es quien lo invoca) ─────────────────────────────────
+// rutas -> webhook gateway
 rt.post("/webhook", handleWebhookEvent);
 
-// ── Bandeja del usuario ─────────────────────────────────────────────────────
-// Las rutas literales se registran antes que "/:id" para que Oak no las capture.
+// rutas -> literales antes de parametro id
 rt.get("/notificaciones", requireAuth(), listNotificaciones);
 rt.get("/notificaciones/conteo", requireAuth(), countNotificaciones);
 rt.get("/notificaciones/reglas", requireAuth(ROLES_GESTION), listarReglas);
@@ -57,11 +56,11 @@ rt.post("/notificaciones/leer-todas", requireAuth(), readAllNotificaciones);
 rt.post("/notificaciones/:id/read", requireAuth(), readNotificacion);
 rt.delete("/notificaciones/:id", requireAuth(), deleteNotificacion);
 
-// ── Emisión y bus de eventos ────────────────────────────────────────────────
+// rutas -> emitir eventos
 rt.post("/notificaciones/emitir", requireAuth(ROLES_GESTION), emitirNotificacion);
 rt.get("/eventos/estado", requireAuth(ROLES_GESTION), estadoEventos);
 
-// ── Health Check ────────────────────────────────────────────────────────────
+// ruta -> health check
 rt.get("/health", (ctx: Context) => {
   ctx.response.status = 200;
   ctx.response.body = {
@@ -87,7 +86,7 @@ app.use((ctx: Context) => {
   ctx.response.body = { error: "Ruta no encontrada" };
 });
 
-// El bus de eventos arranca con el servicio: sin suscripción no hay catálogo.
+// bus -> iniciar suscripcion
 iniciarBusEventos().catch((err) => {
   console.error("[EventBus] No se pudo iniciar la suscripción:", err);
 });

@@ -10,7 +10,7 @@ export async function sTransaction<T>(
 
   let started = false;
   try {
-    // conReintento por si el socket se murio entre pedidos.
+    // tx -> reintento socket caido
     return await conReintento(async () => {
       await transaction.begin();
       started = true;
@@ -36,8 +36,7 @@ export async function query<T>(
   sql: string,
   params: unknown[] = [],
 ): Promise<QueryObjectResult<T>> {
-  // conReintento por si el socket se murio entre pedidos: tras el fallo el
-  // pool figura con la conexion caida y en el siguiente connect() abre otra.
+  // query -> reintento conexion caida
   return conReintento(async () => {
     const connection = await pool.connect();
     try {

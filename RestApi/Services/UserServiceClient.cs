@@ -1,9 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP que actúa como webhook / API Gateway hacia el ServiceUser (Deno).
-/// Todos los endpoints del RestApi reenvían las peticiones aquí.
-/// </summary>
+// cliente -> reenviar peticiones serviceuser
 public sealed class UserServiceClient
 {
     private readonly HttpClient _http;
@@ -15,75 +12,71 @@ public sealed class UserServiceClient
             ?? throw new InvalidOperationException("Services:UserService no configurado en appsettings.json");
 
         _http.BaseAddress = new Uri(baseUrl);
-        // Fotos y documentos pueden ser multipart; permitir que MinIO complete la subida.
+        // timeout -> permitir subida minio
         _http.Timeout = TimeSpan.FromMinutes(2);
     }
 
-    /// <summary>GET /usuarios con query string opcional.</summary>
+    // proxy -> listar usuarios
     public Task<HttpResponseMessage> GetUsuariosAsync(string queryString, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Get, $"/usuarios{queryString}", request);
 
-    /// <summary>GET /usuarios/:id</summary>
+    // proxy -> obtener usuario
     public Task<HttpResponseMessage> GetUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Get, $"/usuarios/{id}", request);
 
-    /// <summary>
-    /// POST /usuarios — reenvía el cuerpo tal cual (JSON o multipart/form-data).
-    /// </summary>
+    // proxy -> crear usuario
     public Task<HttpResponseMessage> CreateUsuarioAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/usuarios", request);
 
-    /// <summary>
-    /// PUT /usuarios/:id — reenvía el cuerpo tal cual.
-    /// </summary>
+    // proxy -> actualizar usuario
     public Task<HttpResponseMessage> UpdateUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Put, $"/usuarios/{id}", request);
 
-    /// <summary>PATCH /usuarios/:id/baja — baja lógica (estado inactivo).</summary>
+    // proxy -> baja logica usuario
     public Task<HttpResponseMessage> BajaUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Patch, $"/usuarios/{id}/baja", request);
 
-    /// <summary>DELETE /usuarios/:id</summary>
+    // proxy -> eliminar usuario
     public Task<HttpResponseMessage> DeleteUsuarioAsync(long id, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Delete, $"/usuarios/{id}", request);
 
-    /// <summary>POST /auth/login — reenvía el cuerpo JSON y cabeceras de cliente.</summary>
+    // proxy -> login usuario
     public Task<HttpResponseMessage> LoginAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/login", request);
 
-    /// <summary>POST /auth/verify-2fa — valida el código 2FA de 6 dígitos.</summary>
+    // proxy -> validar codigo 2fa
     public Task<HttpResponseMessage> Verify2FAAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/verify-2fa", request);
 
-    /// <summary>POST /auth/resend-2fa — reenvía un nuevo código 2FA.</summary>
+    // proxy -> reenviar codigo 2fa
     public Task<HttpResponseMessage> Resend2FAAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/resend-2fa", request);
 
-    /// <summary>POST /auth/change-password — cambio de contraseña con validación estricta de política.</summary>
+    // proxy -> cambiar contrasena
     public Task<HttpResponseMessage> ChangePasswordAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/change-password", request);
 
-    /// <summary>POST /auth/logout — cierra la sesión activa y calcula tiempo conectado.</summary>
+    // proxy -> cerrar sesion
     public Task<HttpResponseMessage> LogoutAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Post, "/auth/logout", request);
 
-    /// <summary>GET /auth/sessions/me — consulta sesiones del usuario actual.</summary>
+    // proxy -> listar mis sesiones
     public Task<HttpResponseMessage> GetMySessionsAsync(HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Get, "/auth/sessions/me", request);
 
-    /// <summary>GET /auth/sessions/user/:id — consulta sesiones y alertas de trampa de un usuario.</summary>
+    // proxy -> listar sesiones usuario
     public Task<HttpResponseMessage> GetUserSessionsAsync(long userId, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Get, $"/auth/sessions/user/{userId}", request);
 
-    /// <summary>DELETE /auth/sessions/:sessionId — revoca una sesión remota.</summary>
+    // proxy -> revocar sesion
     public Task<HttpResponseMessage> RevokeSessionAsync(string sessionId, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Delete, $"/auth/sessions/{sessionId}", request);
 
-    /// <summary>GET /health — verifica que el ServiceUser esté vivo.</summary>
+    // proxy -> salud serviceuser
     public Task<HttpResponseMessage> HealthAsync()
         => _http.GetAsync("/health");
 
-    // ── Forwarding avanzado con cabeceras de auditoría y proxy ───────────────
+    // metodo -> reenviar peticion con cabeceras
     private async Task<HttpResponseMessage> ForwardRequestAsync(HttpMethod method, string path, HttpRequest incomingRequest)
     {
         using var message = new HttpRequestMessage(method, path);
@@ -94,7 +87,6 @@ public sealed class UserServiceClient
             incomingRequest.Body.Position = 0;
         }
 
-        // Reenviar cuerpo si existe
         if (incomingRequest.ContentLength > 0 || incomingRequest.Headers.ContainsKey("Content-Type"))
         {
             using var ms = new MemoryStream();
@@ -117,7 +109,6 @@ public sealed class UserServiceClient
             message.Content = content;
         }
 
-        // Reenviar cabeceras de autorización, cliente, IP y geolocalización
         CopyHeaderIfPresent(incomingRequest, message, "Authorization");
         CopyHeaderIfPresent(incomingRequest, message, "User-Agent");
         CopyHeaderIfPresent(incomingRequest, message, "X-Forwarded-For");
@@ -128,7 +119,6 @@ public sealed class UserServiceClient
         CopyHeaderIfPresent(incomingRequest, message, "X-Ciudad");
         CopyHeaderIfPresent(incomingRequest, message, "X-Pais");
 
-        // Si no viene X-Forwarded-For, pasar la IP remota de conexión
         if (!message.Headers.Contains("X-Forwarded-For") && incomingRequest.HttpContext.Connection.RemoteIpAddress != null)
         {
             message.Headers.TryAddWithoutValidation("X-Forwarded-For", incomingRequest.HttpContext.Connection.RemoteIpAddress.ToString());
@@ -145,10 +135,7 @@ public sealed class UserServiceClient
         }
     }
 
-    /// <summary>
-    /// Construye un <see cref="HttpContent"/> que reenvía el stream del cuerpo
-    /// del request entrante, incluyendo el Content-Type (con boundary en multipart).
-    /// </summary>
+    // contenido -> reenviar cuerpo peticion
     public static HttpContent? BuildForwardContent(HttpRequest request)
     {
         if (request.ContentLength == 0 && !request.Headers.ContainsKey("Content-Type"))
@@ -162,10 +149,7 @@ public sealed class UserServiceClient
         return content;
     }
 
-    /// <summary>
-    /// Construye el query string a reenviar al ServiceUser
-    /// a partir del request actual.
-    /// </summary>
+    // proxy -> reenviar query string
     public static string ForwardQueryString(HttpRequest request)
         => request.QueryString.HasValue ? request.QueryString.Value! : string.Empty;
 }

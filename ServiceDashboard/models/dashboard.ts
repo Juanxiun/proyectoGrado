@@ -1,7 +1,4 @@
-/**
- * Contrato del dashboard. Todas las proyecciones se calculan en el momento
- * desde la base compartida y se cachean por un TTL corto; nada se persiste.
- */
+// modelos -> contrato dashboard lectura
 
 export type Alcance = "institucion" | "docente" | "propio";
 
@@ -14,15 +11,15 @@ export interface PeriodoRef {
   trimestre: number;
 }
 
-/** Lo que se responde en la cabecera de cualquier vista del dashboard. */
+// modelo -> cabecera vistas dashboard
 export interface ContextoDashboard {
   periodo: PeriodoRef | null;
   alcance: Alcance;
-  /** Visible sólo para el usuario actual, para explicar el recorte. */
+  // campo -> descripcion alcance
   descripcionAlcance: string;
   generadoEn: string;
   cacheado: boolean;
-  /** Milisegundos que tardó la proyección. */
+  // campo -> duracion proyeccion
   duracionMs: number;
 }
 
@@ -33,11 +30,11 @@ export interface TarjetaKpi {
   sufijo?: string;
   detalle?: string;
   icono: string;
-  /** true cuando el valor merece atención (por ejemplo, cartera vencida). */
+  // campo -> marca atencion valor
   alerta?: boolean;
 }
 
-// ── Académico ───────────────────────────────────────────────────────────────
+// seccion -> modelo academico
 
 export interface AvanceMateria {
   materiaId: string;
@@ -47,10 +44,10 @@ export interface AvanceMateria {
   maestro?: string | null;
   encargosPublicados: number;
   encargosCalificados: number;
-  /** 0-100: qué parte de la planificación ya tiene notas cargadas. */
+  // campo -> avance calificacion porcentaje
   avanceCalificacion: number;
   promedio: number | null;
-  /** Estudiantes sin ninguna nota en esta materia. */
+  // campo -> alumnos sin nota
   estudiantesSinNota: number;
   estudiantes: number;
 }
@@ -72,7 +69,7 @@ export interface ResumenAcademico {
     sinEncargos: number;
     avanceGlobal: number;
   };
-  /** Progreso de la puesta en marcha de la gestión académica. */
+  // campo -> estado gestion academica
   estadoGestion: {
     estructuraGenerada: boolean;
     horariosGenerados: boolean;
@@ -87,7 +84,7 @@ export interface ResumenAcademico {
   _avance: AvanceMateria[];
 }
 
-// ── Asistencia ──────────────────────────────────────────────────────────────
+// seccion -> modelo asistencia
 
 export interface ResumenAsistencia {
   registros: number;
@@ -95,7 +92,7 @@ export interface ResumenAsistencia {
   ausentes: number;
   atrasos: number;
   justificadas: number;
-  /** Porcentaje de asistencia efectiva; null si no hay registros. */
+  // campo -> tasa asistencia efectiva
   tasa: number | null;
   diasRegistrados: number;
 }
@@ -110,7 +107,7 @@ export interface ResumenAsistenciaDashboard {
     total: number;
     ausentes: number;
     tasa: number | null;
-    /** Días que faltó el alumno con más ausencias de esa materia. */
+    // campo -> maximo faltas materia
     mayorFaltas: number;
   }>;
   estudiantesConMasFaltas: Array<{
@@ -124,7 +121,7 @@ export interface ResumenAsistenciaDashboard {
   }>;
 }
 
-// ── Riesgo ──────────────────────────────────────────────────────────────────
+// seccion -> modelo riesgo
 
 export interface ResumenRiesgo {
   total: number;
@@ -132,7 +129,7 @@ export interface ResumenRiesgo {
   riesgo: number;
   riesgoAlto: number;
   sinRiesgo: number;
-  /** Umbrales aplicados, para que la interfaz pueda explicarlos. */
+  // campo -> umbrales aplicados
   umbrales: {
     notaRiesgo: number;
     asistenciaRiesgo: number;
@@ -152,7 +149,7 @@ export interface ResumenRiesgo {
   }>;
 }
 
-// ── Económico ───────────────────────────────────────────────────────────────
+// seccion -> modelo economico
 
 export interface ResumenEconomico {
   moneda: string;
@@ -161,12 +158,12 @@ export interface ResumenEconomico {
   pendiente: number;
   vencido: number;
   anulado: number;
-  /** Porcentaje de cobranza sobre lo facturado. */
+  // campo -> porcentaje cobranza
   porcentajeCobranza: number | null;
   proyectado: {
-    /** A cobrar en los próximos días según vencimientos del plan. */
+    // campo -> cobro proximos dias
     proximos30Dias: number;
-    /** Lo que queda por vencer en el resto del período. */
+    // campo -> saldo resto periodo
     restoDelPeriodo: number;
     diasProyeccion: number;
   };
@@ -194,7 +191,7 @@ export interface ResumenEconomico {
   ingresoMesActual: number;
 }
 
-// ── Vista completa ──────────────────────────────────────────────────────────
+// seccion -> modelo completo
 
 export interface DashboardCompleto {
   contexto: ContextoDashboard;
@@ -203,6 +200,6 @@ export interface DashboardCompleto {
   asistencia: ResumenAsistenciaDashboard;
   riesgo: ResumenRiesgo;
   economico: ResumenEconomico | null;
-  /** Se omite para docentes: la economía no les corresponde. */
+  // campo -> economico oculto docentes
   economicoOculto?: boolean;
 }

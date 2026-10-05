@@ -35,8 +35,7 @@ export async function query<T>(
   sql: string,
   params: unknown[] = [],
 ): Promise<QueryObjectResult<T>> {
-  // conReintento por si el socket se murio entre pedidos: el pool reconecta en
-  // el siguiente connect() y la consulta pasa sola.
+  // query -> reintento socket muerto
   return conReintento(async () => {
     const connection = await pool.connect();
     try {

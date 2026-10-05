@@ -5,16 +5,19 @@ using RestApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+});
 builder.Services.AddSingleton<PendingRequestTracker>();
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 167_772_160; // 160 MB
+    options.MultipartBodyLengthLimit = 167_772_160; // limite -> 160 megabytes
 });
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 167_772_160; // 160 MB
+    options.Limits.MaxRequestBodySize = 167_772_160; // limite -> 160 megabytes
 });
 
 builder.Services.AddOpenApi();
@@ -31,9 +34,10 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
         policy
-            .AllowAnyOrigin()
+            .SetIsOriginAllowed(_ => true)
             .AllowAnyMethod()
-            .AllowAnyHeader());
+            .AllowAnyHeader()
+            .AllowCredentials());
 });
 
 var app = builder.Build();
@@ -44,21 +48,18 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
+app.UseWebSockets();
 
 app.Use(async (context, next) =>
 {
     context.Request.EnableBuffering();
     await next();
 
-    // Las modificaciones pasan por el gateway. Éste es, por tanto, el único
-    // proceso que anuncia cambios a los clientes SignalR; los servicios sólo
-    // responden al gateway por HTTP/webhook y no mantienen sockets públicos.
+    // gateway -> unico notificar clientes signalr
     var isApiWrite = !HttpMethods.IsGet(context.Request.Method)
         && !HttpMethods.IsHead(context.Request.Method)
         && context.Request.Path.StartsWithSegments("/api")
         && !context.Request.Path.StartsWithSegments("/api/webhooks")
-        // /api/internal es el push de la central de notificaciones: ya emite su
-        // propio evento NotificacionNueva y no debe generar un DataChanged.
         && !context.Request.Path.StartsWithSegments("/api/internal")
         && context.Response.StatusCode is >= 200 and < 300;
     if (isApiWrite)

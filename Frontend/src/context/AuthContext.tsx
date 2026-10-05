@@ -1,3 +1,4 @@
+// contexto_auth -> manejar autenticación y sesión de usuario
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { storage } from '../utils/storage';
 import { useAuthActions } from '../hooks/useAuth';

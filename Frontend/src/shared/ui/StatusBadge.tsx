@@ -1,3 +1,4 @@
+// badge -> mostrar estado con color
 import { Text, View } from 'react-native';
 import type { EstadoUsuario } from '../../types';
 

@@ -1,4 +1,4 @@
-// server.ts - ServiceDashboard (Tablero de Inicio, sólo lectura)
+// archivo -> servidor tablero solo lectura
 import "./config/env.config.ts";
 
 import { Application, Context, Next, Router } from "@oak/oak";
@@ -18,7 +18,7 @@ import {
 } from "./controllers/dashboard.controller.ts";
 import { eventosRegistrados } from "./controllers/dashboard.controller.ts";
 
-// Rango de microservicios: 8880–8885.
+// config -> puerto por defecto 8885
 const PORT = Number(Deno.env.get("PORT") ?? 8885);
 
 const app = new Application();
@@ -39,11 +39,10 @@ app.use(async (ctx: Context, next: Next) => {
   console.log(`${ctx.request.method} ${ctx.request.url.pathname} → ${ctx.response.status} (${ms}ms)`);
 });
 
-// ── Webhook (el gateway es quien lo invoca) ─────────────────────────────────
+// rutas -> webhook del gateway
 rt.post("/webhook", handleWebhookEvent);
 
-// ── Tablero ─────────────────────────────────────────────────────────────────
-// Rutas literales antes que "/:id" para que Oak no las capture.
+// rutas -> endpoints tablero lectura
 rt.get("/dashboard", requireAuth(ROLES_LECTURA), getDashboard);
 rt.get("/dashboard/academico", requireAuth(ROLES_LECTURA), getAcademico);
 rt.get("/dashboard/asistencia", requireAuth(ROLES_LECTURA), getAsistencia);
@@ -53,7 +52,7 @@ rt.get("/dashboard/periodos", requireAuth(ROLES_LECTURA), getPeriodos);
 rt.get("/dashboard/umbrales", requireAuth(ROLES_LECTURA), getUmbralesRiesgo);
 rt.post("/dashboard/cache/invalidar", requireAuth(ROLES_LECTURA), postInvalidarCache);
 
-// ── Health Check ────────────────────────────────────────────────────────────
+// ruta -> health check
 rt.get("/health", (ctx: Context) => {
   ctx.response.status = 200;
   ctx.response.body = {

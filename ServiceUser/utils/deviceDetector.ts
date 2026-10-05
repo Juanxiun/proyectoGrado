@@ -20,7 +20,7 @@ export interface LocationInfo {
 export function extractDeviceInfo(ctx: Context, overrideUserAgent?: string): DeviceInfo {
   const rawUserAgent = overrideUserAgent || ctx.request.headers.get("user-agent") || "Desconocido";
   
-  // Extraer IP de cabeceras de proxy o conexión
+  // util -> extraer ip proxy
   const forwardedFor = ctx.request.headers.get("x-forwarded-for");
   const realIp = ctx.request.headers.get("x-real-ip");
   const clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : (realIp || ctx.request.ip || "127.0.0.1");

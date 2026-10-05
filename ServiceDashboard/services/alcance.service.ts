@@ -4,19 +4,14 @@ import { HttpError } from "../utils/errors.ts";
 import { ROLES_DOCENTES, ROLES_INSTITUCION, type AppRole } from "../security/auth.ts";
 import type { Alcance, PeriodoRef } from "../models/dashboard.ts";
 
-/**
- * Determina el alcance de la consulta según el rol y resuelve el período.
- *
- * El recorte se aplica acá, en SQL, no en el frontend: un docente no debe
- * poder ver cifras de toda la institución ni aunque manipule la URL.
- */
+// servicio -> alcance por rol y periodo
 
 export interface Contexto {
   alcance: Alcance;
   descripcion: string;
-  /** Periodo elegido (o el activo por defecto). */
+  // campo -> periodo elegido
   periodo: PeriodoRef | null;
-  /** Sólo si el alcance es "docente": su id en la tabla maestros. */
+  // campo -> id maestro docente
   maestroId: string | null;
   usuarioId: string;
   rol: AppRole;
@@ -55,9 +50,7 @@ async function resolverAlcance(
     );
 
     if (res.rows.length === 0) {
-      // Un docente sin ficha de maestro no tiene cursos asignados: se devuelve
-      // el alcance institucional vacío en vez de un 403, para que la pantalla
-      // se entienda.
+      // caso -> docente sin ficha
       return {
         alcance: "docente",
         descripcion: "Sin carga horaria asignada",
@@ -72,14 +65,11 @@ async function resolverAlcance(
     };
   }
 
-  // Estudiantes y apoderados: hoy el dashboard institucional no les aplica.
+  // caso -> rol sin tablero
   throw new HttpError(403, "El tablero general no está disponible para tu rol");
 }
 
-/**
- * Resuelve el período. Acepta un id explícito, la palabra "activo" o "ultimo";
- * sin parámetro usa el activo y, si no hay, el más reciente.
- */
+// funcion -> resolver periodo pedido
 export async function resolverPeriodo(
   pedido: string | null | undefined,
   trimestre: number,
@@ -142,11 +132,7 @@ function mapearPeriodo(fila: RowPeriodo, trimestre: number): PeriodoRef {
   };
 }
 
-/**
- * Condición SQL que restringe los cursos al alcance. Recibe el arreglo de
- * parámetros, le añade los que necesite y lo devuelve junto al fragmento, para
- * que el llamador no pueda olvidarse de pasarlo a `query()`.
- */
+// funcion -> sql filtro cursos
 export function filtroCursos(
   contexto: Contexto,
   params: unknown[],

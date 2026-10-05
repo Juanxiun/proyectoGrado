@@ -5,11 +5,7 @@ import {
 } from "../services/seguimiento.service.ts";
 import { seguimientoConfig } from "../config/seguimiento.config.ts";
 
-/**
- * ElPromedio ponderado y la detección de riesgo se calculan sobre datos reales
- * de calificaciones y asistencia. Estas pruebas cubren la clasificación, que
- * es donde un errorolvidaría al personal administrativo.
- */
+// test -> clasificacion riesgo promedio
 
 Deno.test("sin datos no hay riesgo ni índice", () => {
   const { nivel } = clasificarRiesgo(null, null);
@@ -41,15 +37,14 @@ Deno.test("nota y asistencia bajas a la vez escalan a riesgo alto", () => {
 });
 
 Deno.test("asistencia por encima del riesgo pero baja queda en observación", () => {
-  // 80% supera el umbral de riesgo (75) pero no llega a la banda "en regla" (85).
+  // caso -> asistencia banda observacion
   const { nivel, observaciones } = clasificarRiesgo(80, 80);
   assertEquals(nivel, "observacion");
   assert(observaciones.some((o) => o.includes("observación")));
 });
 
 Deno.test("la banda de observación es alcanzable", () => {
-  // Guarda contra una regresión: si el umbral de observación queda por debajo
-  // del de riesgo, esta franja nunca se alcanza y el estado queda muerto.
+  // caso -> regresion umbral observacion
   assert(
     seguimientoConfig.umbralAsistenciaObservacion > seguimientoConfig.umbralAsistenciaRiesgo,
     "umbralAsistenciaObservacion debe ser mayor que umbralAsistenciaRiesgo",
@@ -61,7 +56,7 @@ Deno.test("la banda de observación es alcanzable", () => {
 });
 
 Deno.test("los límites exactos no disparan riesgo", () => {
-  // Justo sobre el umbral: en regla. Justo en el umbral: fuera.
+  // caso -> corte umbral exacto
   assertEquals(clasificarRiesgo(seguimientoConfig.umbralNotaRiesgo, 100).nivel, "sin_riesgo");
   assertEquals(
     clasificarRiesgo(seguimientoConfig.umbralNotaRiesgo - 0.01, 100).nivel,
@@ -84,8 +79,7 @@ Deno.test("el índice usa sólo el promedio cuando no hay asistencia", () => {
 });
 
 Deno.test("en el umbral exacto de riesgo ya no hay riesgo", () => {
-  // Justo en el límite: no es riesgo (el corte es exclusivo), queda en observación.
-  // Justo por debajo: sí es riesgo.
+  // caso -> limite riesgo exclusivo
   const enElLimite = seguimientoConfig.umbralAsistenciaRiesgo;
   const nivelEnLimite = clasificarRiesgo(80, enElLimite).nivel;
   assert(nivelEnLimite !== "riesgo", "en el umbral exacto no debe marcarse riesgo");

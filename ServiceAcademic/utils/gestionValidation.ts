@@ -24,10 +24,7 @@ export function addDays(date: Date, days: number): Date {
   return new Date(date.getTime() + days * DAY_MS);
 }
 
-/**
- * Valida el rango principal de una gestión. La fecha final debe ser
- * estrictamente posterior a la inicial, no sólo igual o anterior.
- */
+// valida -> rango fechas gestion
 export function validateGestionRange(inicio: unknown, fin: unknown): void {
   const inicioDate = parseIsoDate(inicio, "inicio_gestion");
   const finDate = parseIsoDate(fin, "fin_gestion");
@@ -41,11 +38,7 @@ function isInstructionalDay(date: Date): boolean {
   return day >= 1 && day <= 5;
 }
 
-/**
- * Los trimestres deben ser consecutivos en días lectivos. Se permite que el
- * intervalo entre dos trimestres contenga sólo sábado/domingo; cualquier día
- * hábil intermedio se considera una brecha no cubierta.
- */
+// valida -> trimestres consecutivos
 export function validateTrimestres(
   inicioGestion: unknown,
   finGestion: unknown,

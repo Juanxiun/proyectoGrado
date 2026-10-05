@@ -47,8 +47,7 @@ public sealed class WebhookDispatcherService
 
     public Task<bool> DispatchAsync(string eventId, string eventType, object? payload)
     {
-        // Tablero y notificaciones se consultan antes que los demás: sus
-        // prefijos son propios y nunca deben caer al servicio de usuarios.
+        // orden -> tablero notificaciones primero
         if (IsDashboardEvent(eventType))
         {
             return DispatchToDashboardServiceAsync(eventId, eventType, payload);

@@ -24,7 +24,7 @@ export function generate2FABentoEmailHtml(props: TwoFactorEmailProps): string {
     fechaHora,
   } = props;
 
-  // Aseguramos que el código principal es el foco visual.
+  // util -> preparar textos correo
   const deviceText = `${dispositivo.browser ?? "Navegador Web"} en ${dispositivo.os ?? "Sistema Operativo"}`;
   const ipText = dispositivo.ip || "IP no registrada";
 

@@ -5,7 +5,7 @@ import { redisConfig } from "../../config/redis.conf.ts";
 let redisClient: any = null;
 let isConnecting = false;
 
-/** Se usa únicamente como caché de proyecciones, no para estado de negocio. */
+// util -> cache solo proyecciones
 export function getRedis(): any {
   if (!redisClient) {
     try {

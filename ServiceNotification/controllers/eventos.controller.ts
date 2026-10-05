@@ -12,7 +12,7 @@ import type {
 } from "../models/notification.ts";
 
 interface EmitirBody {
-  /** Si se envía y existe en el catálogo, se reaprovecha la regla del evento. */
+  // campo -> reutiliza regla evento
   evento?: string;
   audiencia?: "usuario" | "curso" | "rol" | "todos";
   usuarioIds?: string[];
@@ -34,10 +34,7 @@ interface EmitirBody {
   publicoTexto?: string;
 }
 
-/**
- * Emisión directa. Permite que un servicio o un usuario de gestión dispare una
- * notificación puntual sin tener que model's un evento en el canal.
- */
+// funcion -> emitir notificacion directa
 export async function emitirNotificacion(ctx: Context): Promise<void> {
   try {
     const body = await readJsonBody<EmitirBody>(ctx);
@@ -121,7 +118,7 @@ export async function emitirNotificacion(ctx: Context): Promise<void> {
   }
 }
 
-/** Catálogo de eventos que generan notificación; útil para verificar cobertura. */
+// funcion -> listar reglas eventos
 export async function listarReglas(ctx: Context): Promise<void> {
   try {
     const eventos = eventosRegistrados();
@@ -131,7 +128,7 @@ export async function listarReglas(ctx: Context): Promise<void> {
   }
 }
 
-/** Estado del bus de eventos: confirma que el servicio está escuchando. */
+// funcion -> estado bus eventos
 export async function estadoEventos(ctx: Context): Promise<void> {
   try {
     respond(ctx, 200, {

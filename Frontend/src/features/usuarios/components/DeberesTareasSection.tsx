@@ -46,7 +46,6 @@ interface DeberesTareasSectionProps {
 
 const ALLOWED_TYPES = [
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -115,8 +114,8 @@ export function DeberesTareasSection({
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    if ((asset.size ?? 0) > 150 * 1024 * 1024) {
-      Alert.alert('Límite excedido', 'El archivo no puede pesar más de 150 MB.');
+    if ((asset.size ?? 0) > 25 * 1024 * 1024) {
+      Alert.alert('Límite excedido', 'El archivo no puede pesar más de 25 MB.');
       return;
     }
     setSelectedFile(asset);
@@ -331,10 +330,10 @@ export function DeberesTareasSection({
                 >
                   <Ionicons name="cloud-upload-outline" size={28} color="#801529" />
                   <Text className="text-xs font-bold text-gray-800 mt-2">
-                    {selectedFile ? selectedFile.name : 'Seleccionar Archivo (PDF, Word, Excel)'}
+                    {selectedFile ? selectedFile.name : 'Seleccionar Archivo (PDF, DOCX, Excel; max. 25 MB)'}
                   </Text>
                   <Text className="text-[11px] text-gray-400 mt-0.5">
-                    {selectedFile ? `${Math.round((selectedFile.size ?? 0) / 1024)} KB` : 'Hasta 150 MB'}
+                    {selectedFile ? `${Math.round((selectedFile.size ?? 0) / 1024)} KB` : 'Hasta 25 MB'}
                   </Text>
                 </TouchableOpacity>
               </View>

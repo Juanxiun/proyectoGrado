@@ -3,10 +3,7 @@ using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace RestApi.Filters;
 
-/// <summary>
-/// Evita que el model binder de formularios consuma el cuerpo multipart
-/// antes de reenviarlo al ServiceUser.
-/// </summary>
+// filtro -> evitar consumo multipart
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public sealed class DisableFormValueModelBindingAttribute : Attribute, IResourceFilter
 {

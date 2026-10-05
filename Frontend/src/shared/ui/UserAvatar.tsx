@@ -1,3 +1,4 @@
+// avatar_usuario -> mostrar foto y nombre del usuario
 import { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
 import { DEFAULT_USER_PHOTO } from '../../constants/config';

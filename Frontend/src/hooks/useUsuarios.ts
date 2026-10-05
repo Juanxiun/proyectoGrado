@@ -1,3 +1,4 @@
+// hook_usuarios -> obtener y listar datos de usuarios
 import { useCallback, useState } from 'react';
 import { usuariosApi } from '../api/usuarios.api';
 import type {

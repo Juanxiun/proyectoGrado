@@ -95,8 +95,7 @@ app.use(async (ctx, next) => {
 
 rt.post("/webhook", handleWebhookEvent);
 
-// ── Rutas Académicas Core ──────────────────────────────────────────────────
-// Configuración, clonación y activación de la gestión
+// rutas -> acciones gestion academica
 rt.post("/periodos/:id/clonar", requireAuth(ROLES_GESTION), clonePeriodo);
 rt.post("/periodos/:id/clone", requireAuth(ROLES_GESTION), clonePeriodo);
 rt.post("/periodos/:id/generar-estructura", requireAuth(ROLES_GESTION), generateStructure);
@@ -115,7 +114,7 @@ rt.get("/periodos/:id/validacion", requireAuth(ROLES_LECTURA), getPeriodoValidac
 rt.get("/periodos/:id/validar", requireAuth(ROLES_LECTURA), getPeriodoValidacion);
 rt.get("/periodos/:id/trimestres", requireAuth(ROLES_LECTURA), listPeriodoTrimestres);
 
-// Listados de configuración de la gestión
+// rutas -> listados configuracion gestion
 rt.get("/trimestres", requireAuth(ROLES_LECTURA), listTrimestres);
 rt.get("/horarios", requireAuth(ROLES_LECTURA), listHorarios);
 rt.post("/horarios/generar", requireAuth(ROLES_GESTION), generateScheduleForPeriod);
@@ -127,32 +126,28 @@ rt.post("/planes-pago/generar", requireAuth(ROLES_GESTION), generatePaymentPlanF
 rt.get("/aulas", requireAuth(ROLES_LECTURA), getAulas);
 rt.post("/aulas", requireAuth(ROLES_GESTION), postAula);
 
-// Periodos Académicos (Apertura y Cierre de Años Lectivos)
+// rutas -> gestionar periodos academicos
 rt.get("/periodos", requireAuth(ROLES_LECTURA), listPeriodos);
 rt.get("/periodos/:id", requireAuth(ROLES_LECTURA), getPeriodo);
 rt.post("/periodos", requireAuth(ROLES_GESTION), createPeriodo);
 rt.put("/periodos/:id", requireAuth(ROLES_GESTION), updatePeriodo);
 rt.delete("/periodos/:id", requireAuth(ROLES_GESTION), deletePeriodo);
 
-// Cursos Base (Niveles, Grados y Paralelos)
+// rutas -> gestionar cursos base
 rt.get("/cursos", requireAuth(ROLES_LECTURA), listCursos);
 rt.get("/cursos/:id", requireAuth(ROLES_LECTURA), getCurso);
 rt.post("/cursos", requireAuth(ROLES_GESTION), createCurso);
 rt.put("/cursos/:id", requireAuth(ROLES_GESTION), updateCurso);
 rt.delete("/cursos/:id", requireAuth(ROLES_GESTION), deleteCurso);
 
-// ── Grados: un bloque por grado, con sus paralelos juntos ──────────────────
-// 1°A y 1°B comparten materias y temario, así que la configuración vive a
-// nivel de grado. Los paralelos siguen siendo filas de `cursos` porque
-// horarios, inscripciones y asignaciones sí son por paralelo.
+// rutas -> materias compartidas por grado
 rt.get("/grados", requireAuth(ROLES_LECTURA), getGrados);
 rt.get("/grados/materias", requireAuth(ROLES_LECTURA), getMateriasGrado);
 rt.post("/grados/materias", requireAuth(ROLES_GESTION), postMateriaGrado);
 rt.put("/grados/materias", requireAuth(ROLES_GESTION), putMateriasGrado);
 rt.delete("/grados/materias/:materiaId", requireAuth(ROLES_GESTION), deleteMateriaGrado);
 
-// ── Maya curricular: temas por grado y materia ──────────────────────────────
-// Rutas literales antes que "/tema/:id" para que Oak no las capture.
+// rutas -> temas malla curricular
 rt.get("/malla", requireAuth(ROLES_LECTURA), getMalla);
 rt.get("/malla/resumen", requireAuth(ROLES_LECTURA), getMallaResumen);
 rt.get("/malla/materia", requireAuth(ROLES_LECTURA), getMallaMateria);
@@ -161,23 +156,21 @@ rt.post("/malla/tema", requireAuth(ROLES_DOCENTES), postTema);
 rt.put("/malla/tema/:id", requireAuth(ROLES_DOCENTES), putTema);
 rt.delete("/malla/tema/:id", requireAuth(ROLES_DOCENTES), deleteTema);
 
-// Materias (Definición inmutable del plan de estudios)
+// rutas -> gestionar materias
 rt.get("/materias", requireAuth(ROLES_LECTURA), listMaterias);
 rt.get("/materias/:id", requireAuth(ROLES_LECTURA), getMateria);
 rt.post("/materias", requireAuth(ROLES_GESTION), createMateria);
 rt.put("/materias/:id", requireAuth(ROLES_GESTION), updateMateria);
 rt.delete("/materias/:id", requireAuth(ROLES_GESTION), deleteMateria);
 
-// Seguimiento Académico (Notas y Desempeño — todo calculado en vivo)
+// rutas -> seguimiento notas vivo
 rt.get("/seguimiento/libro", requireAuth(ROLES_LECTURA), getLibro);
 rt.get("/seguimiento/panel/curso", requireAuth(ROLES_LECTURA), getPanelCurso);
 rt.get("/seguimiento/panel/estudiante/:id", requireAuth(ROLES_LECTURA), getPanelEstudiante);
 rt.get("/seguimiento/riesgo", requireAuth(ROLES_GESTION), getRiesgo);
 rt.get("/seguimiento/umbrales", requireAuth(ROLES_LECTURA), getUmbrales);
 
-// Rutas internas: las consulta ServiceNotification para reevaluar riesgo y
-// ServiceDashboard para leer el criterio vigente. Usan el token compartido, no
-// el JWT, y viven aparte a propósito.
+// rutas -> acceso interno token
 rt.get(
   "/seguimiento/internal/estudiante/:id",
   requireInternalToken(),
@@ -231,7 +224,7 @@ console.log(`   GET    /seguimiento/panel/curso`);
 console.log(`   GET    /seguimiento/riesgo`);
 console.log(`   GET    /health`);
 
-// Tarea diaria: verificar periodos expirados y cambiar activo a false
+// tarea -> desactivar periodos expirados
 checkAndDeactivateExpiredPeriodos().catch(console.error);
 setInterval(() => {
   checkAndDeactivateExpiredPeriodos().catch(console.error);

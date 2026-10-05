@@ -1,8 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP gateway hacia ServiceAcademic (Deno/Oak).
-/// </summary>
+// cliente -> reenviar servicio academico
 public sealed class AcademicServiceClient
 {
     private readonly HttpClient _http;

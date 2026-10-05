@@ -3,16 +3,7 @@ import { query } from "../../connects/Database/transaction.ts";
 import { serialize } from "../../utils/serialize.ts";
 import { resolveMediaIn } from "../../connects/Storage/minio.ts";
 
-/**
- * GET /usuarios
- *
- * Query params:
- *   - page     (default: 1)
- *   - limit    (default: 20, max: 100)
- *   - rolId    (filtrar por rol)
- *   - estado   (filtrar por estado: 0 | 1 | 2)
- *   - buscar   (buscar por nombre, apellido o username)
- */
+// query -> listar usuarios con filtros
 export async function getUsuarios(ctx: Context): Promise<void> {
   try {
     const params = ctx.request.url.searchParams;
@@ -31,7 +22,6 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       return;
     }
 
-    //Condiciones dinámicas
     const conditions: string[] = [];
     const filterParams: unknown[] = [];
     let idx = 1;
@@ -70,7 +60,6 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       ? `WHERE ${conditions.join(" AND ")}`
       : "";
 
-    //Query principal con alias en camelCase
     const mainQuery = `
       SELECT
         u.id,
@@ -125,7 +114,6 @@ export async function getUsuarios(ctx: Context): Promise<void> {
       query<{ total: string }>(countQuery, filterParams),
     ]);
 
-    // Para cada usuario, traer sus documentos relacionados formateados
     // deno-lint-ignore no-explicit-any
     const userIds = dataRes.rows.map((r: any) => r.id);
     // deno-lint-ignore no-explicit-any
@@ -180,12 +168,7 @@ export async function getUsuarios(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * GET /usuarios/:id
- *
- * Retorna el usuario completo con todas sus relaciones:
- * cuenta, documentos, dirección, contactos y apoderados (si es estudiante).
- */
+// query -> usuario con relaciones
 export async function getUsuario(
   ctx: RouterContext<"/usuarios/:id">,
 ): Promise<void> {
@@ -197,7 +180,6 @@ export async function getUsuario(
       return;
     }
 
-    //Usuario base con alias camelCase
     const userRes = await query<{
       id: bigint;
       nombre: string;
@@ -261,7 +243,6 @@ export async function getUsuario(
       return;
     }
 
-    //Consultas paralelas de relaciones
     const [cuentaRes, docRes, dirRes, contRes, apodRes, materiasRes] = await Promise.all([
       query(
         `SELECT id, username, email, email_verificado AS "emailVerificado",

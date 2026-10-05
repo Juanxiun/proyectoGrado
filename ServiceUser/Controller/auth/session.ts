@@ -28,11 +28,7 @@ async function extractPayloadFromHeader(ctx: Context): Promise<Record<string, an
   }
 }
 
-/**
- * POST /auth/logout
- *
- * Body: { "sessionId": "..." } (opcional si se envía Bearer token)
- */
+// ruta -> cerrar sesion actual
 export async function logout(ctx: Context): Promise<void> {
   try {
     // deno-lint-ignore no-explicit-any
@@ -40,7 +36,6 @@ export async function logout(ctx: Context): Promise<void> {
     try {
       body = await ctx.request.body.json();
     } catch {
-      // Body may be empty if sessionId is in token
     }
 
     let sessionId = body?.sessionId;
@@ -91,10 +86,7 @@ export async function logout(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * GET /auth/sessions/me
- * Obtiene las sesiones del usuario actual a través de su Bearer token.
- */
+// ruta -> listar sesiones propias
 export async function getMySessions(ctx: Context): Promise<void> {
   try {
     const payload = await extractPayloadFromHeader(ctx);
@@ -116,10 +108,7 @@ export async function getMySessions(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * GET /auth/sessions/user/:id
- * Consulta de sesiones y alertas para roles de administración/control/docente.
- */
+// ruta -> listar sesiones usuario
 export async function getUserSessionsById(
   ctx: RouterContext<"/auth/sessions/user/:id">,
 ): Promise<void> {
@@ -142,10 +131,7 @@ export async function getUserSessionsById(
   }
 }
 
-/**
- * DELETE /auth/sessions/:sessionId
- * Invalida/cierra remotamente una sesión específica.
- */
+// ruta -> revocar sesion remota
 export async function revokeSession(
   ctx: RouterContext<"/auth/sessions/:sessionId">,
 ): Promise<void> {

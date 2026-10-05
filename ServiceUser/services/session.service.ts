@@ -38,6 +38,7 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+// sesion -> crear con reglas anti trampa
 export async function createSession(params: {
   usuarioId: string;
   username: string;
@@ -56,11 +57,10 @@ export async function createSession(params: {
   let posibleTrampa = false;
   let alertaTrampa: string | null = null;
 
-  const sessionTtl = 60 * 60 * 24 * 7; // 7 días en segundos
+  const sessionTtl = 60 * 60 * 24 * 7;
   const activeSessionsKey = `user:active_sessions:${params.usuarioId}`;
   const historySessionsKey = `user:history_sessions:${params.usuarioId}`;
 
-  // 1. REGLA PARA ESTUDIANTES: Análisis de trampas por distancia geográfica
   if (isEstudiante) {
     try {
       const activeIds = await redis.smembers(activeSessionsKey);
@@ -91,7 +91,6 @@ export async function createSession(params: {
           alertaTrampa = cheatEval.alertaMensaje ?? "Posible trampa detectada en inicio de sesión simultáneo/distante.";
           console.warn(`[ANTI-TRAMPA] ${alertaTrampa} (Estudiante @${params.username})`);
 
-          // Guardar incidente de alerta en Redis para auditoría
           const alertIncident = {
             usuarioId: params.usuarioId,
             username: params.username,
@@ -110,8 +109,6 @@ export async function createSession(params: {
     }
   }
 
-  // 2. REGLA PARA NO ESTUDIANTES (Director, Maestros, Control, etc.):
-  // Cierre automático de cualquier sesión previa en otro dispositivo
   if (!isEstudiante) {
     try {
       const activeIds = await redis.smembers(activeSessionsKey);
@@ -145,7 +142,6 @@ export async function createSession(params: {
     }
   }
 
-  // 3. Crear el nuevo registro de sesión
   const newSession: SessionRecord = {
     sessionId,
     usuarioId: params.usuarioId,
@@ -165,13 +161,9 @@ export async function createSession(params: {
   };
 
   try {
-    // Guardar sesión individual
     await redis.set(`session:${sessionId}`, JSON.stringify(newSession), "EX", sessionTtl);
-    // Registrar en conjunto de sesiones activas del usuario
     await redis.sadd(activeSessionsKey, sessionId);
-    // Registrar en historial general de sesiones del usuario
     await redis.lpush(historySessionsKey, sessionId);
-    // Mantener solo las últimas 100 sesiones en el historial
     await redis.ltrim(historySessionsKey, 0, 99);
   } catch (saveErr) {
     console.warn("[Session] Error guardando nueva sesión en Redis:", saveErr);
@@ -225,6 +217,7 @@ export async function getSession(sessionId: string): Promise<SessionRecord | nul
   return JSON.parse(raw);
 }
 
+// sesion -> listar historial y alertas
 export async function getUserSessions(usuarioId: string): Promise<{
   activeSessions: SessionRecord[];
   historySessions: SessionRecord[];
@@ -241,7 +234,6 @@ export async function getUserSessions(usuarioId: string): Promise<{
     const raw = await redis.get(`session:${sid}`);
     if (raw) {
       const s: SessionRecord = JSON.parse(raw);
-      // Calcular tiempo transcurrido en tiempo real
       if (s.activo) {
         const durationMs = Date.now() - new Date(s.inicioConexion).getTime();
         s.tiempoConectado = formatDuration(durationMs);
@@ -258,7 +250,6 @@ export async function getUserSessions(usuarioId: string): Promise<{
     }
   }
 
-  // Alertas de trampa (si existen)
   const rawAlerts: string[] = await redis.lrange(`student_cheat_alerts:${usuarioId}`, 0, 19);
   const cheatAlerts = rawAlerts.map((a: string) => {
     try {

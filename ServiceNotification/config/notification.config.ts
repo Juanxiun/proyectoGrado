@@ -1,20 +1,20 @@
 export const notificationConfig = {
-  /** Canal Redis (pub/sub) donde los servicios publican sus eventos de dominio. */
+  // config -> canal eventos redis
   eventosCanal: Deno.env.get("EVENTOS_CANAL") ?? "notificaciones:eventos",
 
-  /** Días que se conserva una notificación antes de expirar en Redis. */
+  // config -> ttl notificacion
   ttlDias: Number(Deno.env.get("NOTIF_TTL_DIAS") ?? 30),
 
-  /** Máximo de notificaciones devueltas por consulta de bandeja. */
+  // config -> limite consulta
   maxPorConsulta: Number(Deno.env.get("NOTIF_MAX_POR_CONSULTA") ?? 50),
 
-  /** Destino del push en tiempo real (el gateway es el único que expone sockets). */
+  // config -> url gateway push
   gatewayPublicUrl: Deno.env.get("GATEWAY_PUBLIC_URL") ?? "http://localhost:5141",
 
-  /** Secreto compartido con RestApi (`Internal:PushToken`) para autenticar el push. */
+  // config -> token push interno
   internalPushToken: Deno.env.get("INTERNAL_PUSH_TOKEN") ?? "shalom-internal-push",
 
-  /** Si el push por WebSocket está habilitado. */
+  // config -> habilitar push
   pushHabilitado: (Deno.env.get("PUSH_TIEMPO_REAL") ?? "true").toLowerCase() === "true",
 };
 

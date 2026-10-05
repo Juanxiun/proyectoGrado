@@ -1,29 +1,22 @@
-/**
- * Umbrales del seguimiento académico. Centralizados aquí para que dirección
- * pueda ajustar el criterio de riesgo sin tocar la lógica de cálculo.
- */
+// config -> umbrales seguimiento academico
 export const seguimientoConfig = {
-  /** Escala de notas: 0 a 100 (la que usa `calificaciones.nota`). */
+  // config -> escala notas cero cien
   notaMaxima: 100,
 
-  /** Por debajo de este promedio el estudiante entra en riesgo académico. */
+  // config -> umbral riesgo promedio
   umbralNotaRiesgo: Number(Deno.env.get("SEG_NOTA_RIESGO") ?? 60),
 
-  /** Por debajo de este porcentaje de asistencia hay riesgo por inasistencia. */
+  // config -> umbral riesgo asistencia
   umbralAsistenciaRiesgo: Number(Deno.env.get("SEG_ASISTENCIA_RIESGO") ?? 75),
 
-  /** Ambos umbrales incumplidos a la vez = riesgo alto. */
+  // config -> ambos umbrales riesgo alto
   umbralNotaRiesgoAlto: Number(Deno.env.get("SEG_NOTA_RIESGO_ALTO") ?? 50),
   umbralAsistenciaRiesgoAlto: Number(Deno.env.get("SEG_ASISTENCIA_RIESGO_ALTO") ?? 60),
 
-  /**
-   * Banda de observación: asistencia por debajo de este valor pero todavía por
-   * encima del umbral de riesgo. Debe ser MAYOR que `umbralAsistenciaRiesgo`;
-   * si es menor, la banda queda vacía y nunca se muestra.
-   */
+  // config -> banda observacion asistencia
   umbralAsistenciaObservacion: Number(Deno.env.get("SEG_ASISTENCIA_OBSERVACION") ?? 85),
 
-  /** Ponderación de la asistencia dentro del índice de desempeño (0-1). */
+  // config -> pesos indice desempeno
   pesoAsistencia: Number(Deno.env.get("SEG_PESO_ASISTENCIA") ?? 0.3),
   pesoPromedio: Number(Deno.env.get("SEG_PESO_PROMEDIO") ?? 0.7),
 } as const;

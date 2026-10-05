@@ -6,8 +6,6 @@ import { serialize } from "../../utils/serialize.ts";
 import {
   buildDocKey,
   buildPhotoKey,
-  detectImageExt,
-  mimeFromExt,
 } from "../../utils/fileNaming.ts";
 import bcrypt from "bcryptjs";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
@@ -19,19 +17,7 @@ import {
   validateUsernamePolicy,
 } from "../auth/changePassword.ts";
 
-/**
- * POST /usuarios
- *
- * Acepta multipart/form-data con:
- *   - campo "datos": JSON string con los datos del usuario
- *   - campo "foto":  archivo PNG o JPG (opcional)
- *   - campos "doc_file_{index}": archivos PDF para cada documento
- *
- * La imagen se sube a MinIO con el nombre:
- *   nombre_apellido_<rolAbr>_perfil.<ext>
- * Los documentos con el nombre:
- *   nombre_apellido_<rolAbr>_<tipoDoc>.pdf
- */
+// ruta -> crear usuario multipart
 export async function createUsuario(ctx: Context): Promise<void> {
   try {
     const contentType = ctx.request.headers.get("content-type") ?? "";
@@ -39,7 +25,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
     // deno-lint-ignore no-explicit-any
     let datos: Record<string, any>;
     let fotoBytes: Uint8Array | null = null;
-    let fotoExt: "png" | "jpg" | null = null;
+    let fotoExt: "webp" | null = null;
 
     const documentFiles: Array<{ index: number; bytes: Uint8Array; name: string }> = [];
 
@@ -57,12 +43,7 @@ export async function createUsuario(ctx: Context): Promise<void> {
       const foto = await readFilePart(form.get("foto"));
       if (foto) {
         fotoBytes = foto.bytes;
-        fotoExt = detectImageExt(fotoBytes);
-        if (!fotoExt) {
-          ctx.response.status = 400;
-          ctx.response.body = { error: "La foto debe ser una imagen PNG o JPG válida (formato no reconocido)" };
-          return;
-        }
+        fotoExt = "webp";
       }
 
       if (Array.isArray(datos.documentos)) {
@@ -70,16 +51,15 @@ export async function createUsuario(ctx: Context): Promise<void> {
           const doc = datos.documentos[i];
           const docFile = await readFilePart(form.get("doc_file_" + i) || form.get("doc_file_" + doc.tipoDoc));
           if (docFile) {
-            const isPdf = docFile.bytes.length >= 4 && String.fromCharCode(...docFile.bytes.slice(0, 4)) === "%PDF";
-            if (!isPdf) {
+            const extension = docFile.name.split(".").pop()?.toLowerCase() ?? "";
+            if (!["pdf", "docx", "xlsx", "xls"].includes(extension)) {
               ctx.response.status = 400;
-              ctx.response.body = { error: "El documento " + (i + 1) + " debe ser un PDF valido" };
+              ctx.response.body = { error: "El documento " + (i + 1) + " debe ser PDF, DOCX, XLSX o XLS" };
               return;
             }
             documentFiles.push({ index: i, bytes: docFile.bytes, name: docFile.name });
           }
         }
-        // Los documentos pueden cargarse posteriormente; sólo se validan los archivos enviados.
       }
     } else {
       datos = await ctx.request.body.json();
@@ -149,14 +129,11 @@ export async function createUsuario(ctx: Context): Promise<void> {
       return;
     }
 
-    // Extraer CI de los documentos para generar username
     const ciDoc = Array.isArray(documentos) ? documentos.find((d) => d.tipoDoc === "CI" || d.tipoDoc === "ci") : undefined;
     const ci = ciDoc?.numeroDoc ?? "";
 
     const apellidoMaternoFinal = apellidoMaterno?.trim() || null;
 
-    // Usar las credenciales proporcionadas cuando existan; si no, generar
-    // valores institucionales seguros para el primer ingreso.
     const username = String(cuenta?.username ?? "").trim() || generateUsername(nombre, apellidoPaterno, apellidoMaternoFinal ?? "", ci);
     const email = String(cuenta?.email ?? "").trim() || generateEmail(username);
     const password = String(cuenta?.password ?? "") || generatePassword(username);
@@ -167,7 +144,6 @@ export async function createUsuario(ctx: Context): Promise<void> {
       password,
     };
 
-    // Mapear estado al tipo VARCHAR ('activo', 'inactivo', 'bloqueado')
     let estadoFinal: "activo" | "inactivo" | "bloqueado" = "activo";
     if (estado === 0 || estado === "inactivo") {
       estadoFinal = "inactivo";
@@ -175,15 +151,12 @@ export async function createUsuario(ctx: Context): Promise<void> {
       estadoFinal = "bloqueado";
     }
 
-    // La fotografía es opcional: el registro no debe bloquearse por MinIO.
     let fotoUrl: string | null = null;
     if (fotoBytes && fotoExt) {
       const photoKey = buildPhotoKey(nombre, apellidoPaterno, rolNombre, fotoExt);
-      fotoUrl = await uploadImage(photoKey, fotoBytes, mimeFromExt(fotoExt));
+      fotoUrl = await uploadImage(photoKey, fotoBytes, "image/webp");
     }
 
-    // El usuario sólo admite letras y números, hasta 20 caracteres, y la
-    // contraseña respeta la política institucional (ver changePassword.ts).
     if (cuentaFinal) {
       const usernameCheck = validateUsernamePolicy(cuentaFinal.username);
       if (!usernameCheck.valid) {
@@ -228,8 +201,9 @@ export async function createUsuario(ctx: Context): Promise<void> {
           if (file) {
             const nivel = datos.nivel || datos.estudiante?.nivel;
             const grado = datos.grado || datos.estudiante?.grado;
-            const docKey = buildDocKey(nombre, apellidoPaterno, rolNombre, doc.tipoDoc, nivel, grado);
-            doc.docUrl = await uploadFile(docKey, file.bytes, "application/pdf");
+            const extension = file.name.split(".").pop()?.toLowerCase() ?? "pdf";
+            const docKey = buildDocKey(nombre, apellidoPaterno, rolNombre, doc.tipoDoc, nivel, grado, extension);
+            doc.docUrl = await uploadFile(docKey, file.bytes);
           }
           await tx.queryObject(`INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url) VALUES ($1, $2, $3, $4)`,
             [uid, doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null]);
@@ -308,7 +282,6 @@ export async function createUsuario(ctx: Context): Promise<void> {
       return uid;
     });
 
-    // Enviar credenciales institucionales por correo electrónico (Brevo)
     if (cuentaFinal) {
       const targetEmail = Array.isArray(contactos)
         ? contactos.find((c: { tipo?: string; contenido?: string }) => c.tipo?.toLowerCase() === "email" || c.tipo?.toLowerCase() === "correo")?.contenido
@@ -342,8 +315,19 @@ export async function createUsuario(ctx: Context): Promise<void> {
     });
   } catch (err) {
     const msg = (err as Error)?.message ?? "";
+    const uploadStatus = (err as { status?: number })?.status;
     const constraint = String((err as { constraint?: string })?.constraint ?? "").toLowerCase();
     console.error("[createUsuario]", err);
+    if (uploadStatus && uploadStatus >= 400 && uploadStatus < 500) {
+      ctx.response.status = uploadStatus;
+      ctx.response.body = { error: msg };
+      return;
+    }
+    if (uploadStatus === 503) {
+      ctx.response.status = 503;
+      ctx.response.body = { error: msg };
+      return;
+    }
     if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("duplicate") || constraint.length > 0) {
       let field = "general";
       let error = "Ya existe un registro con esos datos únicos";

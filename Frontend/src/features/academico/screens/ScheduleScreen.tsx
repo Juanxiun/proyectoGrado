@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { academicManagementApi, academicServicesApi } from '../../../api/academicServices.api';
 import { useAuth } from '../../../context/AuthContext';
@@ -154,6 +154,7 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
   const primariaCards = useMemo(() => courseCards.filter((c) => c.nivel.toLowerCase().includes('primaria')), [courseCards]);
   const secundariaCards = useMemo(() => courseCards.filter((c) => c.nivel.toLowerCase().includes('secundaria')), [courseCards]);
   const displayedCards = nivelTab === 'primaria' ? primariaCards : secundariaCards;
+  const selectedScheduleCourse = displayedCards.find((course) => course.id === expandedCourseId);
 
   const handleOpenBuilderForCourse = (courseId: string) => {
     setSelectedCourseForEdit(courseId);
@@ -187,27 +188,11 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
                 ? `Curso: ${user.grado} ${user.paralelo}`
                 : isTeacher
                 ? `Consolidado de clases asignadas · Lunes a Viernes`
-                : `Haga clic en cualquier curso o en el botón para editar y armar su horario`}
+                : `Seleccione un curso para consultar su horario y editarlo`}
             </Text>
           </View>
 
           <View className="flex-row items-center gap-2">
-            {isScheduleManager && (
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCourseForEdit(undefined);
-                  setShowBuilder((curr) => !curr);
-                }}
-                className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border ${
-                  showBuilder ? 'bg-maroon border-maroon' : 'bg-gray-100 border-gray-300'
-                }`}
-              >
-                <Ionicons name={showBuilder ? 'grid' : 'construct-outline'} size={15} color={showBuilder ? '#FFFFFF' : '#374151'} />
-                <Text className={`text-xs font-bold ${showBuilder ? 'text-white' : 'text-gray-700'}`}>
-                  {showBuilder ? 'Ver lista de cursos' : 'Construir / Editar horarios'}
-                </Text>
-              </TouchableOpacity>
-            )}
             <StatusBadge label={rows.length ? 'Publicado' : 'Sin horario'} variant={rows.length ? 'success' : 'warning'} />
           </View>
         </View>
@@ -328,7 +313,8 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
           }}
         />
       ) : isScheduleManager ? (
-        <View className="gap-3">
+        <>
+        <View className="flex-row flex-wrap justify-center gap-4">
           {displayedCards.length === 0 ? (
             <BentoCard className="p-5 items-center">
               <Ionicons name="alert-circle-outline" size={32} color="#9CA3AF" />
@@ -340,65 +326,97 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
               </Text>
             </BentoCard>
           ) : displayedCards.map((course) => {
-            const isExpanded = expandedCourseId === course.id;
             return (
-            <BentoCard key={course.id} className="p-4 overflow-hidden">
-              <View className="flex-row items-center justify-between flex-wrap gap-2 mb-2 border-b border-gray-100 pb-2">
-                <View className="flex-1 min-w-0 pr-3">
+            <BentoCard key={course.id} className="flex-1 min-w-[280px] max-w-[520px] p-0 overflow-hidden">
+              <TouchableOpacity
+                onPress={() => setExpandedCourseId(course.id)}
+                className="flex-row items-center gap-3 p-4 bg-white"
+                accessibilityLabel={`Ver horario de ${course.label}`}
+              >
+                <View className="w-11 h-11 rounded-2xl bg-maroon/10 items-center justify-center">
+                  <Ionicons name="calendar-outline" size={20} color="#801529" />
+                </View>
+                <View className="flex-1 min-w-0">
                   <Text className="font-bold text-maroon text-sm" numberOfLines={2} ellipsizeMode="tail">{course.label}</Text>
-                  <Text className="text-[10px] text-gray-500 mt-0.5">
+                  <Text className="text-[11px] text-gray-500 mt-1">
                     {course.rows.length} {course.rows.length === 1 ? 'clase asignada' : 'clases asignadas'}
                   </Text>
                 </View>
-                <View className="flex-row items-center gap-2">
-                  <TouchableOpacity
-                    onPress={() => setExpandedCourseId(isExpanded ? null : course.id)}
-                    className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 bg-gray-50"
-                    accessibilityLabel={isExpanded ? 'Ocultar horario' : 'Ver horario'}
-                  >
-                    <Ionicons name={isExpanded ? 'chevron-up' : 'eye-outline'} size={14} color="#801529" />
-                    <Text className="text-xs font-bold text-maroon">{isExpanded ? 'Ocultar' : 'Ver horario'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => handleOpenBuilderForCourse(course.id)}
-                    className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl bg-maroon shadow-sm"
-                  >
-                    <Ionicons name="create-outline" size={14} color="#FFFFFF" />
-                    <Text className="text-xs font-bold text-white">Editar</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              {isExpanded && course.rows.length === 0 ? (
-                <Text className="text-xs text-gray-400 py-2 italic">Este curso aún no tiene clases programadas.</Text>
-              ) : isExpanded ? (
-                <View className="w-full flex-row flex-wrap gap-2 pt-2">
-                  {DAYS.map((day, index) => {
-                    const dayRows = course.rows.filter((row) => row.diaSemana === index + 1);
-                    return (
-                      <View key={day} className="flex-1 min-w-[130px] bg-gray-50 rounded-xl border border-gray-100 p-2">
-                        <Text className="text-[10px] font-bold text-maroon mb-1">{day}</Text>
-                        {dayRows.length === 0 ? (
-                          <Text className="text-[10px] text-gray-400">Sin clases</Text>
-                        ) : dayRows.map((row) => (
-                          <View key={row.id} className="bg-white rounded-lg border border-gray-100 p-1.5 mb-1 last:mb-0">
-                            <Text className="text-[10px] font-bold text-gray-800" numberOfLines={1} ellipsizeMode="tail">
-                              {row.materia?.nombre ?? 'Materia'}
-                            </Text>
-                            <Text className="text-[9px] text-gray-500">{row.horaInicio} - {row.horaFin}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    );
-                  })}
-                </View>
-              ) : null}
+                <Ionicons name="chevron-forward" size={18} color="#801529" />
+              </TouchableOpacity>
             </BentoCard>
             );
           })}
         </View>
+        <Modal
+          visible={Boolean(selectedScheduleCourse)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setExpandedCourseId(null)}
+        >
+          <View className="flex-1 bg-black/50 items-center justify-center p-4">
+            <View className="w-full max-w-5xl max-h-[90%] bg-white rounded-3xl overflow-hidden shadow-2xl">
+              <View className="flex-row items-center justify-between p-5 border-b border-gray-100">
+                <View className="flex-1 min-w-0 mr-3">
+                  <Text className="text-lg font-bold text-maroon" numberOfLines={1}>
+                    {selectedScheduleCourse?.label}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-1">Horario semanal · {selectedScheduleCourse?.rows.length ?? 0} clases</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setExpandedCourseId(null)}
+                  className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"
+                  accessibilityLabel="Cerrar horario"
+                >
+                  <Ionicons name="close" size={21} color="#374151" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView className="p-5" contentContainerStyle={{ paddingBottom: 20 }}>
+                {!selectedScheduleCourse?.rows.length ? (
+                  <Text className="text-sm text-gray-500 text-center py-10">Este curso aun no tiene clases programadas.</Text>
+                ) : (
+                  <View className="flex-row flex-wrap justify-center gap-3">
+                    {DAYS.map((day, index) => {
+                      const dayRows = selectedScheduleCourse.rows.filter((row) => row.diaSemana === index + 1);
+                      return (
+                        <View key={day} className="flex-1 min-w-[220px] max-w-[330px] bg-gray-50 rounded-2xl border border-gray-100 p-3">
+                          <Text className="text-xs font-bold text-maroon mb-2">{day}</Text>
+                          {!dayRows.length ? (
+                            <Text className="text-xs text-gray-400 py-2">Sin clases</Text>
+                          ) : dayRows.map((row) => (
+                            <View key={row.id} className="bg-white rounded-xl border border-gray-100 p-3 mb-2">
+                              <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>
+                                {row.materia?.nombre ?? 'Materia'}
+                              </Text>
+                              <Text className="text-[11px] text-gray-500 mt-1">{row.horaInicio} - {row.horaFin}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
+              </ScrollView>
+              <View className="flex-row justify-end p-4 border-t border-gray-100">
+                <TouchableOpacity
+                  onPress={() => handleOpenBuilderForCourse(selectedScheduleCourse!.id)}
+                  disabled={!selectedScheduleCourse}
+                  className="flex-row items-center gap-2 rounded-xl bg-maroon px-5 py-3"
+                >
+                  <Ionicons name="create-outline" size={16} color="#FFFFFF" />
+                  <Text className="text-xs font-bold text-white">
+                    {selectedScheduleCourse?.rows.length ? 'Editar horario' : 'Crear horario'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+        </>
       ) : (
-        grouped.map((group) => (
-          <BentoCard key={group.day} className="p-4">
+        <View className="flex-row flex-wrap justify-center gap-4">
+        {grouped.map((group) => (
+          <BentoCard key={group.day} className="flex-1 min-w-[260px] max-w-[440px] p-4">
             <View className="flex-row items-center justify-between mb-3 border-b border-gray-100 pb-2">
               <Text className="font-bold text-maroon text-sm">{group.day.toUpperCase()}</Text>
               <Text className="text-[11px] text-gray-500 font-medium">
@@ -434,7 +452,8 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
               </View>
             )}
           </BentoCard>
-        ))
+        ))}
+        </View>
       )}
     </ScrollView>
   );

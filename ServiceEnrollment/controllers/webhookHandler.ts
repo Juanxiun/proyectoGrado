@@ -1,4 +1,4 @@
-// controllers/webhookHandler.ts
+// webhook -> manejar eventos entrantes
 import { Context } from "@oak/oak";
 import { extractBearerToken, getClaimsFromToken } from "../security/auth.ts";
 import { sendWebhookCallback } from "../services/webhook.service.ts";
@@ -47,7 +47,7 @@ export interface WebhookEventPayload {
 type Handler = (ctx: Context) => Promise<void>;
 
 const EVENT_HANDLERS: Record<string, Handler> = {
-  // Cursos Periodo
+  // mapa -> handlers cursos periodo
   "cursosPeriodo.list": listCursosPeriodo,
   "cursos-periodo.list": listCursosPeriodo,
   "cursosPeriodo.get": getCursoPeriodo,
@@ -59,7 +59,7 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "cursosPeriodo.delete": deleteCursoPeriodo,
   "cursos-periodo.delete": deleteCursoPeriodo,
 
-  // Inscripciones
+  // mapa -> handlers inscripciones
   "inscripciones.list": listInscripciones,
   "inscripciones.get": getInscripcion,
   "inscripciones.create": createInscripcion,
@@ -71,14 +71,14 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "inscripciones.solicitud.approve": approveSolicitudInscripcion,
   "inscripciones.solicitud.reject": rejectSolicitudInscripcion,
 
-  // Asignaciones Docentes
+  // mapa -> handlers asignaciones
   "asignaciones.list": listAsignaciones,
   "asignaciones.get": getAsignacion,
   "asignaciones.create": createAsignacion,
   "asignaciones.update": updateAsignacion,
   "asignaciones.delete": deleteAsignacion,
 
-  // Asesores de Curso
+  // mapa -> handlers asesores
   "asesores.list": listAsesores,
   "asesores.get": getAsesor,
   "asesores.create": createAsesor,

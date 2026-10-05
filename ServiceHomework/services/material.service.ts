@@ -21,7 +21,7 @@ interface MaterialRow {
   tamanioBytes?: bigint | number | null;
   fechaSubida: Date | string;
   activo: boolean;
-  // Asignacion info
+  // fila -> datos asignacion
   maestroId?: bigint;
   materiaId?: bigint;
   cursoPeriodoId?: bigint;
@@ -225,11 +225,11 @@ export async function deleteMaterial(id: string): Promise<void> {
   const current = await getMaterialById(id);
   try {
     await sTransaction(async (client) => {
-      // Remover relaciones de encargo_materiales
+      // delete -> borrar relaciones encargo
       await client.queryObject(`DELETE FROM encargo_materiales WHERE material_id = $1`, [id]);
       await client.queryObject(`DELETE FROM materia_materiales WHERE id = $1`, [id]);
     });
-    // Eliminar archivo físico de MinIO
+    // minio -> borrar archivo fisico
     if (current.archivoUrl) {
       await deleteMaterialFile(current.archivoUrl);
     }

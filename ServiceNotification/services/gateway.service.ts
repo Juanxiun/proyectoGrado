@@ -1,15 +1,9 @@
 import { notificationConfig } from "../config/notification.config.ts";
 import type { NotificationItem } from "../models/notification.ts";
 
-/**
- * Push en tiempo real hacia el gateway.
- *
- * El gateway (RestApi) es el único proceso que mantiene sockets públicos, así
- * que este servicio nunca se conecta al cliente: le entrega la notificación y
- * él la reenvía por el hub SignalR a la banda del usuario.
- */
+// archivo -> push gateway signalr
 interface PushBody {
-  /** Usuario destino. Si se omite, el gateway hace broadcast a todos. */
+  // campo -> usuario destino
   destinatarioId?: string;
   notificacion?: NotificationItem;
   resource: string;
@@ -38,7 +32,7 @@ async function enviar(body: PushBody): Promise<void> {
   }
 }
 
-/** Entrega la notificación al usuario indicado. Nunca lanza. */
+// funcion -> entregar push usuario
 export function publishNotification(destinatarioId: string, notif: NotificationItem): void {
   if (!notificationConfig.pushHabilitado) return;
 
@@ -47,7 +41,7 @@ export function publishNotification(destinatarioId: string, notif: NotificationI
   });
 }
 
-/** Difusión a todos los clientes conectados (canal institucional). */
+// funcion -> difundir push todos
 export function broadcastNotification(notif: NotificationItem): void {
   if (!notificationConfig.pushHabilitado) return;
 

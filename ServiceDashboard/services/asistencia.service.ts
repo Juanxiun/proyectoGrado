@@ -2,14 +2,7 @@ import { query } from "../connects/Database/transaction.ts";
 import { filtroCursos, type Contexto } from "./alcance.service.ts";
 import type { ResumenAsistenciaDashboard } from "../models/dashboard.ts";
 
-/**
- * Asistencia e inasistencia. Sólo agregados: el registro crudo se edita desde
- * el módulo de aula, el dashboard sólo informa.
- *
- * "Asistencia efectiva" cuenta presente + atraso + justificada; la falta es
- * `ausente`. Es el mismo criterio que usa el seguimiento académico, para que
- * el número de la página de inicio y el del libro de notas no se contradigan.
- */
+// servicio -> asistencia efectiva agregados
 export async function resumenAsistencia(
   contexto: Contexto,
   desde: string,
@@ -19,10 +12,7 @@ export async function resumenAsistencia(
   const filtro = filtroCursos(contexto, []);
   const args = [periodoId, desde, hasta, ...filtro.params];
 
-  // El FROM y el WHERE se mantienen separados a propósito: algunas consultas
-  // suman joins propios (LATERAL, estudiantes, usuarios) y en SQL los JOIN van
-  // antes del WHERE. Encadenarlos en un solo bloque era la causa del
-  // "syntax error at or near LEFT".
+  // sql -> from y where separados
   const from = `
     FROM asistencia a
     JOIN asignaciones_docentes ad ON ad.id = a.asignacion_id
@@ -64,9 +54,7 @@ export async function resumenAsistencia(
        LIMIT 14`,
       args,
     ),
-    // mayorFaltas = cuántos días faltó el alumno con más ausencias en esa
-    // materia. NO es una racha de días consecutivos: para eso haría falta el
-    // calendario completo de clases, que no cabe en una sola fila por día.
+    // campo -> maximo faltas materia
     query<{
       materia_id: bigint;
       materia: string;

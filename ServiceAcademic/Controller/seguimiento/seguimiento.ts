@@ -15,11 +15,7 @@ import {
   routeParam,
 } from "../../utils/http.ts";
 
-/**
- * Módulo de seguimiento académico. Las notas se calculan en vivo: un cambio de
- * ponderación o una corrección de tarea se refleja de inmediato, sin proceso
- * de cierre ni tabla intermedia.
- */
+// control -> seguimiento notas vivo
 
 function requeridos(params: URLSearchParams, ...nombres: string[]): void {
   for (const nombre of nombres) {
@@ -38,7 +34,7 @@ function trimestreDe(params: URLSearchParams): number {
   return Number(valor);
 }
 
-/** GET /seguimiento/libro?cursoPeriodoId=&materiaId=&trimestre= */
+// ruta -> libro notas
 export async function getLibro(ctx: Context): Promise<void> {
   try {
     const params = ctx.request.url.searchParams;
@@ -54,7 +50,7 @@ export async function getLibro(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /seguimiento/panel/curso?cursoPeriodoId=&trimestre= */
+// ruta -> panel curso
 export async function getPanelCurso(ctx: Context): Promise<void> {
   try {
     const params = ctx.request.url.searchParams;
@@ -69,7 +65,7 @@ export async function getPanelCurso(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /seguimiento/panel/estudiante/:id?periodoId=&trimestre= */
+// ruta -> panel estudiante
 export async function getPanelEstudiante(ctx: Context): Promise<void> {
   try {
     const params = ctx.request.url.searchParams;
@@ -90,7 +86,7 @@ export async function getPanelEstudiante(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /seguimiento/riesgo?periodoId=&trimestre=&limite= */
+// ruta -> alertas riesgo
 export async function getRiesgo(ctx: Context): Promise<void> {
   try {
     const params = ctx.request.url.searchParams;
@@ -113,7 +109,7 @@ export async function getRiesgo(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /seguimiento/umbrales — criterio vigente, para mostrarlo en la interfaz. */
+// ruta -> umbrales vigentes
 export async function getUmbrales(ctx: Context): Promise<void> {
   try {
     respond(ctx, 200, seguimientoConfig);

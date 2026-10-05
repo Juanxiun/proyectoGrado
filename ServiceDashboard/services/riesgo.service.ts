@@ -3,29 +3,14 @@ import { dashboardConfig } from "../config/dashboard.config.ts";
 import { filtroCursos, type Contexto } from "./alcance.service.ts";
 import type { ResumenRiesgo } from "../models/dashboard.ts";
 
-/**
- * Estudiantes en riesgo, en una sola consulta.
- *
- * Los umbrales NO se inventan acá: se leen de ServiceAcademic
- * (`/seguimiento/umbrales`), que es quien los define y los publica para que
- * todos los módulos expliquen el mismo criterio.
- *
- * NO se reutiliza `GET /seguimiento/riesgo` de ese servicio a propósito: esa
- * ruta recalcula el libro completo materia por materia y curso por curso, lo
- * que son cientos de consultas y no sirve para una página de inicio. Acá se
- * agrega de una vez con SQL, conservando el mismo criterio.
- */
+// servicio -> riesgo con umbrales academicos
 
 export interface UmbralesRiesgo {
   notaRiesgo: number;
   asistenciaRiesgo: number;
   notaRiesgoAlto: number;
   asistenciaRiesgoAlto: number;
-  /**
-   * Banda de observación. Antes el tablero usaba "cualquier inasistencia"
-   * (`asistencia < 100`), que metía en observación a casi todo el alumnado y
-   * hacía que el número no coincidiera con el de ServiceAcademic.
-   */
+  // campo -> banda observacion
   asistenciaObservacion: number;
 }
 
@@ -40,8 +25,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
 
   try {
     const response = await fetch(
-      // Ruta interna: la pública exige el JWT del usuario y este servicio no
-      // tiene uno, sólo el token compartido entre procesos.
+      // ruta -> interna token compartido
       `${dashboardConfig.academicServiceUrl.replace(/\/$/, "")}/seguimiento/internal/umbrales`,
       {
         method: "GET",
@@ -72,8 +56,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
     umbralesCache = { valor, expira: Date.now() + 5 * 60 * 1000 };
     return valor;
   } catch (err) {
-    // Si ServiceAcademic no responde se usan los valores por defecto: es
-    // preferible mostrar un número aproximado que dejar el dashboard en blanco.
+    // caso -> umbrales por defecto
     console.warn("[Riesgo] No se pudieron leer los umbrales, se usan los por defecto:", err);
     return porDefecto;
   }
@@ -99,14 +82,7 @@ export async function resumenRiesgo(
     ...filtro.params,
   ];
 
-  // Un estudiante aparece una vez: se le atribuye su peor nota y su peor
-  // asistencia entre todas las materias del período.
-  //
-  // Sin LIMIT: los contadores (total, riesgo, observacion, sinRiesgo) se sacan
-  // de estas mismas filas, así que recortar acá hacía que la suma no cerrara
-  // con el matrícula. La lista visible ya se acota en JS con `.slice(0, 12)`.
-  // El conjunto es acotado de todos modos: `notas` exige al menos una
-  // calificación publicada del período, así que son los estudiantes con nota.
+  // sql -> estudiantes riesgo agregados
   const consulta = `
     WITH notas AS (
       SELECT c.estudiante_id, ad.curso_periodo_id, c.nota
@@ -198,9 +174,9 @@ export async function resumenRiesgo(
     asistencia: string | null;
     grado: string | null;
     paralelo: string | null;
-    /** Nivel del curso: primaria / secundaria. */
+    // campo -> nivel curso
     nivel_curso: string | null;
-    /** Banda de riesgo: riesgo_alto / riesgo / observacion / sin_riesgo. */
+    // campo -> banda riesgo
     nivel: string;
   }>(consulta, args);
 

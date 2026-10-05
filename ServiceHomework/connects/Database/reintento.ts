@@ -1,23 +1,6 @@
-/**
- * Reintento ante conexiones muertas.
- *
- * El pool de `@db/postgres` reconecta un cliente cuando `client.connected` pasa a
- * false, pero hay una ventana: si el peer manda un RST (Postgres reiniciado,
- * `pg_terminate_backend`, un idle timeout) el socket puede seguir marcado como
- * conectado y el primer `write` —o el primer `read` a mitad de una consulta—
- * revienta. Como el error salía en toda consulta, la pantalla se caía entera.
- *
- * La solución no es desconectar el pool: es reintentar. Para el segundo intento
- * la conexión ya figura caída, el pool abre un socket nuevo y la consulta pasa.
- *
- * Reintentar es seguro porque estos errores significan que la consulta NO llegó
- * al servidor: o se perdió en el socket local, o Postgres la rechazó al
- * arrancar. Un error de SQL (código 42xxx: sintaxis, unicidad, claves foráneas)
- * nunca entra en esta lista, así que no se reintenta un INSERT que sí se
- * ejecutó.
- */
+// reintento -> reintentar conexiones muertas
 const ERRORES_DE_CONEXION = new Set([
-  // Errno del socket / del sistema operativo.
+  // lista -> errores socket sistema
   "ECONNABORTED",
   "ECONNRESET",
   "EPIPE",
@@ -26,7 +9,7 @@ const ERRORES_DE_CONEXION = new Set([
   "EHOSTUNREACH",
   "ENETUNREACH",
   "ENOTFOUND",
-  // SQLSTATE de conexión (clase 08) y de caída del servidor.
+  // lista -> errores sqlstate conexion
   "08000",
   "08001",
   "08003",
@@ -44,13 +27,7 @@ const ERRORES_DE_CONEXION = new Set([
 const MENSAJES_DE_CONEXION =
   /connection (terminated|closed|reset|refused)|terminating connection|terminated unexpectedly|server closed the connection|broken pipe|socket hang up|connection timeout/i;
 
-/**
- * Clases que el driver lanza para problemas de transporte. Esta es la señal más
- * fiable: cuando Postgres corta la sesión a mitad de una consulta,
- * `@db/postgres` lanza `ConnectionError: The session was terminated
- * unexpectedly` SIN código SQLSTATE, así que mirando sólo `code` el reintento
- * nunca se activaba.
- */
+// lista -> clases errores transporte
 const CLASES_DE_CONEXION = new Set([
   "ConnectionError",
   "ConnectionAborted",
@@ -75,13 +52,7 @@ function esConexionMuerta(err: unknown): boolean {
   return MENSAJES_DE_CONEXION.test(String(e.message ?? ""));
 }
 
-/**
- * Ejecuta `intento` y lo reintenta mientras el fallo sea una conexión muerta.
- *
- * Se permiten 3 intentos (el original más 2 reintentos) con una espera corta en
- * medio: si Postgres se está reiniciando de verdad, el segundo intento puede
- * caer en plena ejecución y el tercero ya encuentra la base estable.
- */
+// funcion -> reintentar consulta muerta
 export async function conReintento<T>(
   intento: () => Promise<T>,
   etiqueta = "consulta",
