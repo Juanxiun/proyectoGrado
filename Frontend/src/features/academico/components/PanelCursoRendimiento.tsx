@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { RIESGO_META, type NivelRiesgo, type PanelCurso } from '../../../api/seguimiento.api';
-import { StatusBadge } from '../../../shared/ui';
+import { StatusBadge, UserAvatar } from '../../../shared/ui';
 
 function porcentaje(valor: number | null | undefined): string {
   return valor === null || valor === undefined ? '—' : `${valor.toFixed(1)}%`;
@@ -217,11 +217,12 @@ export function ListaEstudiantesCurso({
             activeOpacity={0.75}
             className="flex-row items-center gap-3 py-3 border-b border-gray-50"
           >
-            <View className="w-10 h-10 rounded-xl bg-maroon/10 items-center justify-center">
-              <Text className="text-sm font-bold text-maroon">
-                {estudiante.nombre.charAt(0)}{estudiante.apellidoPaterno.charAt(0)}
-              </Text>
-            </View>
+            <UserAvatar
+              nombre={estudiante.nombre}
+              apellidoPaterno={estudiante.apellidoPaterno}
+              className="w-10 h-10 rounded-xl bg-maroon/10"
+              textoClassName="text-sm font-bold text-maroon"
+            />
             <View className="flex-1">
               <Text className="text-sm font-semibold text-gray-800" numberOfLines={1}>
                 {estudiante.nombre} {estudiante.apellidoPaterno}

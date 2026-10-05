@@ -22,14 +22,14 @@ interface InscripcionRow {
   fechaRetiro: Date | string | null;
   estado: EstadoInscripcion;
   observacion: string | null;
-  // Estudiante info
+  // fila -> datos estudiante
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
   numeroDoc?: string;
   estudianteEstado?: string;
-  // Curso Periodo info
+  // fila -> datos curso periodo
   cursoId?: bigint;
   cursoPeriodoEstado?: EstadoCursoPeriodo;
   cursoActivo?: boolean;
@@ -278,14 +278,14 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
   if (!/^\d+$/.test(estInput)) throw new HttpError(400, "estudianteId debe ser numérico");
   if (!/^\d+$/.test(cpInput)) throw new HttpError(400, "cursoPeriodoId debe ser numérico");
 
-  // Resolver estudiante (aceptar id de estudiantes o usuario_id)
+  // paso -> resolver estudiante
   const estudiante = await resolveEstudianteId(estInput);
   if (estudiante.estado === "suspendido" || estudiante.estado === "retirado") {
     throw new HttpError(400, `El estudiante no está habilitado para inscripción (estado: ${estudiante.estado})`);
   }
   const estudianteId = toId(estudiante.id);
 
-  // Verificar curso_periodo
+  // paso -> verificar curso periodo
   const cpRes = await query<{ id: bigint; periodo_id: bigint; capacidad_maxima: number; estado: string; grado: string; paralelo: string; cursoActivo: boolean; periodoActivo: boolean; periodoEstado: string }>(
     `SELECT cp.id, cp.periodo_id, cp.capacidad_maxima, cp.estado, c.grado, c.paralelo,
        c.activo AS "cursoActivo",
@@ -307,7 +307,7 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
     throw new HttpError(409, "La gestión académica no está activa; no se pueden crear inscripciones");
   }
 
-  // Verificar si ya cuenta con inscripción activa en el mismo periodo
+  // paso -> evitar inscripcion duplicada
   const prevPeriodoRes = await query<{ id: bigint; grado: string; paralelo: string }>(
     `SELECT i.id, c.grado, c.paralelo
      FROM inscripciones i
@@ -339,7 +339,7 @@ export async function createInscripcion(input: CreateInscripcionInput): Promise<
     if (!solicitud.rows.length) throw new HttpError(409, "La solicitud no corresponde a una inscripción aprobada");
   }
 
-  // Transacción con verificación de capacidad
+  // transaccion -> verificar capacidad
   let newId: string;
   try {
     newId = await sTransaction(async (tx) => {

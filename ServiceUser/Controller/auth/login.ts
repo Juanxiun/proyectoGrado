@@ -15,17 +15,9 @@ import {
 } from "../../services/twoFactor.service.ts";
 import { createSession } from "../../services/session.service.ts";
 
-/**
- * Roles del sistema:
- *   director   → acceso total (Requiere 2FA)
- *   control    → control y auditoría (Requiere 2FA)
- *   gerencia   → gestión administrativa (Requiere 2FA)
- *   maestros   → docente (Requiere 2FA)
- *   estudiante → alumno (Múltiples dispositivos + Anti-trampa por distancia)
- *   padres     → apoderado/tutor
- */
+// roles -> permisos y dos factores
 
-// Cache de la clave JWT 
+// config -> cachear clave jwt
 let _jwtSecretKey: Uint8Array | null = null;
 function getSecretKey(): Uint8Array {
   if (!_jwtSecretKey) {
@@ -34,9 +26,7 @@ function getSecretKey(): Uint8Array {
   return _jwtSecretKey;
 }
 
-/*
- * POST /auth/login
- */
+// ruta -> login usuario
 export async function login(ctx: Context): Promise<void> {
   try {
     const body = await ctx.request.body.json();
@@ -141,7 +131,6 @@ export async function login(ctx: Context): Promise<void> {
     switch (rolNombre) {
       case "estudiante":
       case "alumno": {
-        // Inscripción en el periodo académico activo
         const inscRes = await query<{
           estudiante_id: bigint;
           curso_periodo_id: bigint;
@@ -253,11 +242,9 @@ export async function login(ctx: Context): Promise<void> {
         break;
     }
 
-    // Extraer dispositivo y geolocalización
     const deviceInfo = extractDeviceInfo(ctx);
     const locationInfo = extractLocationInfo(ctx, body);
 
-    // Verificación de 2FA para roles privilegiados (Director, Maestros, Control)
     if (is2FARequiredForRole(user.rol)) {
       const twoFactorResult = await generateAndSend2FACode({
         userId: String(user.id),
@@ -285,7 +272,6 @@ export async function login(ctx: Context): Promise<void> {
       return;
     }
 
-    // Para roles sin 2FA (ej. Estudiante, Padres): Creación directa de sesión en Redis
     const { session, closedPreviousSessions } = await createSession({
       usuarioId: String(user.id),
       username: user.username,

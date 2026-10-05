@@ -1,4 +1,4 @@
-// server.ts - ServiceHomework (LMS & Assessment Service)
+// servidor -> iniciar servicio tareas
 import "./config/env.config.ts";
 
 import { Application, Context, Next, Router } from "@oak/oak";
@@ -63,30 +63,30 @@ app.use(async (ctx: Context, next: Next) => {
   console.log(`${ctx.request.method} ${ctx.request.url.pathname} → ${ctx.response.status} (${ms}ms)`);
 });
 
-// ── Webhook ────────────────────────────────────────────────────────────────
+// rutas -> recibir webhooks
 rt.post("/webhook", handleWebhookEvent);
 
-// ── Materia Materiales (Subida de archivos / recursos a MinIO) ─────────────
+// rutas -> gestionar materiales
 rt.get("/materiales", requireAuth(ROLES_LECTURA), listMateriales);
 rt.get("/materiales/:id", requireAuth(ROLES_LECTURA), getMaterial);
 rt.post("/materiales", requireAuth(ROLES_DOCENTES), createMaterial);
 rt.put("/materiales/:id", requireAuth(ROLES_DOCENTES), updateMaterial);
 rt.delete("/materiales/:id", requireAuth(ROLES_DOCENTES), deleteMaterial);
 
-// ── Encargos (Tareas, Prácticas, Evaluaciones) ─────────────────────────────
+// rutas -> gestionar encargos
 rt.get("/encargos", requireAuth(ROLES_LECTURA), listEncargos);
 rt.get("/encargos/:id", requireAuth(ROLES_LECTURA), getEncargo);
 rt.post("/encargos", requireAuth(ROLES_DOCENTES), createEncargo);
 rt.put("/encargos/:id", requireAuth(ROLES_DOCENTES), updateEncargo);
 rt.delete("/encargos/:id", requireAuth(ROLES_DOCENTES), deleteEncargo);
 
-// ── Entregas (Deberes / Tareas de Estudiantes) ─────────────────────────────
+// rutas -> gestionar entregas
 rt.get("/entregas", requireAuth(ROLES_LECTURA), listEntregas);
 rt.get("/entregas/:id", requireAuth(ROLES_LECTURA), getEntrega);
 rt.post("/entregas", requireAuth(ROLES_LECTURA), createEntrega);
 rt.delete("/entregas/:id", requireAuth(ROLES_LECTURA), deleteEntrega);
 
-// ── Calificaciones (Evaluación y notas por encargo) ────────────────────────
+// rutas -> gestionar calificaciones
 rt.get("/calificaciones", requireAuth(ROLES_LECTURA), listCalificaciones);
 rt.get("/calificaciones/:id", requireAuth(ROLES_LECTURA), getCalificacion);
 rt.post("/calificaciones", requireAuth(ROLES_DOCENTES), createCalificacion);
@@ -94,7 +94,7 @@ rt.post("/calificaciones/bulk", requireAuth(ROLES_DOCENTES), bulkCalificaciones)
 rt.put("/calificaciones/:id", requireAuth(ROLES_DOCENTES), updateCalificacion);
 rt.delete("/calificaciones/:id", requireAuth(ROLES_DOCENTES), deleteCalificacion);
 
-// ── Asistencia (Control y seguimiento diario) ──────────────────────────────
+// rutas -> gestionar asistencia
 rt.get("/asistencia", requireAuth(ROLES_LECTURA), listAsistencias);
 rt.get("/asistencia/:id", requireAuth(ROLES_LECTURA), getAsistencia);
 rt.post("/asistencia", requireAuth(ROLES_DOCENTES), createAsistencia);
@@ -102,12 +102,9 @@ rt.post("/asistencia/bulk", requireAuth(ROLES_DOCENTES), bulkAsistencias);
 rt.put("/asistencia/:id", requireAuth(ROLES_DOCENTES), updateAsistencia);
 rt.delete("/asistencia/:id", requireAuth(ROLES_DOCENTES), deleteAsistencia);
 
-// ── Notificaciones ──────────────────────────────────────────────────────────
-// La bandeja de notificaciones del sistema la expone ServiceNotification (puerto
-// 8884). Este servicio sólo publica eventos de dominio en el canal de Redis
-// (`utils/events.ts`) y ServiceNotification decide a quién notifica.
+// notificaciones -> publicar eventos redis
 
-// ── Health Check ───────────────────────────────────────────────────────────
+// rutas -> verificar salud servicio
 rt.get("/health", (ctx: Context) => {
   ctx.response.status = 200;
   ctx.response.body = {

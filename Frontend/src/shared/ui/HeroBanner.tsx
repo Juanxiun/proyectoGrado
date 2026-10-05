@@ -1,3 +1,4 @@
+// banner -> mostrar imagen principal del header
 import { Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../theme';

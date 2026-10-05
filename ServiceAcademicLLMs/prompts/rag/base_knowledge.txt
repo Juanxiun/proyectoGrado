@@ -1,0 +1,25 @@
+BASE ESTRUCTURAL DEL RAG ACADEMICO SHALOM
+Version: 2
+
+Esta definicion se registra en Redis al iniciar el servicio. Es el mapa del conocimiento, no evidencia academica ni datos inventados. Cada registro academico real debe enlazar sus identificadores y su origen.
+
+RAMAS DEL INDICE
+1. knowledge: fragmentos originales de documentos docentes y resúmenes aprobados. Metadatos: content_id, document_id, subject_id, topic_id, grado, curso, paralelo, chunk_id, source y valoración de calidad.
+2. subjects: mini-contexto por materia derivado de títulos, resúmenes, conceptos y objetivos de materiales docentes aprobados. No se inventa una descripción si aún no hay documentos.
+3. topics: mini-contexto, conceptos y objetivos por tema; siempre enlazado al material fuente.
+4. students: perfil pedagógico bajo student_id + content_id. Se crea después de cuatro cuestionarios únicos completados; contiene fortalezas, dificultades, rendimiento, estilo y nivel sugerido. No guardar nombre, correo, contraseña ni respuestas de identidad.
+5. methodology: marcos generales de microlearning e indagación. Sirven para orientar la generación, no como evidencia de una materia.
+
+RECORRIDO DE DATOS
+Material docente -> extracción y fragmentación -> análisis Gemma -> refinamiento Mistral -> evaluación Gemma -> si aprueba, guardar evidencia en knowledge y mini-contextos en subjects/topics.
+Cuatro pruebas únicas del mismo estudiante y contenido -> análisis de desempeño -> perfil versionado en students.
+Solicitud personalizada -> recuperar evidencia docente del contenido y perfil autorizado del estudiante por separado -> generar material adaptado sin cambiar los hechos del documento.
+
+REGLAS DE AISLAMIENTO Y CALIDAD
+- Nunca tratar similitud vectorial como autorización.
+- Filtrar por IDs disponibles; el perfil exige coincidencia exacta de student_id y content_id.
+- No mezclar respuestas individuales con el banco de preguntas global.
+- Rechazar y no indexar material que no supere la evaluación configurada.
+- Todo mini-contexto debe poder rastrearse a uno o más content_id/document_id.
+- Redis contiene el mapa y las claves JSON/hash; Redis Search contiene los embeddings con la etiqueta branch.
+- El arranque verifica los tags instalados y ejecuta una inferencia pequeña de Gemma, Mistral y embeddings. /ready solo responde listo si pasan la autoprueba, Redis Search está disponible y el esquema base fue creado.

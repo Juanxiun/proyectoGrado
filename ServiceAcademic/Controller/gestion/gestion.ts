@@ -86,8 +86,7 @@ export async function postHorarioManual(ctx: Context): Promise<void> {
     const periodoId = id || parseNumericId(body.periodoId ?? "");
     const resultado = await guardarHorariosManual(periodoId, body);
 
-    // Se publica un único evento: ServiceNotification resuelve los destinatarios
-    // curso por curso, así que este servicio no necesita armar la lista.
+    // evento -> unico horarios notificacion
     publicarEventoAsync("horarios.create", {
       periodoId,
       cursoPeriodoId: body.cursoPeriodoId,
@@ -135,7 +134,7 @@ export async function activatePeriodo(ctx: Context): Promise<void> {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));
     const activated = await activarGestion(id);
 
-    // La activación es institucional: ServiceNotification la difunde a todos.
+    // evento -> activacion institucional difundida
     publicarEventoAsync("periodos.activar", {
       periodoId: id,
       nombre: activated?.nombre,

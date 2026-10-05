@@ -130,14 +130,11 @@ export interface Curso {
   capacidadMaxima: number;
   activo: boolean;
   caratulaUrl?: string | null;
-  /**
-   * Materias asignadas a este curso base. En 0 significa que el curso todavía
-   * no se cargará al generar una gestión: la interfaz debe advertirlo.
-   */
+  // campo -> total materias aviso cero
   totalMaterias: number;
 }
 
-/** Materia asignada a un grado, compartida por todos sus paralelos. */
+// tipo -> materia asignada grado
 export interface MateriaDelGrado {
   materiaId: string;
   codigo: string;
@@ -155,7 +152,7 @@ export interface AsignarMateriaGradoInput {
   cargaHorariaSemanal?: number;
 }
 
-/** Bloque de la vista "Cursos base": un grado con todos sus paralelos juntos. */
+// tipo -> grado con paralelos
 export interface GradoConParalelos {
   nivel: NivelEducativo;
   grado: string;
@@ -169,7 +166,7 @@ export interface GradoSinMaterias {
   paralelos: string[];
 }
 
-// ── Maya curricular (temas por grado y materia) ─────────────────────────────
+// modelos -> temas malla curricular
 
 export interface TemaMalla {
   id: string;
@@ -321,10 +318,7 @@ export interface PlanPago {
 }
 
 export interface EstadoGestion extends PeriodoAcademico {
-  /**
-   * Cursos base que quedaron fuera de la última generación por no tener
-   * materias asignadas. Se llenan sólo en la respuesta de generarEstructura.
-   */
+  // campo -> cursos fuera de generacion
   cursosSinMaterias?: string[];
   totalCursos: number;
   totalHorarios: number;
@@ -347,11 +341,11 @@ export interface SolicitudInscripcion {
   observacion?: string | null;
 }
 
-// ── Seguimiento académico ───────────────────────────────────────────────────
+// modelos -> seguimiento academico
 
 export type NivelRiesgo = "sin_riesgo" | "observacion" | "riesgo" | "riesgo_alto";
 
-/** Una celda del libro: un estudiante dentro de una materia. */
+// tipo -> linea libro notas
 export interface LineaLibro {
   estudianteId: string;
   usuarioId: string;
@@ -359,13 +353,13 @@ export interface LineaLibro {
   apellidoPaterno: string;
   apellidoMaterno?: string | null;
 
-  /** Promedio ponderado de las tareas calificadas del trimestre (0-100). */
+  // campo -> promedio ponderado trimestre
   promedio: number | null;
-  /** Suma de las ponderaciones de los encargos que ya tienen nota. */
+  // campo -> peso acumulado encargos
   pesoAcumulado: number;
-  /** Ponderación total de los encargos publicados del trimestre. */
+  // campo -> peso total publicados
   pesoTotal: number;
-  /** Tareas calificadas / tareas publicadas. */
+  // campo -> tareas calificadas sobre publicadas
   tareasCalificadas: number;
   tareasPublicadas: number;
 
@@ -383,7 +377,7 @@ export interface ResumenAsistencia {
   atrasos: number;
   justificadas: number;
   total: number;
-  /** Porcentaje de asistencia efectiva (presentes + atrasos + justificadas). */
+  // campo -> tasa asistencia efectiva
   tasa: number | null;
 }
 
@@ -395,11 +389,11 @@ export interface EncargoLibro {
   fechaPublicacion?: string | null;
   fechaLimite?: string | null;
   estado: string;
-  /** Promedio del curso para este encargo. */
+  // campo -> promedio curso encargo
   promedioCurso?: number | null;
 }
 
-/** Libro de notas de una materia en un trimestre. */
+// tipo -> libro notas materia
 export interface LibroNotas {
   cursoPeriodoId: string;
   materia: { id: string; nombre: string; codigo: string; tipo: string };
@@ -419,7 +413,7 @@ export interface LibroNotas {
   };
 }
 
-/** Desempeño de un estudiante en una materia, para su panel personal. */
+// tipo -> desempeno materia estudiante
 export interface DesempenoMateria {
   materiaId: string;
   materia: string;
@@ -434,13 +428,13 @@ export interface DesempenoMateria {
   nivelRiesgo: NivelRiesgo;
 }
 
-/** Panel de desempeño de un curso-periodo completo. */
+// tipo -> panel curso periodo
 export interface PanelCurso {
   cursoPeriodoId: string;
   curso: { id: string; grado: string; paralelo: string; nivel: string };
   periodo: { id: string; nombre: string; anio: number };
   estudiantes: number;
-  /** Número de materias evaluadas en el curso. */
+  // campo -> total materias evaluadas
   totalMaterias: number;
   promedioGeneral: number | null;
   promedioAsistencia: number | null;

@@ -73,12 +73,12 @@ export function ContenidoEstudioSection({
       {/* Cabecera de la Sección */}
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
-          <View className="w-8 h-8 rounded-lg bg-gold/20 items-center justify-center">
-            <Ionicons name="library" size={18} color="#B45309" />
+          <View className="w-8 h-8 rounded-lg bg-maroon/10 items-center justify-center">
+            <Ionicons name="library" size={18} color="#801529" />
           </View>
           <Text className="text-lg font-bold text-gray-900">Materiales Didácticos y de Consulta</Text>
         </View>
-        <StatusBadge label={`${materiales.length} Recursos`} variant="info" />
+        <StatusBadge label={`${materiales.length} Recursos`} variant="brand" />
       </View>
 
       {/* Contenido / Lista */}

@@ -21,16 +21,16 @@ interface AsignacionRow {
   estado: EstadoAsignacion;
   fechaAsignacion: Date | string;
   fechaFinalizacion: Date | string | null;
-  // Maestro info
+  // fila -> datos maestro
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
   especialidad?: string;
-  // Materia info
+  // fila -> datos materia
   materiaCodigo?: string;
   materiaNombre?: string;
-  // Curso Periodo info
+  // fila -> datos curso periodo
   cursoId?: bigint;
   periodoId?: bigint;
   nivel?: string;

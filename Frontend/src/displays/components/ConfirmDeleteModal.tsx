@@ -1,3 +1,4 @@
+// modal_confirmar -> confirmar eliminación de elementos
 import React from 'react';
 import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';

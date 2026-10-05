@@ -71,7 +71,12 @@ export function DocumentInput({
   const pickDocument = async (index: number) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ],
         copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -85,7 +90,7 @@ export function DocumentInput({
         onChange(newDocs);
       }
     } catch {
-      Alert.alert('Error', 'No se pudo seleccionar el documento PDF');
+      Alert.alert('Error', 'No se pudo seleccionar el documento');
     }
   };
 

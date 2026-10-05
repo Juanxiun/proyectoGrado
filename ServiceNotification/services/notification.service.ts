@@ -8,7 +8,7 @@ import type {
 } from "../models/notification.ts";
 import { publishNotification } from "./gateway.service.ts";
 
-/** Contexto académico que resuelve una asignación docente (materia + curso + docente). */
+// interfaz -> contexto asignacion
 export interface AsignacionInfo {
   materiaNombre: string;
   profesorNombre: string;
@@ -38,11 +38,7 @@ function buildNotificationId(): string {
 }
 
 class CentralNotificationService {
-  /**
-   * Materializa y persiste una notificación. No la envía a nadie: eso es
-   * trabajo de `deliverTo*` para poder reutilizar el mismo objeto entre varios
-   * destinatarios.
-   */
+  // metodo -> construir notificacion
   private build(draft: NotificationDraft): NotificationItem {
     return {
       id: buildNotificationId(),
@@ -89,7 +85,7 @@ class CentralNotificationService {
     }
   }
 
-  /** Notificación dirigida a una lista concreta de usuarios. */
+  // metodo -> entregar usuarios lista
   async deliverToUsers(userIds: string[], draft: NotificationDraft): Promise<NotificationItem> {
     const notif = this.build(draft);
     const unicos = [...new Set(userIds.filter(Boolean).map(String))];
@@ -103,15 +99,12 @@ class CentralNotificationService {
     return notif;
   }
 
-  /** Notificación dirigida a un usuario. */
+  // metodo -> enviar usuario unico
   async sendToUser(userId: string | number, draft: NotificationDraft): Promise<NotificationItem> {
     return this.deliverToUsers([String(userId)], draft);
   }
 
-  /**
-   * Notificación a todos los estudiantes activos inscritos en un curso-periodo.
-   * `asignacionId` es opcional: si viene, se resuelve el contexto académico.
-   */
+  // metodo -> notificar curso
   async sendToCourse(
     cursoPeriodoId: string | number,
     draft: NotificationDraft,
@@ -137,23 +130,20 @@ class CentralNotificationService {
     return this.deliverToUsers(userIds, enriched);
   }
 
-  /** Notificación a todos los usuarios activos de uno o varios roles. */
+  // metodo -> notificar roles
   async sendToRoles(roles: string[], draft: NotificationDraft): Promise<NotificationItem> {
     const userIds = await this.resolveUsuariosPorRol(roles);
     return this.deliverToUsers(userIds, draft);
   }
 
-  /**
-   * Notificación para toda la institución. Se guarda en una lista global en vez
-   * de duplicarse en la bandeja de cada usuario; `list` la mezcla bajo demanda.
-   */
+  // metodo -> notificar institucion
   async sendToAll(draft: NotificationDraft): Promise<NotificationItem> {
     const notif = this.build(draft);
     await this.persist(notif, [], true);
     return notif;
   }
 
-  // ── Consultas ────────────────────────────────────────────────────────────
+  // grupo -> consultas bandeja
 
   async list(
     userId: string | number,
@@ -211,7 +201,7 @@ class CentralNotificationService {
     return items.find((n) => n.id === notificationId) ?? null;
   }
 
-  // ── Mutaciones de estado ─────────────────────────────────────────────────
+  // grupo -> mutaciones estado
 
   async markAsRead(userId: string | number, notificationId: string): Promise<boolean> {
     const redis = getRedis();
@@ -236,7 +226,7 @@ class CentralNotificationService {
     return marcadas;
   }
 
-  /** Quita la notificación de la bandeja del usuario (no la borra para el resto). */
+  // metodo -> quitar bandeja
   async removeForUser(userId: string | number, notificationId: string): Promise<boolean> {
     const redis = getRedis();
     if (!redis) return false;
@@ -250,7 +240,7 @@ class CentralNotificationService {
     }
   }
 
-  // ── Resolución de destinatarios ──────────────────────────────────────────
+  // grupo -> resolver destinatarios
 
   async resolveAsignacion(asignacionId: string | number): Promise<AsignacionInfo | null> {
     const res = await query<{
@@ -291,7 +281,7 @@ class CentralNotificationService {
     };
   }
 
-  /** Estudiantes activos inscritos en el curso-periodo (vía su usuario). */
+  // query -> estudiantes curso
   async resolveCursoStudents(cursoPeriodoId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT e.usuario_id
@@ -303,7 +293,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.usuario_id));
   }
 
-  /** Estudiantes + docente de un curso-periodo, para avisos de horario. */
+  // query -> curso docentes
   async resolveCursoDocentes(cursoPeriodoId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT DISTINCT e.usuario_id
@@ -324,7 +314,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.usuario_id));
   }
 
-  /** Usuario asociado a un registro de `estudiantes` (id, no usuario_id). */
+  // query -> usuario estudiante
   async resolveEstudianteUsuario(estudianteId: string | number): Promise<string | null> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT usuario_id FROM estudiantes WHERE id = $1`,
@@ -333,7 +323,7 @@ class CentralNotificationService {
     return res.rows[0] ? String(res.rows[0].usuario_id) : null;
   }
 
-  /** Usuarios (docentes) de las asignaciones de una materia. */
+  // query -> docentes materia
   async resolveMateriaDocentes(materiaId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT DISTINCT u.id AS usuario_id
@@ -346,7 +336,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.usuario_id));
   }
 
-  /** Usuario del docente de una asignación. */
+  // query -> docente asignacion
   async resolveAsignacionDocentes(asignacionId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT u.id AS usuario_id
@@ -359,7 +349,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.usuario_id));
   }
 
-  /** Docente a cargo de un encargo, que es quien debe enterarse de la entrega. */
+  // query -> docente encargo
   async resolveEncargoDocente(encargoId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(
       `SELECT u.id AS usuario_id
@@ -373,7 +363,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.usuario_id));
   }
 
-  /** Cursos del período que ya tienen horario publicado. */
+  // query -> cursos con horario
   async resolveCursosDelPeriodoConHorarios(periodoId: string | number): Promise<string[]> {
     const res = await query<{ curso_periodo_id: bigint }>(
       `SELECT DISTINCT h.curso_periodo_id
@@ -385,7 +375,7 @@ class CentralNotificationService {
     return res.rows.map((r) => String(r.curso_periodo_id));
   }
 
-  /** Usuarios activos de los roles indicados, en el idioma de la tabla `roles`. */
+  // query -> usuarios roles
   async resolveUsuariosPorRol(roles: string[]): Promise<string[]> {
     if (roles.length === 0) return [];
 

@@ -1,4 +1,4 @@
-// controllers/webhookHandler.ts
+// mapa -> handlers webhook
 import { Context } from "@oak/oak";
 import { extractBearerToken, getClaimsFromToken } from "../security/auth.ts";
 import { sendWebhookCallback } from "../services/webhook.service.ts";
@@ -28,7 +28,7 @@ export interface WebhookEventPayload {
 type Handler = (ctx: Context) => Promise<void>;
 
 const EVENT_HANDLERS: Record<string, Handler> = {
-  // Bandeja
+  // grupo -> bandeja
   "notificaciones.list": listNotificaciones,
   "notificaciones.count": countNotificaciones,
   "notificaciones.get": getNotificacion,
@@ -36,7 +36,7 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "notificaciones.read-all": readAllNotificaciones,
   "notificaciones.delete": deleteNotificacion,
 
-  // Emisión y administración
+  // grupo -> emitir notificaciones
   "notificaciones.create": emitirNotificacion,
   "notificaciones.emitir": emitirNotificacion,
   "notificaciones.reglas": listarReglas,

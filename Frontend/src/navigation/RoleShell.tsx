@@ -1,3 +1,4 @@
+// shell_roles -> distribuir interfaz según rol de usuario (estudiante, docente, admin)
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../displays/layouts/AppLayout';
@@ -19,6 +20,8 @@ import { EstudianteMateriasScreen } from '../features/usuarios/screens/Estudiant
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
 import { ScheduleScreen } from '../features/academico/screens/ScheduleScreen';
 import { SeguimientoScreen } from '../features/academico/screens/SeguimientoScreen';
+import { EconomyManagementScreen } from '../features/billing/screens/EconomyManagementScreen';
+import { BillingStudentScreen } from '../features/billing/screens/BillingStudentScreen';
 import { ForcePasswordChangeModal } from '../features/usuarios/components/ForcePasswordChangeModal';
 import { FirstLoginProfileModal } from '../features/usuarios/components/FirstLoginProfileModal';
 
@@ -59,7 +62,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         // El tablero de inicio lo alimenta ServiceDashboard (sólo lectura y
         // recortado por rol). Los dashboards de cada rol siguen disponibles
         // en sus rutas propias.
-        return <DashboardScreen />;
+        return <DashboardScreen onNavigate={handleNavigate} />;
       case 'Profile':
         return <ProfileScreen />;
       case 'Docentes':
@@ -92,6 +95,10 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;
       case 'Seguimiento':
         return <SeguimientoScreen initialPeriodoId={seguimientoPeriodoId} />;
+      case 'Economia':
+        return <EconomyManagementScreen />;
+      case 'Deuda':
+        return <BillingStudentScreen />;
       default:
         return navItems.some((n) => n.route === activeRoute)
           ? <PlaceholderScreen title={navItems.find((n) => n.route === activeRoute)?.label ?? activeRoute} />
@@ -105,6 +112,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         title={panelTitle}
         userName={userName}
         userEmail={userEmail}
+        userPhoto={user.fotoUrl}
         navItems={navItems}
         activeRoute={activeRoute}
         onNavigate={setActiveRoute}

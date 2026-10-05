@@ -2,7 +2,6 @@ import type { NavItem } from '../displays/components/Sidebar';
 
 export const BASE_NAV: NavItem[] = [
   { key: 'home', label: 'Inicio', icon: 'home-outline', route: 'Dashboard' },
-  { key: 'profile', label: 'Mi Cuenta', icon: 'person-outline', route: 'Profile' },
 ];
 
 export const DIRECTOR_NAV: NavItem[] = [
@@ -15,7 +14,7 @@ export const DIRECTOR_NAV: NavItem[] = [
   { key: 'seguimiento', label: 'Seguimiento', icon: 'analytics-outline', route: 'Seguimiento' },
   { key: 'evaluaciones', label: 'Aula y Evaluación', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'mi_cuenta', label: 'Mi Cuenta', icon: 'person-outline', route: 'Profile' },
+  { key: 'economia', label: 'Economía', icon: 'cash-outline', route: 'Economia' },
 ];
 
 export const CONTROL_NAV: NavItem[] = [
@@ -26,7 +25,7 @@ export const CONTROL_NAV: NavItem[] = [
   { key: 'inscripciones', label: 'Inscripciones', icon: 'person-add-outline', route: 'Inscripciones' },
   { key: 'evaluaciones', label: 'Aula y Evaluación', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'mi_cuenta', label: 'Mi Cuenta', icon: 'person-outline', route: 'Profile' },
+  { key: 'economia', label: 'Economía', icon: 'cash-outline', route: 'Economia' },
 ];
 
 export const MAESTROS_NAV: NavItem[] = [
@@ -35,7 +34,6 @@ export const MAESTROS_NAV: NavItem[] = [
   { key: 'materias', label: 'Materias', icon: 'book-outline', route: 'Materias' },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'mi_cuenta', label: 'Mi Cuenta', icon: 'person-outline', route: 'Profile' },
 ];
 
 export const USUARIOS_NAV: NavItem[] = [
@@ -44,6 +42,7 @@ export const USUARIOS_NAV: NavItem[] = [
   { key: 'materias', label: 'Materias', icon: 'book-outline', route: 'Materias' },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'mi_cuenta', label: 'Mi Cuenta', icon: 'person-outline', route: 'Profile' },
+  { key: 'deuda', label: 'Mi Deuda', icon: 'cash-outline', route: 'Deuda' },
 ];
+
 

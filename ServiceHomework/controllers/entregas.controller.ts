@@ -54,7 +54,7 @@ export async function createEntrega(ctx: Context): Promise<void> {
     const claims = (ctx.state.auth as AuthClaims) ?? null;
     const contentType = ctx.request.headers.get("content-type") ?? "";
 
-    // Manejo de subida por multipart/form-data
+    // entrega -> subir archivo multipart
     if (contentType.includes("multipart/form-data")) {
       const form = await ctx.request.body.formData();
       const file = form.get("file");
@@ -74,7 +74,7 @@ export async function createEntrega(ctx: Context): Promise<void> {
       const cursoInfo = await resolveCursoInfoFromEncargo(encargoId);
       const objectKey = buildEntregaObjectKey(cursoInfo, encargoId, subId, file.name);
 
-      // Validación MinIO de 150MB y formatos PDF/Word/Excel
+      // minio -> validar formato archivo
       const uploaded = await uploadMaterialFile(objectKey, fileBuffer, file.name, file.type);
 
       const created = await entregaService.createOrUpdateEntrega(
@@ -100,7 +100,7 @@ export async function createEntrega(ctx: Context): Promise<void> {
       return;
     }
 
-    // Creación mediante JSON estándar
+    // entrega -> crear por json
     const body = await readJsonBody<CreateEncargoEntregaInput>(ctx);
     const created = await entregaService.createOrUpdateEntrega(body, claims);
     publicarEventoAsync("entregas.create", {

@@ -22,18 +22,7 @@ function getSecretKey(): Uint8Array {
   return _jwtSecretKey;
 }
 
-/**
- * POST /auth/verify-2fa
- *
- * Body:
- * {
- *   "tempToken": "uuid-temporal",
- *   "code": "123456",
- *   "lat": -16.500,     // opcional
- *   "lon": -68.150,     // opcional
- *   "zona": "Sopocachi" // opcional
- * }
- */
+// ruta -> verificar codigo dos factores
 export async function verify2FA(ctx: Context): Promise<void> {
   try {
     const body = await ctx.request.body.json();
@@ -57,11 +46,9 @@ export async function verify2FA(ctx: Context): Promise<void> {
 
     const sData = verification.sessionData;
 
-    // Extraer dispositivo y geolocalización actualizada del request
     const deviceInfo = extractDeviceInfo(ctx);
     const locationInfo = extractLocationInfo(ctx, body);
 
-    // Crear sesión en Redis con reglas de concurrencia y detección de trampas
     const { session, closedPreviousSessions } = await createSession({
       usuarioId: sData.userId,
       username: sData.username,
@@ -126,14 +113,7 @@ export async function verify2FA(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * POST /auth/resend-2fa
- *
- * Body:
- * {
- *   "tempToken": "uuid-temporal"
- * }
- */
+// ruta -> reenviar codigo dos factores
 export async function resend2FA(ctx: Context): Promise<void> {
   try {
     const body = await ctx.request.body.json();

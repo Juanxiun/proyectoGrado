@@ -1,3 +1,4 @@
+// nav_bar -> barra de navegación inferior
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NavItem } from './Sidebar';

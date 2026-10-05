@@ -1,0 +1,329 @@
+services:
+  # ─── Servicios Deno (con hot reload via volúmenes) ───
+  service-user:
+    build:
+      context: ./ServiceUser
+      dockerfile: Dockerfile
+    container_name: shalom_service_user
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8880
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-adminpassword}
+      - MINIO_BUCKET=usuarios
+      - CLAMAV_HOST=${CLAMAV_HOST:-shalom_antivirus}
+      - CLAMAV_PORT=${CLAMAV_PORT:-3310}
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - EMAIL_FROM=${EMAIL_FROM}
+    volumes:
+      - ./ServiceUser:/app
+    ports:
+      - "8880:8880"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-academic:
+    build:
+      context: ./ServiceAcademic
+      dockerfile: Dockerfile
+    container_name: shalom_service_academic
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8881
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+      - ACADEMIC_SERVICE_URL=http://service-academic:8881
+      - SEG_TRIMESTRE_ACTUAL=${SEG_TRIMESTRE_ACTUAL:-1}
+      - SEG_NOTA_RIESGO=${SEG_NOTA_RIESGO:-60}
+      - SEG_NOTA_RIESGO_ALTO=${SEG_NOTA_RIESGO_ALTO:-50}
+      - SEG_ASISTENCIA_RIESGO=${SEG_ASISTENCIA_RIESGO:-75}
+      - SEG_ASISTENCIA_RIESGO_ALTO=${SEG_ASISTENCIA_RIESGO_ALTO:-60}
+      - SEG_ASISTENCIA_OBSERVACION=${SEG_ASISTENCIA_OBSERVACION:-85}
+      - SEG_PESO_PROMEDIO=${SEG_PESO_PROMEDIO:-0.7}
+      - SEG_PESO_ASISTENCIA=${SEG_PESO_ASISTENCIA:-0.3}
+    volumes:
+      - ./ServiceAcademic:/app
+    ports:
+      - "8881:8881"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-enrollment:
+    build:
+      context: ./ServiceEnrollment
+      dockerfile: Dockerfile
+    container_name: shalom_service_enrollment
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8882
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+    volumes:
+      - ./ServiceEnrollment:/app
+    ports:
+      - "8882:8882"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-homework:
+    build:
+      context: ./ServiceHomework
+      dockerfile: Dockerfile
+    container_name: shalom_service_homework
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8883
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-adminpassword}
+      - MINIO_BUCKET=materiales
+      - MINIO_SSL=false
+      - CLAMAV_HOST=${CLAMAV_HOST:-shalom_antivirus}
+      - CLAMAV_PORT=${CLAMAV_PORT:-3310}
+      - LLM_SERVICE_URL=http://service-llms:8890
+      - LLM_WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-}
+    volumes:
+      - ./ServiceHomework:/app
+    ports:
+      - "8883:8883"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-notification:
+    build:
+      context: ./ServiceNotification
+      dockerfile: Dockerfile
+    container_name: shalom_service_notification
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8884
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+      - ACADEMIC_SERVICE_URL=http://service-academic:8881
+      - SEG_TRIMESTRE_ACTUAL=${SEG_TRIMESTRE_ACTUAL:-1}
+    volumes:
+      - ./ServiceNotification:/app
+    ports:
+      - "8884:8884"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-dashboard:
+    build:
+      context: ./ServiceDashboard
+      dockerfile: Dockerfile
+    container_name: shalom_service_dashboard
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8885
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=15
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+      - ACADEMIC_SERVICE_URL=http://service-academic:8881
+      - PERIODO_POR_DEFECTO=activo
+      - DASHBOARD_CACHE_TTL=60
+    volumes:
+      - ./ServiceDashboard:/app
+    ports:
+      - "8885:8885"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  service-billing:
+    build:
+      context: ./ServiceBilling
+      dockerfile: Dockerfile
+    container_name: shalom_service_billing
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8886
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=notificaciones:eventos
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+    volumes:
+      - ./ServiceBilling:/app
+    ports:
+      - "8886:8886"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  # Servicio LLM de baja prioridad; Redis RAG y Ollama viven en el stack de infraestructura.
+  service-llms:
+    build:
+      context: ./ServiceAcademicLLMs
+      dockerfile: Dockerfile
+    container_name: shalom_service_llms
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - APP_ENV=${APP_ENV:-development}
+      - LOG_LEVEL=${LLM_LOG_LEVEL:-INFO}
+      - PORT=8890
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_GEMMA_MODEL=${OLLAMA_GEMMA_MODEL:-gemma4:e4b}
+      - OLLAMA_MISTRAL_MODEL=${OLLAMA_MISTRAL_MODEL:-mistral:7b}
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-}
+      - REDIS_HOST=${REDIS_RAG_HOST:-host.docker.internal}
+      - REDIS_PORT=${REDIS_RAG_PORT:-6380}
+      - REDIS_USERNAME=${REDIS_RAG_USERNAME:-rag_user}
+      - REDIS_PASSWORD=${REDIS_RAG_PASSWORD:-}
+      - REDIS_DB=${REDIS_RAG_DB:-0}
+      - WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
+      - CHUNK_SIZE=${LLM_CHUNK_SIZE:-6000}
+      - CHUNK_OVERLAP=${LLM_CHUNK_OVERLAP:-500}
+      - MAX_CHUNKS_PER_DOCUMENT=${LLM_MAX_CHUNKS_PER_DOCUMENT:-200}
+      - LLM_ACCEPTANCE_THRESHOLD=${LLM_ACCEPTANCE_THRESHOLD:-0.97}
+      - LLM_MAX_REFINEMENT_ITERATIONS=${LLM_MAX_REFINEMENT_ITERATIONS:-3}
+      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-240}
+      - LLM_MAX_CONCURRENCY=${LLM_MAX_CONCURRENCY:-2}
+      - WORKER_COUNT=${LLM_WORKER_COUNT:-1}
+      - JOB_MAX_RETRIES=${LLM_JOB_MAX_RETRIES:-3}
+      - QUIZ_ADVANCE_THRESHOLD=${QUIZ_ADVANCE_THRESHOLD:-0.8}
+      - QUIZ_RETAIN_THRESHOLD=${QUIZ_RETAIN_THRESHOLD:-0.6}
+    ports:
+      - "127.0.0.1:8890:8890"
+    networks:
+      - shalom_net
+
+  # ─── RestAPI Gateway (ASP.NET Core) ───
+  rest-api:
+    build:
+      context: ./RestApi
+      dockerfile: Dockerfile
+    container_name: shalom_rest_api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5141
+      - Gateway__PublicUrl=http://localhost:5141
+      - Jwt__Secret=${JWT_SECRET:-nosexd}
+      - Internal__PushToken=shalom-internal-push
+      - Services__UserService=http://service-user:8880
+      - Services__AcademicService=http://service-academic:8881
+      - Services__EnrollmentService=http://service-enrollment:8882
+      - Services__HomeworkService=http://service-homework:8883
+      - Services__NotificationService=http://service-notification:8884
+      - Services__DashboardService=http://service-dashboard:8885
+      - Services__BillingService=http://service-billing:8886
+    ports:
+      - "5141:5141"
+      - "7064:7064"
+    networks:
+      - shalom_net
+
+networks:
+  shalom_net:
+    name: shalom_backend
+    driver: bridge

@@ -3,6 +3,7 @@ import { query } from "../connects/Database/transaction.ts";
 export type NivelMaterial = "primaria" | "secundaria";
 
 export interface CursoMateriaInfo {
+  materiaId?: string;
   materia: string;
   grado: string;
   paralelo: string;
@@ -12,10 +13,10 @@ export interface CursoMateriaInfo {
 export function toSlug(text: string, maxLen = 35): string {
   return (text || "")
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // quitar acentos
+    .replace(/[\u0300-\u036f]/g, "") // regex -> quitar acentos
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_") // reemplazar no-alfanuméricos por _
-    .replace(/^_+|_+$/g, "") // trim underscores
+    .replace(/[^a-z0-9]+/g, "_") // regex -> reemplazar simbolos
+    .replace(/^_+|_+$/g, "") // regex -> recortar guiones
     .slice(0, maxLen) || "general";
 }
 
@@ -27,13 +28,12 @@ export function sanitizeLevel(nivel?: string | null): NivelMaterial {
   return "primaria";
 }
 
-/**
- * Resuelve la materia, grado, paralelo y nivel a partir de una asignación docente.
- */
+// funcion -> resolver curso por asignacion
 export async function resolveCursoInfoFromAsignacion(asignacionId: string | number): Promise<CursoMateriaInfo> {
   try {
-    const res = await query<{ materia: string; grado: string; paralelo: string; nivel: string }>(
+    const res = await query<{ materiaId: string; materia: string; grado: string; paralelo: string; nivel: string }>(
       `SELECT
+         m.id AS "materiaId",
          COALESCE(m.nombre, 'materia') AS materia,
          COALESCE(c.grado, '1') AS grado,
          COALESCE(c.paralelo, 'A') AS paralelo,
@@ -48,6 +48,7 @@ export async function resolveCursoInfoFromAsignacion(asignacionId: string | numb
     if (res.rows.length > 0) {
       const row = res.rows[0];
       return {
+        materiaId: String(row.materiaId),
         materia: row.materia,
         grado: row.grado,
         paralelo: row.paralelo,
@@ -60,9 +61,7 @@ export async function resolveCursoInfoFromAsignacion(asignacionId: string | numb
   return { materia: "general", grado: "general", paralelo: "A", nivel: "primaria" };
 }
 
-/**
- * Resuelve la materia, grado, paralelo y nivel a partir de un encargo.
- */
+// funcion -> resolver curso por encargo
 export async function resolveCursoInfoFromEncargo(encargoId: string | number): Promise<CursoMateriaInfo> {
   try {
     const res = await query<{ materia: string; grado: string; paralelo: string; nivel: string }>(
@@ -104,10 +103,7 @@ export async function resolveNivelFromEncargo(encargoId: string | number): Promi
   return info.nivel;
 }
 
-/**
- * Genera la ruta jerárquica canónica para materiales en MinIO:
- * material -> materia -> grado -> paralelo -> archivo
- */
+// util -> ruta materiales minio
 export function buildMaterialObjectKey(
   info: CursoMateriaInfo,
   asignacionId: string | number,
@@ -120,10 +116,7 @@ export function buildMaterialObjectKey(
   return `material/${mat}/${grad}/${par}/${Date.now()}_asig${asignacionId}_${safeName}`;
 }
 
-/**
- * Genera la ruta jerárquica canónica para entregas de tareas en MinIO:
- * material -> materia -> grado -> paralelo -> entregas_encargoId_estudianteId_archivo
- */
+// util -> ruta entregas minio
 export function buildEntregaObjectKey(
   info: CursoMateriaInfo,
   encargoId: string | number,

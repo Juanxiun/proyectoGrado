@@ -104,16 +104,16 @@ export function NotificationsModal({
       <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
         <View className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex-col border border-gray-100">
           {/* Header */}
-          <View className="p-4 md:p-5 bg-gray-900 text-white flex-row items-center justify-between">
+          <View className="p-4 md:p-5 bg-maroon text-white flex-row items-center justify-between">
             <View className="flex-row items-center gap-3">
-              <View className="w-10 h-10 rounded-xl bg-gold/20 items-center justify-center">
-                <Ionicons name="notifications" size={20} color="#FFD700" />
+              <View className="w-10 h-10 rounded-xl bg-white/20 items-center justify-center">
+                <Ionicons name="notifications" size={20} color="#FFFFFF" />
               </View>
               <View>
                 <Text className="text-white font-bold text-base md:text-lg">
                   Bandeja de Notificaciones
                 </Text>
-                <Text className="text-gray-400 text-xs">
+                <Text className="text-white/80 text-xs">
                   {unreadCount > 0 ? `${unreadCount} no leídas • ` : 'Al día • '}
                   Central de notificaciones (30 días)
                 </Text>
@@ -122,7 +122,7 @@ export function NotificationsModal({
 
             <TouchableOpacity
               onPress={onClose}
-              className="w-9 h-9 rounded-xl bg-gray-800 hover:bg-gray-700 items-center justify-center"
+              className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 items-center justify-center"
             >
               <Ionicons name="close" size={20} color="#FFFFFF" />
             </TouchableOpacity>
@@ -159,19 +159,19 @@ export function NotificationsModal({
                       className={`p-4 border transition-all ${
                         n.leido
                           ? 'bg-white border-gray-100 opacity-80'
-                          : 'bg-cream/40 border-maroon/30 shadow-sm'
+                          : 'bg-maroon/5 border-maroon/20 shadow-sm'
                       }`}
                     >
                       <View className="flex-row items-start justify-between gap-2">
                         <View className="flex-row items-center gap-2">
                           <View
                             className={`w-2.5 h-2.5 rounded-full ${
-                              n.leido ? 'bg-gray-300' : 'bg-red-500 animate-pulse'
+                              n.leido ? 'bg-gray-300' : 'bg-maroon'
                             }`}
                           />
                           <StatusBadge
                             label={n.publicoTexto ?? ETIQUETAS[n.canal] ?? 'Notificación'}
-                            variant={n.tipo === 'material' ? 'info' : 'warning'}
+                            variant={n.tipo === 'material' ? 'brand' : 'warning'}
                           />
                         </View>
                         <Text className="text-[11px] text-gray-400 font-mono">
@@ -179,8 +179,7 @@ export function NotificationsModal({
                         </Text>
                       </View>
 
-                      {/* Contexto académico para materiales/encargos; si no
-                          aplica, se muestra el mensaje del evento. */}
+                      {/* Contexto académico para materiales/encargos */}
                       <View className="mt-3 bg-white p-3 rounded-xl border border-gray-100 gap-1">
                         {n.materiaNombre ? (
                           <>
@@ -239,7 +238,7 @@ export function NotificationsModal({
               onPress={handleMarkAllRead}
               disabled={unreadCount === 0 || markingAll}
               className={`px-4 py-2 rounded-xl ${
-                unreadCount === 0 ? 'bg-gray-100' : 'bg-maroon'
+                unreadCount === 0 ? 'bg-gray-100' : 'bg-maroon hover:bg-maroon/90'
               }`}
             >
               <Text

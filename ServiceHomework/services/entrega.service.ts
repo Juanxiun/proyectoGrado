@@ -21,13 +21,13 @@ interface EntregaRow {
   comentario?: string | null;
   fechaEntrega: Date | string;
   estadoEntrega: string;
-  // Estudiante info
+  // fila -> datos estudiante
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
   numeroDoc?: string;
-  // Encargo info
+  // fila -> datos encargo
   encargoTitulo?: string;
   encargoTipo?: string;
   encargoFechaLimite?: Date | string | null;
@@ -118,21 +118,18 @@ export async function listEntregas(
     const values: unknown[] = [];
     let idx = 1;
 
-    // RBAC:
-    // - Si es estudiante: solo ve sus propias entregas (según su estudiante_id o u.id = sub)
-    // - Si es profesor: solo ve entregas de sus materias (ad.maestro_id = maestro.id)
-    // - Director / Control: ven todo
+    // rbac -> filtrar entregas por rol
     if (claims) {
       if (claims.role === "estudiante") {
-        // Encontrar estudiante_id para este usuario
+        // rbac -> buscar estudiante propio
         conditions.push(`e.usuario_id = $${idx++}`);
         values.push(claims.sub);
       } else if (claims.role === "profesor") {
-        // Encontrar asignaciones del maestro
+        // rbac -> buscar materias profesor
         conditions.push(`ad.maestro_id = (SELECT id FROM maestros WHERE usuario_id = $${idx++} LIMIT 1)`);
         values.push(claims.sub);
       }
-      // director o control pasan sin restricción
+      // rbac -> directores ven todo
     }
 
     if (filters.encargoId) {
@@ -199,7 +196,7 @@ export async function getEntregaById(
 
     const row = res.rows[0];
 
-    // RBAC check
+    // rbac -> verificar acceso entrega
     if (claims) {
       if (claims.role === "estudiante" && String(row.usuarioId) !== String(claims.sub)) {
         throw new HttpError(403, "No tiene permisos para acceder a esta entrega ajena");
@@ -235,7 +232,7 @@ export async function createOrUpdateEntrega(
       throw new HttpError(400, "archivoUrl es obligatorio para registrar la entrega de la tarea");
     }
 
-    // 1. Obtener encargo para validar fecha límite
+    // paso -> obtener encargo
     const encRes = await query<{
       id: bigint;
       fecha_limite: Date | string | null;
@@ -255,7 +252,7 @@ export async function createOrUpdateEntrega(
       throw new HttpError(400, "Este encargo ha sido cancelado y no admite entregas");
     }
 
-    // 2. Determinar estudiante_id
+    // paso -> determinar estudiante
     let estudianteId = input.estudianteId;
     if (claims?.role === "estudiante" || !estudianteId) {
       const eRes = await query<{ id: bigint }>(
@@ -283,7 +280,7 @@ export async function createOrUpdateEntrega(
       estudianteId = toId(eCheck.rows[0].id);
     }
 
-    // 3. Comparar fecha actual del sistema con fecha_limite
+    // paso -> calcular retraso
     const now = new Date();
     let estadoEntrega: "a_tiempo" | "con_retraso" = "a_tiempo";
     if (enc.fecha_limite) {
@@ -293,7 +290,7 @@ export async function createOrUpdateEntrega(
       }
     }
 
-    // 4. UPSERT en encargo_entregas
+    // paso -> guardar entrega upsert
     const upsertRes = await query<{ id: bigint }>(
       `INSERT INTO encargo_entregas (
         encargo_id,

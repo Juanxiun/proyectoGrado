@@ -3,24 +3,15 @@ import { dashboardConfig } from "../config/dashboard.config.ts";
 import { filtroCursos, type Contexto } from "./alcance.service.ts";
 import type { ResumenRiesgo } from "../models/dashboard.ts";
 
-/**
- * Estudiantes en riesgo, en una sola consulta.
- *
- * Los umbrales NO se inventan acá: se leen de ServiceAcademic
- * (`/seguimiento/umbrales`), que es quien los define y los publica para que
- * todos los módulos expliquen el mismo criterio.
- *
- * NO se reutiliza `GET /seguimiento/riesgo` de ese servicio a propósito: esa
- * ruta recalcula el libro completo materia por materia y curso por curso, lo
- * que son cientos de consultas y no sirve para una página de inicio. Acá se
- * agrega de una vez con SQL, conservando el mismo criterio.
- */
+// servicio -> riesgo con umbrales academicos
 
 export interface UmbralesRiesgo {
   notaRiesgo: number;
   asistenciaRiesgo: number;
   notaRiesgoAlto: number;
   asistenciaRiesgoAlto: number;
+  // campo -> banda observacion
+  asistenciaObservacion: number;
 }
 
 let umbralesCache: { valor: UmbralesRiesgo; expira: number } | null = null;
@@ -34,8 +25,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
 
   try {
     const response = await fetch(
-      // Ruta interna: la pública exige el JWT del usuario y este servicio no
-      // tiene uno, sólo el token compartido entre procesos.
+      // ruta -> interna token compartido
       `${dashboardConfig.academicServiceUrl.replace(/\/$/, "")}/seguimiento/internal/umbrales`,
       {
         method: "GET",
@@ -52,6 +42,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
       umbralAsistenciaRiesgo?: number;
       umbralNotaRiesgoAlto?: number;
       umbralAsistenciaRiesgoAlto?: number;
+      umbralAsistenciaObservacion?: number;
     };
 
     const valor: UmbralesRiesgo = {
@@ -59,13 +50,13 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
       asistenciaRiesgo: cuerpo.umbralAsistenciaRiesgo ?? porDefecto.asistenciaRiesgo,
       notaRiesgoAlto: cuerpo.umbralNotaRiesgoAlto ?? porDefecto.notaRiesgoAlto,
       asistenciaRiesgoAlto: cuerpo.umbralAsistenciaRiesgoAlto ?? porDefecto.asistenciaRiesgoAlto,
+      asistenciaObservacion: cuerpo.umbralAsistenciaObservacion ?? porDefecto.asistenciaObservacion,
     };
 
     umbralesCache = { valor, expira: Date.now() + 5 * 60 * 1000 };
     return valor;
   } catch (err) {
-    // Si ServiceAcademic no responde se usan los valores por defecto: es
-    // preferible mostrar un número aproximado que dejar el dashboard en blanco.
+    // caso -> umbrales por defecto
     console.warn("[Riesgo] No se pudieron leer los umbrales, se usan los por defecto:", err);
     return porDefecto;
   }
@@ -87,11 +78,11 @@ export async function resumenRiesgo(
     umbrales.asistenciaRiesgo,
     umbrales.notaRiesgoAlto,
     umbrales.asistenciaRiesgoAlto,
+    umbrales.asistenciaObservacion,
     ...filtro.params,
   ];
 
-  // Un estudiante aparece una vez: se le atribuye su peor nota y su peor
-  // asistencia entre todas las materias del período.
+  // sql -> estudiantes riesgo agregados
   const consulta = `
     WITH notas AS (
       SELECT c.estudiante_id, ad.curso_periodo_id, c.nota
@@ -132,7 +123,13 @@ export async function resumenRiesgo(
         CASE WHEN f.total > 0
           THEN ROUND(((f.total - f.ausentes)::numeric / f.total) * 100, 1)
           ELSE NULL END AS asistencia,
-        c.grado, c.paralelo, c.nivel
+        c.grado, c.paralelo,
+        -- Se llama nivel_curso y no nivel porque el SELECT de afuera usa
+        -- nivel para la banda de riesgo. Con un SELECT * las dos columnas
+        -- acaban llamandose igual y @db/postgres rechaza el resultado con
+        -- "Field names nivel are duplicated". Ojo: este comentario va dentro
+        -- de un template literal, asi que no puede llevar acentos graves.
+        c.nivel AS nivel_curso
       FROM agregado ag
       JOIN estudiantes e ON e.id = ag.estudiante_id
       JOIN usuarios u ON u.id = e.usuario_id
@@ -147,13 +144,15 @@ export async function resumenRiesgo(
         ORDER BY c2.grado LIMIT 1
       ) c ON true
     )
-    SELECT *,
+    SELECT
+      estudiante_id, nombre, apellido_paterno, promedio, peor_nota,
+      asistencia, grado, paralelo, nivel_curso,
       CASE
         WHEN (promedio IS NOT NULL AND promedio < $6)
           OR (asistencia IS NOT NULL AND asistencia < $7) THEN 'riesgo_alto'
         WHEN (promedio IS NOT NULL AND promedio < $4)
           OR (asistencia IS NOT NULL AND asistencia < $5) THEN 'riesgo'
-        WHEN asistencia IS NOT NULL AND asistencia < 100 THEN 'observacion'
+        WHEN asistencia IS NOT NULL AND asistencia < $8 THEN 'observacion'
         ELSE 'sin_riesgo'
       END AS nivel,
       CASE
@@ -161,12 +160,11 @@ export async function resumenRiesgo(
           OR (asistencia IS NOT NULL AND asistencia < $7) THEN 0
         WHEN (promedio IS NOT NULL AND promedio < $4)
           OR (asistencia IS NOT NULL AND asistencia < $5) THEN 1
-        WHEN asistencia IS NOT NULL AND asistencia < 100 THEN 2
+        WHEN asistencia IS NOT NULL AND asistencia < $8 THEN 2
         ELSE 3
       END AS severidad
     FROM combinado
-    ORDER BY severidad, promedio ASC NULLS FIRST
-    LIMIT 200`;
+    ORDER BY severidad, promedio ASC NULLS FIRST`;
 
   const res = await query<{
     estudiante_id: bigint;
@@ -176,6 +174,9 @@ export async function resumenRiesgo(
     asistencia: string | null;
     grado: string | null;
     paralelo: string | null;
+    // campo -> nivel curso
+    nivel_curso: string | null;
+    // campo -> banda riesgo
     nivel: string;
   }>(consulta, args);
 
@@ -184,11 +185,11 @@ export async function resumenRiesgo(
     nombre: fila.nombre,
     apellidoPaterno: fila.apellido_paterno,
     cursoParalelo: fila.grado
-      ? `${fila.grado} "${fila.paralelo}" ${String(fila.nivel).toUpperCase()}`
+      ? `${fila.grado} "${fila.paralelo}" ${String(fila.nivel_curso).toUpperCase()}`
       : '—',
     promedio: fila.promedio !== null ? Math.round(Number(fila.promedio) * 100) / 100 : null,
     asistencia: fila.asistencia !== null ? Number(fila.asistencia) : null,
-    nivelRiesgo: fila.nivel as "observacion" | "riesgo" | "riesgo_alto",
+    nivelRiesgo: fila.nivel as "observacion" | "riesgo" | "riesgo_alto" | "sin_riesgo",
     motivos: motivos(fila, umbrales),
   }));
 

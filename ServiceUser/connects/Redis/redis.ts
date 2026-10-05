@@ -30,7 +30,7 @@ export function getRedis(): any {
     }
   }
 
-  // Ensure connection if not connected
+  // redis -> reconectar si caido
   if (redisClient && redisClient.status === "wait" && !isConnecting) {
     isConnecting = true;
     redisClient.connect().catch((err: Error) => {

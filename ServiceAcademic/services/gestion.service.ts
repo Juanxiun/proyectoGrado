@@ -605,9 +605,7 @@ export async function generarEstructura(
   if (!Number.isInteger(capacidadMaxima) || capacidadMaxima < 1 || capacidadMaxima > 1000) {
     throw new HttpError(400, "capacidadMaxima debe ser un entero entre 1 y 1000");
   }
-  // Grados que ya tienen materia asignada. Los cursos de un grado sin materias
-  // se crean igual como curso base, pero NO se cargan a la gestión: sin
-  // materia no hay nada que cursar ni que planificar.
+  // logica -> excluir grados sin materias
   const gradosConMateria = new Set<string>();
   for (const level of normalizados) {
     for (const grade of level.grados) {
@@ -660,14 +658,12 @@ export async function generarEstructura(
                RETURNING id`,
               [cursoId, periodoId, capacidadMaxima, turno.id],
             );
-            // El offering queda listo; la matrícula se habilita al activar la gestión.
+            // logica -> matricula habilita al activar
           }
         }
       }
 
-      // Si la interfaz no manda la malla, se arma con las materias que el grado
-      // ya tiene asignadas. Así queda alineada con lo que realmente se cursa,
-      // sin un paso manual extra.
+      // logica -> malla desde materias grado
       const mallas = input.mallasCurriculares?.length
         ? input.mallasCurriculares
         : (await construirMallasDesdeGrados(normalizados));
@@ -777,9 +773,7 @@ export async function generarEstructura(
   const estado = await obtenerEstadoGestion(periodoId);
 
   if (cursosSinMaterias.length > 0) {
-    // No es un error: el curso base queda creado pero fuera de esta gestión
-    // hasta que se le asignen materias. Se devuelve la lista para que la
-    // interfaz pueda explicar cuál es el motivo.
+    // aviso -> cursos sin materias omitidos
     console.warn(
       `[generarEstructura] ${periodoId}: ${cursosSinMaterias.length} curso(s) sin materias, omitidos: ${
         cursosSinMaterias.join(", ")
@@ -794,11 +788,7 @@ export async function generarEstructura(
   return estado;
 }
 
-/**
- * Arma la malla curricular de la gestión a partir de las materias que cada
- * grado tiene asignadas. Un grado queda fuera si no tiene ninguna, que es
- * justo el caso que la interfaz marca con advertencia.
- */
+// funcion -> armar malla desde grados
 async function construirMallasDesdeGrados(
   normalizados: Array<{ nivel: NivelEducativo; grados: string[] }>,
 ): Promise<MallaCurricularInput[]> {
@@ -1344,8 +1334,7 @@ export async function activarGestion(id: string): Promise<EstadoGestion> {
         `UPDATE periodos_academicos SET activo = true, estado = 'activo', activado_at = NOW() WHERE id = $1`,
         [id],
       );
-      // Los offerings se generan durante la configuración; no se reabren
-      // automáticamente los que fueron cerrados o cancelados explícitamente.
+      // logica -> no reabrir offerings cerrados
     });
   } catch (err) {
     throw mapDbError(err, "Error al activar la gestión académica");
@@ -1580,7 +1569,7 @@ export async function guardarHorariosManual(
   const cpId = idValue(input.cursoPeriodoId, "cursoPeriodoId");
   const slots = input.slots ?? [];
 
-  // 1. Validar formato y restricciones de bloques
+  // paso -> validar bloques horario
   for (const slot of slots) {
     if (!slot.diaSemana || slot.diaSemana < 1 || slot.diaSemana > 5) {
       throw new HttpError(400, "diaSemana debe estar entre 1 y 5");
@@ -1590,10 +1579,10 @@ export async function guardarHorariosManual(
     if (!hInicio || !hFin || hFin <= hInicio) {
       throw new HttpError(400, "Rango de horas inválido en bloque de horario");
     }
-    // El recreo se valida contra el turno del curso dentro de la transacción.
+    // logica -> recreo valido contra turno
   }
 
-  // 2. Validar solapamientos internos dentro de los bloques enviados
+  // paso -> validar solapamientos bloques
   for (let i = 0; i < slots.length; i++) {
     for (let j = i + 1; j < slots.length; j++) {
       const a = slots[i];
@@ -1676,9 +1665,7 @@ export async function guardarHorariosManual(
         throw new HttpError(409, "No hay aulas disponibles sin conflicto para el bloque seleccionado");
       };
 
-      // 3. Resolver docentes y validar choque con otros cursos del periodo.
-      //    El frontend envia usuario_id, pero se acepta también el id interno
-      //    para mantener compatibilidad con clientes anteriores.
+      // paso -> resolver docentes validar choque
       const resolvedTeacherIds = new Map<string, string | null>();
       const teacherByMateria = new Map<string, string>();
       const resolveTeacherId = async (raw: string): Promise<string | null> => {
@@ -1775,9 +1762,7 @@ export async function guardarHorariosManual(
         await resolverAula(slot, slotIndex);
       }
 
-      // 4. Reemplazar el horario completo del curso. Las asignaciones
-      // antiguas se cancelan para que no queden dos docentes activos para la
-      // misma materia cuando el docente cambiado.
+      // paso -> reemplazar horario curso
       await tx.queryObject(
         `UPDATE asignaciones_docentes
          SET estado = 'cancelado', fecha_finalizacion = NOW()
@@ -1786,7 +1771,7 @@ export async function guardarHorariosManual(
       );
       await tx.queryObject(`DELETE FROM horarios WHERE curso_periodo_id = $1`, [cpId]);
 
-      // 5. Insertar nuevos horarios
+      // paso -> insertar nuevos horarios
       for (const [slotIndex, slot] of slots.entries()) {
         const matId = idValue(slot.materiaId, "materiaId");
         let maestroDbId: string | null = null;
@@ -1796,8 +1781,7 @@ export async function guardarHorariosManual(
           const mIdRaw = String(slot.maestroId).trim();
           maestroDbId = await resolveTeacherId(mIdRaw);
           if (maestroDbId) {
-            // Upsert asignacion docente: la combinación materia-curso se
-            // asigna desde Construcción de horarios, no al crear la ficha.
+            // logica -> upsert asignacion docente
             const asigRes = await tx.queryObject<{ id: bigint }>(
               `INSERT INTO asignaciones_docentes (maestro_id, materia_id, curso_periodo_id, estado)
                VALUES ($1, $2, $3, 'activo')

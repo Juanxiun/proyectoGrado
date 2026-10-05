@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Alert, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { notificacionesApi } from '../../api/notificaciones.api';
@@ -6,7 +6,7 @@ import { connectUsersWebSocket } from '../../api/users.websocket';
 import { wsClient } from '../../api/websocket.client';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationsModal } from '../../features/usuarios/components/NotificationsModal';
-import { BentoCard } from '../../shared/ui';
+import { BentoCard, UserAvatar } from '../../shared/ui';
 
 interface AppHeaderProps {
   title: string;
@@ -90,13 +90,12 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
           onPress={() => setUserMenuOpen(true)}
           className="flex-row items-center gap-2.5 pl-2 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100"
         >
-          {userPhoto ? (
-            <Image source={{ uri: userPhoto }} className="w-8 h-8 rounded-full bg-maroon" />
-          ) : (
-            <View className="w-8 h-8 rounded-full bg-maroon items-center justify-center">
-              <Text className="text-white font-bold text-xs">{userName.charAt(0)}</Text>
-            </View>
-          )}
+          <UserAvatar
+            nombre={user?.nombre}
+            apellidoPaterno={user?.apellidoPaterno}
+            fotoUrl={userPhoto}
+            className="w-8 h-8 rounded-full bg-maroon"
+          />
           <View className="hidden md:flex">
             <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>{userName}</Text>
             <Text className="text-[10px] text-gray-500 uppercase font-medium">{user?.rol ?? 'Usuario'}</Text>
@@ -131,9 +130,13 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
             onStartShouldSetResponder={() => true}
           >
             <View className="flex-row items-center gap-3 pb-3 border-b border-gray-100">
-              <View className="w-12 h-12 rounded-full bg-maroon items-center justify-center">
-                <Text className="text-white font-bold text-lg">{userName.charAt(0)}</Text>
-              </View>
+              <UserAvatar
+                nombre={user?.nombre}
+                apellidoPaterno={user?.apellidoPaterno}
+                fotoUrl={userPhoto}
+                className="w-12 h-12 rounded-full bg-maroon"
+                textoClassName="text-white font-bold text-lg"
+              />
               <View className="flex-1">
                 <Text className="text-sm font-bold text-gray-900" numberOfLines={1}>{userName}</Text>
                 <Text className="text-xs text-gray-500" numberOfLines={1}>{userEmail}</Text>

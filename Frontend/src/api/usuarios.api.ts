@@ -9,9 +9,34 @@ import type {
   UsuariosQueryParams,
 } from '../types';
 
+/**
+ * Trae TODOS los usuarios, no sólo la primera página.
+ *
+ * El backend topa `limit` en 100 por pedido (`Math.min(100, ...)` en
+ * ServiceUser/Controller/usuarios/views.ts) sin avisar, así que pedir
+ * `limit: 300` devuelve 100 y la pantalla llega a mostrar un tercio del
+ * alumnado. Esto recorre las páginas hasta cubrirlas todas.
+ */
+const listAllUsuarios = async (params: UsuariosQueryParams = {}): Promise<Usuario[]> => {
+  const porPagina = 100;
+  const primera = await usuariosApi.list({ ...params, page: 1, limit: porPagina });
+  const totalPaginas = Math.max(1, Number(primera.totalPages ?? 1));
+  if (totalPaginas <= 1) return primera.data ?? [];
+
+  const resto = await Promise.all(
+    Array.from({ length: totalPaginas - 1 }, (_, i) =>
+      usuariosApi.list({ ...params, page: i + 2, limit: porPagina }),
+    ),
+  );
+  return [...(primera.data ?? []), ...resto.flatMap((p) => p.data ?? [])];
+};
+
 export const usuariosApi = {
   list: (params: UsuariosQueryParams = {}) =>
     apiRequest<UsuariosListResponse>(`/api/usuarios${buildQuery(params as Record<string, string | number | undefined>)}`),
+
+  /** Igual que `list`, pero devuelve todas las páginas aplanadas. */
+  listAll: listAllUsuarios,
 
   getById: (id: string) => apiRequest<Usuario>(`/api/usuarios/${id}`),
 
@@ -53,10 +78,34 @@ function isLocalFileUri(uri?: string | null): uri is string {
   );
 }
 
-function getNameAndType(uri: string, fallback: string, defaultType: string): { name: string; type: string } {
-  const name = uri.startsWith('data:') ? fallback : uri.split('/').pop()?.split('?')[0] || fallback;
+function getNameAndType(
+  uri: string,
+  fallback: string,
+  defaultType: string,
+  preferFallback = false,
+): { name: string; type: string } {
+  let uriName = uri.startsWith('data:') ? '' : uri.split('/').pop()?.split('?')[0] || '';
+  try { uriName = decodeURIComponent(uriName); } catch { /* conservar el nombre sin decodificar */ }
+  const name = (preferFallback && fallback ? fallback : uriName) || fallback;
   const ext = name.split('.').pop()?.toLowerCase();
-  const type = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : defaultType;
+  const types: Record<string, string> = {
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    xls: 'application/vnd.ms-excel',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    png: 'image/png',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    heic: 'image/heic',
+    heif: 'image/heif',
+    avif: 'image/avif',
+    bmp: 'image/bmp',
+    tif: 'image/tiff',
+    tiff: 'image/tiff',
+  };
+  const type = (ext && types[ext]) || defaultType;
   return { name, type };
 }
 
@@ -136,7 +185,7 @@ async function sendMultipart<T = { message: string; id: string; fotoUrl: string 
 
   for (const [index, doc] of (payload.documentos ?? []).entries()) {
     if (isLocalFileUri(doc.fileUri)) {
-      const { name, type } = getNameAndType(doc.fileUri, doc.fileName ?? 'documento.pdf', 'application/pdf');
+      const { name, type } = getNameAndType(doc.fileUri, doc.fileName ?? 'documento.pdf', 'application/pdf', true);
       const part = await buildFilePart(doc.fileUri, name, type);
       if (Platform.OS === 'web') {
         form.append(`doc_file_${index}`, part as unknown as Blob, name);

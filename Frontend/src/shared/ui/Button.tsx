@@ -1,3 +1,4 @@
+// boton -> crear acciones institucionales
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';

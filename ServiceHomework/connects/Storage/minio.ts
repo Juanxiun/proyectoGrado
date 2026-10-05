@@ -3,6 +3,7 @@ import { Client } from "minio";
 import { Buffer } from "node:buffer";
 import { minioConfig as cfg } from "../../config/minio.config.ts";
 import { HttpError } from "../../utils/errors.ts";
+import { scanUpload } from "../../utils/uploadSecurity.ts";
 
 const endpointUrl = new URL(cfg.MINIO_ENDPOINT);
 const useSSL = endpointUrl.protocol === "https:";
@@ -19,7 +20,6 @@ export const minioClient = new Client({
 });
 
 const BUCKET = cfg.MINIO_BUCKET;
-const PRESIGN_EXPIRY_SECONDS = 7 * 24 * 60 * 60; // 7 días
 let bucketReady: Promise<void> | null = null;
 
 function publicBase(): string {
@@ -56,14 +56,14 @@ export async function ensureBucket(): Promise<void> {
 
 export function validateMaterialFile(fileName: string, sizeBytes: number): void {
   if (sizeBytes > cfg.MAX_FILE_SIZE_BYTES) {
-    throw new HttpError(400, `El archivo supera el tamaño máximo permitido de 150 MB (${(sizeBytes / (1024 * 1024)).toFixed(2)} MB)`);
+    throw new HttpError(400, `El archivo supera el tamaño máximo permitido de 25 MB (${(sizeBytes / (1024 * 1024)).toFixed(2)} MB)`);
   }
 
   const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
   if (!cfg.ALLOWED_EXTENSIONS.includes(ext)) {
     throw new HttpError(
       400,
-      `Formato no permitido (.${ext}). Solo se admiten archivos PDF, Word (.docx, .doc) y Excel (.xlsx, .xls)`,
+      `Formato no permitido (.${ext}). Solo se admiten PDF, DOCX, XLSX y XLS`,
     );
   }
 }
@@ -75,8 +75,6 @@ export function inferContentType(fileName: string): string {
       return "application/pdf";
     case "docx":
       return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    case "doc":
-      return "application/msword";
     case "xlsx":
       return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     case "xls":
@@ -86,9 +84,7 @@ export function inferContentType(fileName: string): string {
   }
 }
 
-/**
- * Sube un archivo validado a MinIO.
- */
+// minio -> subir archivo validado
 export async function uploadMaterialFile(
   key: string,
   data: Uint8Array,
@@ -96,6 +92,12 @@ export async function uploadMaterialFile(
   contentType?: string,
 ): Promise<{ url: string; key: string; sizeBytes: number; mime: string }> {
   validateMaterialFile(fileName, data.byteLength);
+  const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const isPdf = ext === "pdf" && new TextDecoder().decode(data.subarray(0, 5)) === "%PDF-";
+  const isOfficeZip = (ext === "docx" || ext === "xlsx") && data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04;
+  const isXls = ext === "xls" && [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1].every((byte, i) => data[i] === byte);
+  if (!isPdf && !isOfficeZip && !isXls) throw new HttpError(400, "El contenido no coincide con un PDF, DOCX, XLSX o XLS válido");
+  await scanUpload(data);
   await ensureBucket();
 
   const buf = Buffer.from(data);
@@ -135,7 +137,7 @@ export function getKeyFromUrl(url: string): string | null {
       return decodeURIComponent(parsed.pathname.slice(idx + marker.length));
     }
   } catch {
-    /* URL relativa */
+    // url -> relativa invalida
   }
   const prefixes = [
     `${publicBase()}/${BUCKET}/`,
@@ -149,18 +151,14 @@ export function getKeyFromUrl(url: string): string | null {
   return null;
 }
 
+// presign -> no cambiar host firmado
 export async function getPresignedUrl(
   key: string,
-  expirySeconds = PRESIGN_EXPIRY_SECONDS,
+  _expirySeconds?: number,
 ): Promise<string> {
   await ensureBucket();
-  try {
-    return await minioClient.presignedGetObject(BUCKET, key, expirySeconds, {
-      "response-content-disposition": "inline",
-    });
-  } catch (_err) {
-    return await minioClient.presignedGetObject(BUCKET, key, expirySeconds);
-  }
+  const publica = buildPublicUrl(key);
+  return publica;
 }
 
 export async function resolveFileUrl(
