@@ -12,4 +12,5 @@ export { TextField } from './TextField';
 export { Alert } from './Alert';
 export { AuthLayout } from './AuthLayout';
 export { CodeInput } from './CodeInput';
+export { UserAvatar } from './UserAvatar';
 export { COLORS, GRAY, SPACING, RADIUS, TONE, CONTROL_HEIGHT, THEME } from '../theme';

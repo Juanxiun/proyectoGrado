@@ -4,14 +4,15 @@ import type { EstadoUsuario } from '../../types';
 interface StatusBadgeProps {
   status?: EstadoUsuario;
   label?: string;
-  variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral';
+  variant?: 'success' | 'warning' | 'danger' | 'info' | 'neutral' | 'brand';
 }
 
 const VARIANTS = {
-  success: 'bg-green-100 text-green-700 border-green-200',
-  warning: 'bg-amber-100 text-amber-700 border-amber-200',
-  danger: 'bg-red-100 text-red-700 border-red-200',
-  info: 'bg-blue-100 text-blue-700 border-blue-200',
+  brand: 'bg-maroon/10 text-maroon border-maroon/20',
+  success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  warning: 'bg-amber-50 text-amber-800 border-amber-200',
+  danger: 'bg-rose-50 text-rose-700 border-rose-200',
+  info: 'bg-gray-100 text-gray-700 border-gray-200',
   neutral: 'bg-gray-100 text-gray-600 border-gray-200',
 };
 

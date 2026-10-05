@@ -105,6 +105,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         title={panelTitle}
         userName={userName}
         userEmail={userEmail}
+        userPhoto={user.fotoUrl}
         navItems={navItems}
         activeRoute={activeRoute}
         onNavigate={setActiveRoute}

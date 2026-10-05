@@ -21,6 +21,12 @@ export interface UmbralesRiesgo {
   asistenciaRiesgo: number;
   notaRiesgoAlto: number;
   asistenciaRiesgoAlto: number;
+  /**
+   * Banda de observación. Antes el tablero usaba "cualquier inasistencia"
+   * (`asistencia < 100`), que metía en observación a casi todo el alumnado y
+   * hacía que el número no coincidiera con el de ServiceAcademic.
+   */
+  asistenciaObservacion: number;
 }
 
 let umbralesCache: { valor: UmbralesRiesgo; expira: number } | null = null;
@@ -52,6 +58,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
       umbralAsistenciaRiesgo?: number;
       umbralNotaRiesgoAlto?: number;
       umbralAsistenciaRiesgoAlto?: number;
+      umbralAsistenciaObservacion?: number;
     };
 
     const valor: UmbralesRiesgo = {
@@ -59,6 +66,7 @@ export async function obtenerUmbrales(): Promise<UmbralesRiesgo> {
       asistenciaRiesgo: cuerpo.umbralAsistenciaRiesgo ?? porDefecto.asistenciaRiesgo,
       notaRiesgoAlto: cuerpo.umbralNotaRiesgoAlto ?? porDefecto.notaRiesgoAlto,
       asistenciaRiesgoAlto: cuerpo.umbralAsistenciaRiesgoAlto ?? porDefecto.asistenciaRiesgoAlto,
+      asistenciaObservacion: cuerpo.umbralAsistenciaObservacion ?? porDefecto.asistenciaObservacion,
     };
 
     umbralesCache = { valor, expira: Date.now() + 5 * 60 * 1000 };
@@ -87,11 +95,18 @@ export async function resumenRiesgo(
     umbrales.asistenciaRiesgo,
     umbrales.notaRiesgoAlto,
     umbrales.asistenciaRiesgoAlto,
+    umbrales.asistenciaObservacion,
     ...filtro.params,
   ];
 
   // Un estudiante aparece una vez: se le atribuye su peor nota y su peor
   // asistencia entre todas las materias del período.
+  //
+  // Sin LIMIT: los contadores (total, riesgo, observacion, sinRiesgo) se sacan
+  // de estas mismas filas, así que recortar acá hacía que la suma no cerrara
+  // con el matrícula. La lista visible ya se acota en JS con `.slice(0, 12)`.
+  // El conjunto es acotado de todos modos: `notas` exige al menos una
+  // calificación publicada del período, así que son los estudiantes con nota.
   const consulta = `
     WITH notas AS (
       SELECT c.estudiante_id, ad.curso_periodo_id, c.nota
@@ -132,7 +147,13 @@ export async function resumenRiesgo(
         CASE WHEN f.total > 0
           THEN ROUND(((f.total - f.ausentes)::numeric / f.total) * 100, 1)
           ELSE NULL END AS asistencia,
-        c.grado, c.paralelo, c.nivel
+        c.grado, c.paralelo,
+        -- Se llama nivel_curso y no nivel porque el SELECT de afuera usa
+        -- nivel para la banda de riesgo. Con un SELECT * las dos columnas
+        -- acaban llamandose igual y @db/postgres rechaza el resultado con
+        -- "Field names nivel are duplicated". Ojo: este comentario va dentro
+        -- de un template literal, asi que no puede llevar acentos graves.
+        c.nivel AS nivel_curso
       FROM agregado ag
       JOIN estudiantes e ON e.id = ag.estudiante_id
       JOIN usuarios u ON u.id = e.usuario_id
@@ -147,13 +168,15 @@ export async function resumenRiesgo(
         ORDER BY c2.grado LIMIT 1
       ) c ON true
     )
-    SELECT *,
+    SELECT
+      estudiante_id, nombre, apellido_paterno, promedio, peor_nota,
+      asistencia, grado, paralelo, nivel_curso,
       CASE
         WHEN (promedio IS NOT NULL AND promedio < $6)
           OR (asistencia IS NOT NULL AND asistencia < $7) THEN 'riesgo_alto'
         WHEN (promedio IS NOT NULL AND promedio < $4)
           OR (asistencia IS NOT NULL AND asistencia < $5) THEN 'riesgo'
-        WHEN asistencia IS NOT NULL AND asistencia < 100 THEN 'observacion'
+        WHEN asistencia IS NOT NULL AND asistencia < $8 THEN 'observacion'
         ELSE 'sin_riesgo'
       END AS nivel,
       CASE
@@ -161,12 +184,11 @@ export async function resumenRiesgo(
           OR (asistencia IS NOT NULL AND asistencia < $7) THEN 0
         WHEN (promedio IS NOT NULL AND promedio < $4)
           OR (asistencia IS NOT NULL AND asistencia < $5) THEN 1
-        WHEN asistencia IS NOT NULL AND asistencia < 100 THEN 2
+        WHEN asistencia IS NOT NULL AND asistencia < $8 THEN 2
         ELSE 3
       END AS severidad
     FROM combinado
-    ORDER BY severidad, promedio ASC NULLS FIRST
-    LIMIT 200`;
+    ORDER BY severidad, promedio ASC NULLS FIRST`;
 
   const res = await query<{
     estudiante_id: bigint;
@@ -176,6 +198,9 @@ export async function resumenRiesgo(
     asistencia: string | null;
     grado: string | null;
     paralelo: string | null;
+    /** Nivel del curso: primaria / secundaria. */
+    nivel_curso: string | null;
+    /** Banda de riesgo: riesgo_alto / riesgo / observacion / sin_riesgo. */
     nivel: string;
   }>(consulta, args);
 
@@ -184,11 +209,11 @@ export async function resumenRiesgo(
     nombre: fila.nombre,
     apellidoPaterno: fila.apellido_paterno,
     cursoParalelo: fila.grado
-      ? `${fila.grado} "${fila.paralelo}" ${String(fila.nivel).toUpperCase()}`
+      ? `${fila.grado} "${fila.paralelo}" ${String(fila.nivel_curso).toUpperCase()}`
       : '—',
     promedio: fila.promedio !== null ? Math.round(Number(fila.promedio) * 100) / 100 : null,
     asistencia: fila.asistencia !== null ? Number(fila.asistencia) : null,
-    nivelRiesgo: fila.nivel as "observacion" | "riesgo" | "riesgo_alto",
+    nivelRiesgo: fila.nivel as "observacion" | "riesgo" | "riesgo_alto" | "sin_riesgo",
     motivos: motivos(fila, umbrales),
   }));
 

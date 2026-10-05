@@ -28,7 +28,38 @@ export function useUsuariosList() {
     }
   }, []);
 
-  return { data, loading, error, fetchList };
+  /**
+   * Igual que `fetchList` pero recorre todas las páginas.
+   *
+   * El backend topa `limit` en 100 por pedido sin avisar, así que un solo
+   * pedido con `limit: 300` devuelve 100. Las pantallas que filtran o cuentan
+   * sobre el listado completo (por ejemplo el control estudiantil por nivel)
+   * necesitan sí o sí todas las filas.
+   */
+  const fetchAll = useCallback(async (params: UsuariosQueryParams = {}) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const todos = await usuariosApi.listAll(params);
+      const resultado: UsuariosListResponse = {
+        data: todos,
+        total: todos.length,
+        page: 1,
+        limit: todos.length,
+        totalPages: 1,
+      };
+      setData(resultado);
+      return resultado;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al cargar usuarios';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { data, loading, error, fetchList, fetchAll };
 }
 
 export function useUsuarioDetail() {

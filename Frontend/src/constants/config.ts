@@ -4,6 +4,22 @@ export const API_BASE_URL = __DEV__
 
 export const APP_VERSION = 'v1.0.0';
 
+// ── MinIO (archivos) ──────────────────────────────────────────────────────────
+// La API devuelve `fotoUrl`, `archivoUrl` y `caratulaUrl` ya como URL absoluta
+// (ver `buildPublicUrl` en ServiceUser/connects/Storage/minio.ts), así que acá
+// sólo hace falta la URL de la foto por defecto, que el usuario no carga nunca.
+//
+// Misma advertencia que API_BASE_URL: en un dispositivo físico o emulador hay que
+// poner la IP de la LAN, no `localhost`.
+export const MEDIA_BASE_URL = 'http://localhost:9000';
+export const MEDIA_BUCKET = 'usuarios';
+
+/**
+ * Foto de perfil por defecto de cualquier usuario sin `fotoUrl`.
+ * Vive en MinIO como `usuarios/default/profil.jpg`.
+ */
+export const DEFAULT_USER_PHOTO = `${MEDIA_BASE_URL}/${MEDIA_BUCKET}/default/profil.jpg`;
+
 export const ROLES = {
   DIRECTOR: 'director',
   ADMIN: 'admin',

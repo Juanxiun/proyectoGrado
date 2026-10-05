@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUsuarioDetail, useUsuarioUpdate } from '../../hooks/useUsuarios';
 import { usuariosApi } from '../../api/usuarios.api';
 import { BentoCard } from '../components/BentoCard';
-import { TextField } from '../../shared/ui';
+import { TextField, UserAvatar } from '../../shared/ui';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../shared/validation/credentials';
 import { BirthDatePicker } from '../../features/usuarios/components/BirthDatePicker';
 import { DocumentInput } from '../../features/usuarios/components/DocumentInput';
@@ -247,19 +247,14 @@ export function ProfileScreen() {
           <BentoCard className="p-5 bg-maroon">
           <View className="items-center">
             <TouchableOpacity onPress={pickImage} disabled={!editMode} className="relative w-full">
-              {photo ? (
-                <Image
-                  source={{ uri: photo }}
-                  className="w-full h-56 rounded-2xl bg-white/10 border border-white/20"
-                  resizeMode="contain"
-                />
-              ) : (
-                <View className="w-full h-56 rounded-2xl bg-white/15 items-center justify-center">
-                  <Text className="text-white text-4xl font-bold">
-                    {form.nombre?.charAt(0) || user?.nombre?.charAt(0) || 'U'}
-                  </Text>
-                </View>
-              )}
+              <UserAvatar
+                nombre={form.nombre || user?.nombre}
+                apellidoPaterno={form.apellidoPaterno || user?.apellidoPaterno}
+                fotoUrl={photo}
+                className="w-full h-56 rounded-2xl bg-white/15"
+                textoClassName="text-white text-4xl font-bold"
+                bordered
+              />
               {editMode && (
                 <View className="absolute bottom-0 right-0 w-9 h-9 bg-white rounded-full items-center justify-center">
                   <Ionicons name="camera" size={17} color="#7A1F3D" />

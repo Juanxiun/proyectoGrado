@@ -9,9 +9,34 @@ import type {
   UsuariosQueryParams,
 } from '../types';
 
+/**
+ * Trae TODOS los usuarios, no sólo la primera página.
+ *
+ * El backend topa `limit` en 100 por pedido (`Math.min(100, ...)` en
+ * ServiceUser/Controller/usuarios/views.ts) sin avisar, así que pedir
+ * `limit: 300` devuelve 100 y la pantalla llega a mostrar un tercio del
+ * alumnado. Esto recorre las páginas hasta cubrirlas todas.
+ */
+const listAllUsuarios = async (params: UsuariosQueryParams = {}): Promise<Usuario[]> => {
+  const porPagina = 100;
+  const primera = await usuariosApi.list({ ...params, page: 1, limit: porPagina });
+  const totalPaginas = Math.max(1, Number(primera.totalPages ?? 1));
+  if (totalPaginas <= 1) return primera.data ?? [];
+
+  const resto = await Promise.all(
+    Array.from({ length: totalPaginas - 1 }, (_, i) =>
+      usuariosApi.list({ ...params, page: i + 2, limit: porPagina }),
+    ),
+  );
+  return [...(primera.data ?? []), ...resto.flatMap((p) => p.data ?? [])];
+};
+
 export const usuariosApi = {
   list: (params: UsuariosQueryParams = {}) =>
     apiRequest<UsuariosListResponse>(`/api/usuarios${buildQuery(params as Record<string, string | number | undefined>)}`),
+
+  /** Igual que `list`, pero devuelve todas las páginas aplanadas. */
+  listAll: listAllUsuarios,
 
   getById: (id: string) => apiRequest<Usuario>(`/api/usuarios/${id}`),
 

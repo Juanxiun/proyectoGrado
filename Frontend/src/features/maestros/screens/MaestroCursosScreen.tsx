@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -14,6 +14,7 @@ import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { useResponsive } from '../../../utils/responsive';
+import { UserAvatar } from '../../../shared/ui';
 
 interface CursoGroup {
   cursoPeriodoId: string;
@@ -361,11 +362,12 @@ export function MaestroCursosScreen() {
                       className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex-row items-center justify-between"
                     >
                       <View className="flex-row items-center gap-3">
-                        <View className="w-9 h-9 rounded-full bg-maroon/10 items-center justify-center">
-                          <Text className="text-xs font-bold text-maroon">
-                            {st.apellidoPaterno?.charAt(0) || st.nombre?.charAt(0) || 'E'}
-                          </Text>
-                        </View>
+                        <UserAvatar
+                          nombre={st.nombre}
+                          apellidoPaterno={st.apellidoPaterno}
+                          className="w-9 h-9 rounded-full bg-maroon/10"
+                          textoClassName="text-xs font-bold text-maroon"
+                        />
                         <View>
                           <Text className="text-sm font-bold text-gray-800">
                             {st.apellidoPaterno} {st.apellidoMaterno} {st.nombre}

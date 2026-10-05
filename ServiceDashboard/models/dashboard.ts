@@ -138,6 +138,7 @@ export interface ResumenRiesgo {
     asistenciaRiesgo: number;
     notaRiesgoAlto: number;
     asistenciaRiesgoAlto: number;
+    asistenciaObservacion: number;
   };
   top: Array<{
     estudianteId: string;
@@ -146,7 +147,7 @@ export interface ResumenRiesgo {
     cursoParalelo: string;
     promedio: number | null;
     asistencia: number | null;
-    nivelRiesgo: "observacion" | "riesgo" | "riesgo_alto";
+    nivelRiesgo: "observacion" | "riesgo" | "riesgo_alto" | "sin_riesgo";
     motivos: string[];
   }>;
 }

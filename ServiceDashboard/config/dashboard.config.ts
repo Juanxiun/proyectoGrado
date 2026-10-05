@@ -25,6 +25,12 @@ export const dashboardConfig = {
     asistenciaRiesgo: 75,
     notaRiesgoAlto: 50,
     asistenciaRiesgoAlto: 60,
+    /**
+     * Banda de observación. Tiene que quedar por encima de
+     * `asistenciaRiesgo`: si fuera menor, ese tramo nunca se mostraría.
+     * ServiceAcademic lo publica como `umbralAsistenciaObservacion`.
+     */
+    asistenciaObservacion: 85,
   },
 
   academicServiceUrl: Deno.env.get("ACADEMIC_SERVICE_URL") ?? "http://localhost:8881",

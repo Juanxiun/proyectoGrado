@@ -202,6 +202,31 @@ export type NivelEducativo = 'inicial' | 'primaria' | 'secundaria' | 'bachillera
 const gradoQuery = (nivel: NivelEducativo, grado: string, extra: Record<string, string> = {}) =>
   buildQuery({ nivel, grado, ...extra });
 
+/**
+ * Trae todas las páginas de un listado y las devuelve aplanadas.
+ *
+ * Los tres servicios topan `limit` en 100 por pedido (`Math.min(100, ...)` en
+ * `utils/http.ts` de cada uno) sin avisar, así que un `limit: 200` se queda
+ * en 100 y cualquier conteo o filtro sobre la lista sale mal. Esto recorre las
+ * páginas hasta cubrirlas todas.
+ */
+async function listAll(
+  resource: ServiceResource,
+  params: Record<string, string | number | undefined> = {},
+): Promise<Record<string, unknown>[]> {
+  const porPagina = 100;
+  const primera = await academicServicesApi.list(resource, { ...params, page: 1, limit: porPagina });
+  const totalPaginas = Math.max(1, Number((primera as { totalPages?: number }).totalPages ?? 1));
+  if (totalPaginas <= 1) return primera.data ?? [];
+
+  const resto = await Promise.all(
+    Array.from({ length: totalPaginas - 1 }, (_, i) =>
+      academicServicesApi.list(resource, { ...params, page: i + 2, limit: porPagina }),
+    ),
+  );
+  return [...(primera.data ?? []), ...resto.flatMap((p) => p.data ?? [])];
+}
+
 export const academicServicesApi = {
   list: (
     resource: ServiceResource,
@@ -210,6 +235,9 @@ export const academicServicesApi = {
     apiRequest<Page>(
       `${paths[resource]}${buildQuery({ page: 1, limit: 100, ...params })}`,
     ),
+
+  /** Igual que `list`, pero recorre todas las páginas y las aplana. */
+  listAll,
   create: (resource: ServiceResource, payload: Record<string, unknown>) =>
     apiRequest<Record<string, unknown>>(paths[resource], {
       method: "POST",

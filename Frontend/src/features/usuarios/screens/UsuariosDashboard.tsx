@@ -1,7 +1,7 @@
-import { Text, TouchableOpacity, View } from 'react-native';
+﻿import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
-import { BentoCard, HeroBanner, KpiCard, StatusBadge } from '../../../shared/ui';
+import { BentoCard, HeroBanner, KpiCard, StatusBadge, UserAvatar } from '../../../shared/ui';
 import { getFullName } from '../../../utils/validation';
 import { useResponsive } from '../../../utils/responsive';
 
@@ -98,9 +98,13 @@ export function UsuariosDashboard() {
         {/* Ficha del Estudiante */}
         <BentoCard className={`p-5 ${isMobile ? '' : 'flex-1'}`}>
           <View className="items-center text-center pb-4 border-b border-gray-100">
-            <View className="w-16 h-16 rounded-2xl bg-maroon items-center justify-center mb-3">
-              <Text className="text-white text-2xl font-bold">{user?.nombre?.charAt(0) ?? 'E'}</Text>
-            </View>
+            <UserAvatar
+              nombre={user?.nombre}
+              apellidoPaterno={user?.apellidoPaterno}
+              fotoUrl={(user as { fotoUrl?: string | null })?.fotoUrl}
+              className="w-16 h-16 rounded-2xl bg-maroon mb-3"
+              textoClassName="text-white text-2xl font-bold"
+            />
             <Text className="text-base font-bold text-gray-900">{fullName}</Text>
             <Text className="text-xs text-gray-400 mt-0.5">Estudiante Regular · ID {user?.id ?? '—'}</Text>
             <View className="mt-2">

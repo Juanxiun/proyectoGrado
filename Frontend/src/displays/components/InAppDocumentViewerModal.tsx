@@ -194,20 +194,20 @@ export function InAppDocumentViewerModal({
       <View className="flex-1 bg-black/70 items-center justify-center p-2 md:p-6">
         <View className="bg-white rounded-3xl w-full max-w-5xl h-[92vh] overflow-hidden shadow-2xl flex-col border border-gray-200">
           {/* Header Barra Superior */}
-          <View className="p-4 bg-gray-900 text-white flex-row items-center justify-between">
+          <View className="p-4 bg-maroon text-white flex-row items-center justify-between">
             <View className="flex-row items-center gap-3 flex-1 mr-3">
-              <View className="w-10 h-10 rounded-xl bg-gold/20 items-center justify-center">
+              <View className="w-10 h-10 rounded-xl bg-white/20 items-center justify-center">
                 <Ionicons
                   name={isImage ? 'image-outline' : isPdf ? 'document-text-outline' : 'folder-open-outline'}
                   size={22}
-                  color="#FFD700"
+                  color="#FFFFFF"
                 />
               </View>
               <View className="flex-1">
                 <Text className="text-white font-bold text-sm md:text-base truncate" numberOfLines={1}>
                   {title}
                 </Text>
-                <Text className="text-gray-400 text-xs truncate" numberOfLines={1}>
+                <Text className="text-white/80 text-xs truncate" numberOfLines={1}>
                   {resolvedName} {uploadedAt ? `• ${uploadedAt.slice(0, 10)}` : ''}
                 </Text>
               </View>
@@ -216,17 +216,17 @@ export function InAppDocumentViewerModal({
             {/* Acciones de Zoom & Descarga */}
             <View className="flex-row items-center gap-2">
               {isImage && (
-                <View className="flex-row items-center bg-gray-800 rounded-xl p-1 mr-1">
+                <View className="flex-row items-center bg-white/20 rounded-xl p-1 mr-1">
                   <TouchableOpacity
                     onPress={() => setZoomLevel((z) => Math.max(0.5, z - 0.25))}
-                    className="p-1.5 hover:bg-gray-700 rounded-lg"
+                    className="p-1.5 hover:bg-white/30 rounded-lg"
                   >
                     <Ionicons name="remove-outline" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
                   <Text className="text-white text-xs px-2 font-mono">{Math.round(zoomLevel * 100)}%</Text>
                   <TouchableOpacity
                     onPress={() => setZoomLevel((z) => Math.min(3, z + 0.25))}
-                    className="p-1.5 hover:bg-gray-700 rounded-lg"
+                    className="p-1.5 hover:bg-white/30 rounded-lg"
                   >
                     <Ionicons name="add-outline" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
@@ -236,7 +236,7 @@ export function InAppDocumentViewerModal({
               {url && (
                 <TouchableOpacity
                   onPress={handleOpenExternal}
-                  className="bg-gray-800 hover:bg-gray-700 px-3 py-2 rounded-xl flex-row items-center gap-1.5"
+                  className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded-xl flex-row items-center gap-1.5"
                 >
                   <Ionicons name="open-outline" size={16} color="#FFFFFF" />
                   <Text className="text-white text-xs font-semibold hidden md:flex">Pestaña Externa</Text>
@@ -246,16 +246,16 @@ export function InAppDocumentViewerModal({
               {url && (
                 <TouchableOpacity
                   onPress={handleDownload}
-                  className="bg-maroon hover:bg-maroon/90 px-3 py-2 rounded-xl flex-row items-center gap-1.5"
+                  className="bg-white hover:bg-white/90 px-3 py-2 rounded-xl flex-row items-center gap-1.5 shadow-sm"
                 >
-                  <Ionicons name="download-outline" size={16} color="#FFFFFF" />
-                  <Text className="text-white text-xs font-bold">Descargar</Text>
+                  <Ionicons name="download-outline" size={16} color="#801529" />
+                  <Text className="text-maroon text-xs font-bold">Descargar</Text>
                 </TouchableOpacity>
               )}
 
               <TouchableOpacity
                 onPress={onClose}
-                className="w-9 h-9 rounded-xl bg-gray-800 hover:bg-red-600/80 items-center justify-center ml-1"
+                className="w-9 h-9 rounded-xl bg-white/20 hover:bg-white/30 items-center justify-center ml-1"
               >
                 <Ionicons name="close" size={20} color="#FFFFFF" />
               </TouchableOpacity>

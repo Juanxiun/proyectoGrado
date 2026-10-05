@@ -1,5 +1,6 @@
 import { pool } from "./connect.ts";
 import { QueryObjectResult } from "@db/postgres";
+import { conReintento } from "./reintento.ts";
 
 /**
  * Única forma admitida de leer datos en este servicio. Deliberadamente no se
@@ -9,12 +10,14 @@ export async function query<T>(
   sql: string,
   params: unknown[] = [],
 ): Promise<QueryObjectResult<T>> {
-  const connection = await pool.connect();
-  try {
-    return await connection.queryObject<T>(sql, params);
-  } finally {
-    connection.release();
-  }
+  return conReintento(async () => {
+    const connection = await pool.connect();
+    try {
+      return await connection.queryObject<T>(sql, params);
+    } finally {
+      connection.release();
+    }
+  }, "query");
 }
 
 /**
@@ -27,12 +30,14 @@ export async function query<T>(
 export async function queryBatch<T extends Record<string, unknown>>(
   consultas: Array<[string, unknown[]]>,
 ): Promise<Array<QueryObjectResult<T>>> {
-  const connection = await pool.connect();
-  try {
-    return await Promise.all(
-      consultas.map(([sql, params]) => connection.queryObject<T>(sql, params)),
-    );
-  } finally {
-    connection.release();
-  }
+  return conReintento(async () => {
+    const connection = await pool.connect();
+    try {
+      return await Promise.all(
+        consultas.map(([sql, params]) => connection.queryObject<T>(sql, params)),
+      );
+    } finally {
+      connection.release();
+    }
+  }, "queryBatch");
 }
