@@ -20,14 +20,14 @@ export async function listarPlanosConDeuda(
   periodoId?: number,
   nivel?: string,
   pagination?: PaginationQuery
-): Promise<{ data: { plan: PlanPago; cuotasPendientes: CuotaPlanPago[] }[]; total: number }> {
+): Promise<{ data: { plan: PlanPago; cuotas_pendientes: number }[]; total: number }> {
   const planes = await listPlanosPagoQuery(viewerRole, periodoId, nivel);
-  const resultado: { plan: PlanPago; cuotasPendientes: CuotaPlanPago[] }[] = [];
+  const resultado: { plan: PlanPago; cuotas_pendientes: number }[] = [];
 
   for (const plan of planes) {
     const cuotas = await listCuotasPlanQuery(plan.id);
     const pendientes = cuotas.filter(c => c.estado === "pendiente");
-    resultado.push({ plan, cuotasPendientes: pendientes });
+    resultado.push({ plan, cuotas_pendientes: pendientes.length });
   }
 
   if (pagination) {

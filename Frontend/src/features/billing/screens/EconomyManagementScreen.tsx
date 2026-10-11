@@ -13,8 +13,7 @@ import {
   type CuotaPlanPago,
   type PagoRealizado,
 } from '../../../api/economia.api';
-import { BentoCard, Button, KpiCard, StatusBadge } from '../../../shared/ui';
-import { useAuth } from '../../../context/AuthContext';
+import { BentoCard, KpiCard, StatusBadge } from '../../../shared/ui';
 
 type FiltroDeuda = 'todos' | 'al_dia' | 'una_cuota' | 'deudores';
 type Tab = 'resumen' | 'estudiantes' | 'deudores';
@@ -33,9 +32,6 @@ const TABS = [
 ] as const;
 
 export function EconomyManagementScreen() {
-  const { user } = useAuth();
-  const isAdmin = user?.rol?.toLowerCase() === 'director' || user?.rol?.toLowerCase() === 'control' || user?.rol?.toLowerCase() === 'admin';
-
   const [kpis, setKpis] = useState<KpisEconomia | null>(null);
   const [estudiantes, setEstudiantes] = useState<EstudianteEconomico[]>([]);
   const [planes, setPlanes] = useState<PlanPago[]>([]);
@@ -43,10 +39,9 @@ export function EconomyManagementScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('resumen');
   const [filtroDeuda, setFiltroDeuda] = useState<FiltroDeuda>('todos');
-  const [selectedPlan, setSelectedPlan] = useState<PlanPago | null>(null);
   const [detalleEstudiante, setDetalleEstudiante] = useState<{
     estudiante: EstudianteEconomico;
-    plan: PlanPago;
+    plan: PlanPago | null;
     cuotas: CuotaPlanPago[];
     pagos: PagoRealizado[];
   } | null>(null);
@@ -119,9 +114,8 @@ export function EconomyManagementScreen() {
   const resumenTabContent = useMemo(() => {
     const activePlanes = planes.filter(p => p.estado === 'generado');
     const planCards = activePlanes.map((plan) => (
-      <TouchableOpacity
+      <View
         key={plan.id}
-        onPress={() => setSelectedPlan(plan)}
         className="bg-white border border-gray-200 rounded-xl p-4"
       >
         <View className="flex-row items-center justify-between">
@@ -144,7 +138,7 @@ export function EconomyManagementScreen() {
           </View>
           <Ionicons name="chevron-forward-outline" size={20} color="#9CA3AF" />
         </View>
-      </TouchableOpacity>
+      </View>
     ));
 
     return (
@@ -170,7 +164,6 @@ export function EconomyManagementScreen() {
         <BentoCard className="p-4">
           <View className="flex-row items-center justify-between mb-4">
             <Text className="text-lg font-bold text-gray-900">Planes de Pago Activos</Text>
-            {isAdmin && <Button label="Crear" size="sm" onPress={() => setSelectedPlan({} as PlanPago)} variant="secondary" icon="add-outline" />}
           </View>
           {activePlanes.length === 0 ? (
             <View className="items-center py-8">
@@ -183,7 +176,7 @@ export function EconomyManagementScreen() {
         </BentoCard>
       </View>
     );
-  }, [kpis, planes, isAdmin, formatearMonto]);
+  }, [kpis, planes, formatearMonto]);
 
   // Pre-compute estudiantes tab content
   const estudiantesTabContent = useMemo(() => {
@@ -424,22 +417,29 @@ export function EconomyManagementScreen() {
                   </View>
                 </BentoCard>
 
-                <BentoCard className="p-4">
-                  <View className="flex-row items-center justify-between mb-3">
-                    <Text className="text-lg font-bold text-gray-900">Plan de Pago</Text>
-                    <StatusBadge label={detalleEstudiante.plan.estado} variant={detalleEstudiante.plan.estado === 'generado' ? 'success' : 'neutral'} />
-                  </View>
-                  <View className="gap-2 text-sm text-gray-600">
-                    <View className="flex-row justify-between">
-                      <Text>{detalleEstudiante.plan.nombre}</Text>
-                      <Text className="font-semibold">{formatearMonto(detalleEstudiante.plan.monto_total)}</Text>
+                {detalleEstudiante.plan ? (
+                  <BentoCard className="p-4">
+                    <View className="flex-row items-center justify-between mb-3">
+                      <Text className="text-lg font-bold text-gray-900">Plan de Pago</Text>
+                      <StatusBadge label={detalleEstudiante.plan.estado} variant={detalleEstudiante.plan.estado === 'generado' ? 'success' : 'neutral'} />
                     </View>
-                    <View className="flex-row justify-between">
-                      <Text>{detalleEstudiante.plan.cantidad_cuotas} cuotas de {formatearMonto(detalleEstudiante.plan.monto_cuota)}</Text>
-                      <Text className="font-semibold">Vence dia {detalleEstudiante.plan.dia_vencimiento}</Text>
+                    <View className="gap-2 text-sm text-gray-600">
+                      <View className="flex-row justify-between">
+                        <Text>{detalleEstudiante.plan.nombre}</Text>
+                        <Text className="font-semibold">{formatearMonto(detalleEstudiante.plan.monto_total)}</Text>
+                      </View>
+                      <View className="flex-row justify-between">
+                        <Text>{detalleEstudiante.plan.cantidad_cuotas} cuotas de {formatearMonto(detalleEstudiante.plan.monto_cuota)}</Text>
+                        <Text className="font-semibold">Vence dia {detalleEstudiante.plan.dia_vencimiento}</Text>
+                      </View>
                     </View>
-                  </View>
-                </BentoCard>
+                  </BentoCard>
+                ) : (
+                  <BentoCard className="p-4">
+                    <Text className="font-semibold text-gray-800">Sin plan de pagos asignado</Text>
+                    <Text className="text-sm text-gray-500 mt-1">El plan se configura al crear la gestión académica.</Text>
+                  </BentoCard>
+                )}
 
                 <BentoCard className="p-4">
                   <Text className="text-lg font-bold text-gray-900 mb-3">Detalle de Cuotas</Text>
@@ -498,31 +498,6 @@ export function EconomyManagementScreen() {
       );
     }, [showDetalleModal, detalleEstudiante, formatearMonto]);
 
-  const planModalContent = useMemo(() => {
-    if (!selectedPlan) return null;
-    const isNew = !selectedPlan.id;
-    return (
-      <Modal visible={true} animationType="slide" transparent>
-        <TouchableOpacity onPress={() => setSelectedPlan(null)} activeOpacity={1}>
-          <View className="flex-1 bg-black/50 justify-center items-center p-4">
-            <View className="bg-white rounded-2xl w-full max-w-md max-h-[90%] overflow-hidden">
-              <View className="flex-row items-center justify-between p-4 border-b">
-                <Text className="text-xl font-bold">{selectedPlan.id ? 'Editar Plan: ' + selectedPlan.nombre : 'Nuevo Plan de Pago'}</Text>
-                <TouchableOpacity onPress={() => setSelectedPlan(null)}>
-                  <Ionicons name="close-outline" size={24} color="#666" />
-                </TouchableOpacity>
-              </View>
-              <View className="p-4">
-                <Text className="text-center text-gray-500 py-8">Formulario de plan (pendiente implementar)</Text>
-                <Button label="Cerrar" onPress={() => setSelectedPlan(null)} variant="primary" className="mt-4" />
-              </View>
-            </View>
-          </View>
-          </TouchableOpacity>
-        </Modal>
-      );
-    }, [selectedPlan]);
-
   // ===== LOADING STATE =====
   if (loading) {
     return (
@@ -550,9 +525,6 @@ export function EconomyManagementScreen() {
           <Text className="text-2xl font-bold text-gray-900">Economia</Text>
           <Text className="text-sm text-gray-500">Gestion de cobranza y planes de pago</Text>
         </View>
-        {isAdmin && (
-          <Button label="Nuevo Plan" onPress={() => setSelectedPlan({} as PlanPago)} variant="primary" icon="add-outline" />
-        )}
       </View>
 
       <View className="flex-row flex-wrap gap-3">
@@ -585,7 +557,6 @@ export function EconomyManagementScreen() {
       {activeTab === 'deudores' && deudoresTabContent}
 
       {detalleModalContent}
-      {planModalContent}
     </ScrollView>
   );
 }

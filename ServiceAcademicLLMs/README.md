@@ -1,6 +1,67 @@
-# serviceLLMs
+# ServiceAcademicLLMs (serviceLLMs)
 
-Servicio Python asíncrono para procesar materiales académicos cargados en `ServiceHomework`. El repositorio no tenía un índice RAG, modelos de cuestionario, historial de intentos ni perfiles pedagógicos; este servicio introduce el primer índice vectorial en Redis Stack y conserva los IDs académicos que ya entrega el backend.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+![Ollama](https://img.shields.io/badge/Ollama-modelos%20locales-FFFFFF)
+![Redis Stack](https://img.shields.io/badge/Redis%20Stack-vectorial-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
+
+## Descripción
+
+- **Qué hace:** servicio Python asíncrono (puerto 8890) para procesar materiales académicos cargados en `ServiceHomework`: indexa documentos en un RAG vectorial (Redis Stack), genera guías de microlearning y cuestionarios con Ollama (Gemma + Mistral), calcula perfiles de aprendajaje por alumno y produce contenido personalizado. El repositorio no tenía un índice RAG, modelos de cuestionario, historial de intentos ni perfiles pedagógicos; este servicio introduce el primer índice vectorial en Redis Stack y conserva los IDs académicos que ya entrega el backend.
+- **Tablas que usa:** ninguna en SQL — persiste todo en Redis (`shalom:rag:*`, streams de trabajos e intentos por alumno/contenido). No debe agregarse una base paralela.
+- **Nota de nombre:** la carpeta real es `ServiceAcademicLLMs/`; este README históricamente se tituló `serviceLLMs`.
+
+## Roles permitidos
+
+No usa JWT ni roles: la única autenticación es el header `X-Webhook-Secret` (compartido con `ServiceHomework` vía `LLM_WEBHOOK_SECRET`) y **no debe exponerse al navegador**.
+
+| Acceso | Rutas |
+| --- | --- |
+| Público (sin secreto) | `GET /health`, `GET /ready` |
+| Secreto interno `X-Webhook-Secret` | el resto: `/rag/*`, `/jobs/*`, `/webhooks/*`, `/students/*` |
+| Sin proxy todavía | no existe contrato ni ruta en RestApi/Frontend; el gateway debe validar JWT/rol y reenviar con el secreto solo en servidor |
+
+## Rutas
+
+| Método | Ruta | Acceso |
+| --- | --- | --- |
+| GET | `/health` | público |
+| GET | `/ready` | público (503 si faltan Redis Stack/Ollama/modelos) |
+| GET | `/rag/structure` | `X-Webhook-Secret` |
+| GET | `/rag/search?q=&content_id=&subject_id=&limit=` | `X-Webhook-Secret` |
+| POST | `/webhooks/content-created` | `X-Webhook-Secret` (202 + idempotencia) |
+| POST | `/webhooks/quiz-completed` | `X-Webhook-Secret` |
+| GET | `/jobs/{job_id}` | `X-Webhook-Secret` |
+| POST | `/students/{student_id}/contents/{content_id}/quizzes` | `X-Webhook-Secret` |
+| GET | `/students/{student_id}/profiles/{content_id}` | `X-Webhook-Secret` |
+| POST | `/students/{student_id}/contents/{content_id}/personalized` | `X-Webhook-Secret` |
+
+Semántica de payloads y respuestas en "Contrato y endpoints" más abajo.
+
+## Inicialización por consola
+
+Requisitos: Python 3.12 con el entorno virtual propio, Redis Stack (Search/vectorial) y Ollama Desktop con los modelos instalados. Variables obligatorias: `OLLAMA_BASE_URL=http://127.0.0.1:11434`, `REDIS_HOST=127.0.0.1`, `OLLAMA_EMBEDDING_MODEL` (tag con soporte `/api/embed`) y `WEBHOOK_SECRET`/`LLM_WEBHOOK_SECRET` no vacío.
+
+```powershell
+cd ServiceAcademicLLMs
+.\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8890
+.\venv\Scripts\python.exe -m unittest discover -s tests -v   # tests rapidos con fakes
+```
+
+Detalle de variables en la sección "Configuración".
+
+## Inicialización por Docker
+
+Desde la raíz del repositorio (requiere `LLM_WEBHOOK_SECRET` en el `.env` de la raíz; sin Redis Stack en host:6380 y Ollama en host:11434, `/ready` queda en 503):
+
+```powershell
+docker compose -p shalom_backend --env-file .env build service-llms
+docker compose -p shalom_backend --env-file .env up -d service-llms
+docker compose -p shalom_backend --env-file .env logs -f service-llms
+```
+
+Contenedor `shalom_service_llms`, publica `127.0.0.1:8890` y **no tiene hot reload** (sin volume): tras cambiar código hay que reconstruir la imagen.
 
 ## Flujo disponible
 

@@ -15,6 +15,7 @@ import { DashboardScreen } from '../features/dashboard/screens/DashboardScreen';
 import { MaestroCursosScreen } from '../features/maestros/screens/MaestroCursosScreen';
 import { MaestroMateriasScreen } from '../features/maestros/screens/MaestroMateriasScreen';
 import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroEvaluacionesScreen';
+import { MaestroRendimientoScreen } from '../features/maestros/screens/MaestroRendimientoScreen';
 import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteCursosScreen';
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
@@ -90,6 +91,9 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         if (isTeacher) return <MaestroMateriasScreen />;
         if (isStudent) return <EstudianteMateriasScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
+      case 'Rendimiento':
+        if (isTeacher) return <MaestroRendimientoScreen />;
+        return <PlaceholderScreen title="Rendimiento Académico" />;
       case 'Horarios':
       case 'Horario':
         return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;

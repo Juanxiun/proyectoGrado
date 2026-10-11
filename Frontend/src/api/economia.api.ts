@@ -12,6 +12,7 @@ export interface PlanPago {
   estado: 'borrador' | 'generado' | 'anulado';
   fecha_creacion: string;
   cuotas_pendientes?: number;
+  estudiante_id?: number;
 }
 
 export interface CuotaPlanPago {
@@ -59,14 +60,15 @@ export interface DeudaEstudiantePeriodo {
 
 export interface EstudianteEconomico {
   id: number;
+  periodo_id?: number;
   nombre: string;
   apellido_paterno: string;
   apellido_materno?: string | null;
   nivel: string;
   grado: string;
   paralelo: string;
-  plan_id: number;
-  plan_nombre: string;
+  plan_id: number | null;
+  plan_nombre: string | null;
   cuotas_pendientes: number;
   total_deuda: number;
   cuotas_pagadas: number;
@@ -115,9 +117,11 @@ export const economiaApi = {
     grado?: string;
     paralelo?: string;
     filtro_deuda?: 'todos' | 'al_dia' | 'una_cuota' | 'deudores';
+    page?: number;
+    limit?: number;
   } = {}): Promise<{ data: EstudianteEconomico[]; total: number }> {
     try {
-      return await apiRequest(`/api/economia/estudiantes${buildQuery(params)}`);
+      return await apiRequest(`/api/economia/estudiantes${buildQuery({ limit: 100, ...params })}`);
     } catch (err) {
       console.warn('[economiaApi.getEstudiantesPorPlan]', err);
       return { data: [], total: 0 };
@@ -129,7 +133,7 @@ export const economiaApi = {
    */
   async getEstudianteDetalle(estudianteId: number): Promise<{
     estudiante: EstudianteEconomico;
-    plan: PlanPago;
+    plan: PlanPago | null;
     cuotas: CuotaPlanPago[];
     pagos: PagoRealizado[];
   } | null> {
@@ -137,6 +141,26 @@ export const economiaApi = {
       return await apiRequest(`/api/economia/estudiantes/${estudianteId}`);
     } catch (err) {
       console.warn('[economiaApi.getEstudianteDetalle]', err);
+      return null;
+    }
+  },
+
+  /**
+   * Crear un nuevo plan de pago (solo administradores)
+   */
+  async createPlan(data: {
+    periodo_id: number;
+    nivel: string;
+    nombre: string;
+    cantidad_cuotas: number;
+    monto_total: number;
+    monto_cuota: number;
+    dia_vencimiento: number;
+  }): Promise<PlanPago | null> {
+    try {
+      return await apiRequest<PlanPago>('/api/planos', { method: 'POST', body: data });
+    } catch (err) {
+      console.warn('[economiaApi.createPlan]', err);
       return null;
     }
   },

@@ -1,8 +1,8 @@
+import React, { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
-import { useCallback, useEffect, useState } from 'react';
 import { billingApi, formatearMonto, getEstadoBadge, type EstudianteDeuda, type PagoRealizado, type CuotaPlanPago } from '../../../api/billing.api';
-import { BentoCard, StatusBadge } from '../../../shared/ui';
+import { BentoCard, StatusBadge, Button } from '../../../shared/ui';
 import { useAuth } from '../../../context/AuthContext';
 
 export function BillingStudentScreen() {
@@ -12,6 +12,7 @@ export function BillingStudentScreen() {
   const [cuotas, setCuotas] = useState<CuotaPlanPago[]>([]);
   const [loading, setLoading] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
+  const [notificacion, setNotificacion] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     if (!user?.id) return;
@@ -24,6 +25,13 @@ export function BillingStudentScreen() {
       ]);
       if (deudaRes) setDeuda(deudaRes);
       if (pagosRes) setPagos(pagosRes);
+      // Verificar si hay notificación de pago reciente
+      if ((deudaRes?.cuotas_pendientes ?? 0) > 0 && pagosRes?.length > 0) {
+        const ultimaPago = pagosRes[0];
+        setNotificacion(
+          `Pago de $${formatearMonto(ultimaPago.monto)} registrado el ${new Date(ultimaPago.fecha_pago).toLocaleDateString('es-BO')}`
+        );
+      }
     } catch (err) {
       console.warn('[BillingStudentScreen] Error cargando', err);
     } finally {
@@ -125,7 +133,7 @@ export function BillingStudentScreen() {
           </View>
         ) : (
           <View className="gap-2">
-            {pagos.map((pago) => (
+            {pagos.map((pago: PagoRealizado) => (
               <View key={pago.id} className="flex-row items-center justify-between p-3 bg-gray-50 rounded-xl border border-gray-100">
                 <View className="flex-1">
                   <View className="flex-row items-center gap-2">
@@ -144,25 +152,45 @@ export function BillingStudentScreen() {
         )}
       </BentoCard>
 
-      {/* Alertas de notificación */}
-      {deuda.cuotas_pendientes >= 2 && (
+      {/* Estado de Cuotas */}
+      <BentoCard className="p-4">
+        <View className="flex-row items-center justify-between mb-3">
+          <View>
+            <Text className="text-[10px] font-bold text-gray-500 uppercase">Detalle de Cuotas</Text>
+          </View>
+        </View>
+
+        {cuotas.length === 0 && deuda.cuotas_pendientes > 0 ? (
+          <View className="items-center py-4">
+            <Text className="text-gray-500">No hay cuotas definidas para este plan</Text>
+          </View>
+        ) : (
+          <View className="p-3">
+            {cuotas.map((cuota: CuotaPlanPago) => (
+              <View key={cuota.id} className="flex-row items-center justify-between p-2 bg-gray-50 rounded">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-sm text-gray-700">Cuota {cuota.numero} - {cuota.mes}/{cuota.anio}</Text>
+                  <StatusBadge label={cuota.estado} variant={cuota.estado === 'pagado' ? 'success' : 'warning'} />
+                </View>
+                <Text className="text-sm text-gray-600">{formatearMonto(cuota.monto)}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </BentoCard>
+
+      {/* Notificación de pago */}
+      {notificacion ? (
         <BentoCard className="p-4 border border-amber-200 bg-amber-50">
           <View className="flex-row items-start gap-3">
             <Ionicons name="information-circle-outline" size={20} color="#B45309" />
             <View className="flex-1">
-              <Text className="text-sm font-semibold text-amber-800">Notificación enviada</Text>
-              <Text className="text-xs text-amber-700 mt-1">
-                Al tener 2 o más cuotas pendientes, se ha notificado automáticamente a:
-              </Text>
-              <View className="flex-row gap-2 mt-2 flex-wrap">
-                <View className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">Estudiante</View>
-                <View className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">Dirección</View>
-                <View className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-xs">Control</View>
-              </View>
+              <Text className="text-sm font-semibold text-amber-800">Notificación de pago</Text>
+              <Text className="text-xs text-amber-700 mt-1">{notificacion}</Text>
             </View>
           </View>
         </BentoCard>
-      )}
+      ) : null}
     </ScrollView>
   );
 }

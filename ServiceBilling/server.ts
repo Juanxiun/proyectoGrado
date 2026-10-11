@@ -18,6 +18,7 @@ import {
   getDeudaEstudiante,
   getDeudaEstudiantesPeriodo,
 } from "./Controller/planos/planos.ts";
+import { getKpis, listEconomy, getStudentDetail } from "./Controller/economia/economia.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8886);
 
@@ -50,6 +51,15 @@ rt.post("/webhook/dashboard", handleWebhookDashboard);
 
 // ruta -> listar planes pago
 rt.get("/planos", requireAuth(ROLES_TODOS), listPlanos);
+
+// ruta -> indicadores economía
+rt.get("/economia/kpis", requireAuth(ROLES_DIRECTOR_CONTROL), getKpis);
+
+// ruta -> estudiantes economía
+rt.get("/economia/estudiantes", requireAuth(ROLES_DIRECTOR_CONTROL), listEconomy);
+
+// ruta -> detalle económico
+rt.get("/economia/estudiantes/:id", requireAuth(ROLES_DIRECTOR_CONTROL), getStudentDetail);
 
 // ruta -> obtener plan pago
 rt.get("/planos/:id", requireAuth(ROLES_TODOS), getPlanPago);

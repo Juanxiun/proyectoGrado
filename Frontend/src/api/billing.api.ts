@@ -12,6 +12,7 @@ export interface PlanPago {
   estado: 'borrador' | 'generado' | 'anulado';
   fecha_creacion: string;
   cuotas_pendientes?: number;
+  estudiante_id?: number;
 }
 
 export interface CuotaPlanPago {

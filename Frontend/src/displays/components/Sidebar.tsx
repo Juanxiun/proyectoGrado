@@ -17,19 +17,6 @@ interface SidebarProps {
 }
 
 export function Sidebar({ items, activeRoute, onNavigate }: SidebarProps) {
-  const { logout } = useAuth();
-
-  const handleLogout = () => {
-    Alert.alert(
-      'Cerrar sesión',
-      '¿Estás seguro de que deseas salir del sistema?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { text: 'Salir', style: 'destructive', onPress: () => void logout() },
-      ],
-    );
-  };
-
   return (
     <View className="w-60 bg-maroon h-full py-5 px-3 flex-col justify-between border-r border-maroon-dark">
       <View>
@@ -65,14 +52,6 @@ export function Sidebar({ items, activeRoute, onNavigate }: SidebarProps) {
       </View>
 
       <View className="pt-4 border-t border-white/15 gap-2">
-        <TouchableOpacity
-          onPress={handleLogout}
-          className="flex-row items-center gap-2.5 px-3 py-2 rounded-xl bg-black/15 hover:bg-black/25"
-        >
-          <Ionicons name="log-out-outline" size={17} color="#FCA5A5" />
-          <Text className="text-red-200 text-xs font-semibold">Cerrar sesión</Text>
-        </TouchableOpacity>
-
         <Text className="text-white/30 text-[10px] text-center mt-1">{APP_VERSION}</Text>
       </View>
     </View>
