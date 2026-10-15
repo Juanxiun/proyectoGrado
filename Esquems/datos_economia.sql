@@ -1,7 +1,3 @@
--- Datos de prueba de la seccion economica
--- Genera planes (si faltan), cuotas, pensiones por estudiante y pagos confirmados
--- del periodo academico activo. No crea tablas ni columnas nuevas.
--- OJO: reemplaza pensiones y pagos del periodo activo (es un seed, no un respaldo).
 
 BEGIN;
 

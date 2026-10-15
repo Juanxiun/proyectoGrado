@@ -73,9 +73,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authResend2FA, pending2FA]);
 
   const logout = useCallback(async () => {
-    await authLogout();
-    setUser(null);
-    setPending2FA(null);
+    try {
+      await authLogout();
+    } catch {
+      // auth -> permitir cierre local sin conexión
+    } finally {
+      await storage.clear();
+      setUser(null);
+      setPending2FA(null);
+    }
   }, [authLogout]);
 
   const updateLocalUser = useCallback((updates: Partial<AuthUsuario>) => {

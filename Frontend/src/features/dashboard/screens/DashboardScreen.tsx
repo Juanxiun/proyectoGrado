@@ -17,6 +17,7 @@ import { PanelAsistencia, PanelAvance } from '../components/PanelesTablero';
 import { PanelEconomico } from '../components/PanelEconomico';
 import { InstitutionDashboard } from '../components/InstitutionDashboard';
 import { useAuth } from '../../../context/AuthContext';
+import { ResumenAvanceDocente } from '../../maestros/components/ResumenAvanceDocente';
 
 /**
  * Página de inicio. Todo lo que muestra viene de ServiceDashboard, que es un
@@ -90,6 +91,7 @@ export function DashboardScreen({ onNavigate }: { onNavigate?: (route: string) =
   }
 
   const role = (user?.rol ?? '').toLowerCase();
+  const isTeacher = role.includes('docente') || role.includes('maestro') || role.includes('profesor');
   if (['director', 'admin', 'administrador', 'directores', 'administradores', 'control', 'gerencia', 'secretaria', 'secretario', 'administrativo', 'editor'].includes(role)) {
     return (
       <InstitutionDashboard
@@ -186,6 +188,8 @@ export function DashboardScreen({ onNavigate }: { onNavigate?: (route: string) =
           </View>
         </View>
       </BentoCard>
+
+      {isTeacher && datos.contexto.periodo?.id ? <ResumenAvanceDocente periodoId={datos.contexto.periodo.id} /> : null}
 
       <KpisDelTablero kpis={datos.kpis} />
 

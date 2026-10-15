@@ -6,7 +6,7 @@ import zipfile
 def extract_text(data: bytes, filename: str) -> str:
     suffix = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if suffix == "pdf":
-        import fitz
+        import pymupdf as fitz
 
         with fitz.open(stream=data, filetype="pdf") as pdf:
             text = "\n\n".join(page.get_text("text") for page in pdf)

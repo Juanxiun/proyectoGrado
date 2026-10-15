@@ -1,6 +1,10 @@
+import { Platform } from 'react-native';
+
+const DEFAULT_API_HOST = Platform.OS === 'android' ? '10.0.2.2' : 'localhost';
+
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
-  (__DEV__ ? 'http://localhost:5141' : 'http://localhost:5141');
+  `http://${DEFAULT_API_HOST}:5141`;
 
 export const APP_VERSION = 'v1.0.0';
 
@@ -9,7 +13,7 @@ export const APP_VERSION = 'v1.0.0';
 // (ver `buildPublicUrl` en ServiceUser/connects/Storage/minio.ts), así que acá
 // sólo hace falta la URL de la foto por defecto, que el usuario no carga nunca.
 export const MEDIA_BASE_URL =
-  process.env.EXPO_PUBLIC_MEDIA_URL || 'http://localhost:9000';
+  process.env.EXPO_PUBLIC_MEDIA_URL || `http://${DEFAULT_API_HOST}:9000`;
 export const MEDIA_BUCKET = 'usuarios';
 
 /**

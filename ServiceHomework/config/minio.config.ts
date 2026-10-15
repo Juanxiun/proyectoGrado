@@ -8,7 +8,7 @@ export const minioConfig = {
   MINIO_SECRET_KEY: String(Deno.env.get("MINIO_SECRET_KEY") ?? "adminpassword"),
   MINIO_BUCKET: String(Deno.env.get("MINIO_BUCKET") ?? "shalom"),
   // config -> limites archivos
-  MAX_FILE_SIZE_BYTES: 25 * 1024 * 1024, // limite -> 25 megas clamav
+  MAX_FILE_SIZE_BYTES: 15 * 1024 * 1024, // limite -> 15 megas materiales
   ALLOWED_EXTENSIONS: ["pdf", "docx", "xlsx", "xls"],
   ALLOWED_MIME_TYPES: [
     "application/pdf",

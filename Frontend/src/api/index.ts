@@ -22,3 +22,20 @@ export {
   getDeudaLabel 
 } from "./economia.api";
 export type { EstadoGestion, GestionTrimestre, TrimestreInput } from "./academicServices.api";
+export { gamificacionApi } from "./gamificacion.api";
+export type {
+  ResumenGamificacion,
+  InfoEstudianteGamificacion,
+  PreguntaActividad,
+  RespuestaActividad,
+  CompletarActividadPayload,
+  ResultadoActividad,
+  RankingEstudiante,
+  RankingParalelo,
+  RecompensaTienda,
+  CompraEstudiante,
+  Insignia,
+  InsigniaEstudiante,
+  Trofeo,
+  TrofeoEstudiante,
+} from "./gamificacion.api";

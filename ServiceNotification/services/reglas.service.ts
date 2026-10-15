@@ -73,8 +73,8 @@ const REGLAS: ReglaNotificacion[] = [
     tipo: "material",
     canal: "academico",
     prioridad: "media",
-    titulo: (p) => texto(p.titulo, "Nuevo material académico"),
-    mensaje: (p) => `Se publicó un material: ${texto(p.titulo, "Material académico")}`,
+    titulo: () => "Nuevo material de clase",
+    mensaje: (p) => `Se subió material de clase: ${texto(p.titulo, "Material académico")}`,
     audiencia: "curso",
     asignacion: (p) => numero(p.asignacionId),
     cursoPeriodo: (p) => numero(p.cursoPeriodoId),
@@ -458,6 +458,43 @@ const REGLAS: ReglaNotificacion[] = [
       return usuarioId ? [usuarioId] : [];
     },
   },
+  {
+    evento: "content.processed",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Material procesado: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El contenido "${texto(p.title, "tu material")}" ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y las actividades generadas.`,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const teacherId = numero(p.teacher_id);
+      return teacherId ? [teacherId] : [];
+    },
+  },
+  {
+    evento: "content.processing",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Procesando material: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El documento "${texto(p.title, "tu material")}" se está procesando con IA. Tiempo estimado: ${texto(p.estimated_minutes, "3")} minutos.`,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const teacherId = numero(p.teacher_id);
+      return teacherId ? [teacherId] : [];
+    },
+  },
+  {
+    evento: "content.processed.students",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Contenido listo: ${texto(p.title, "Material de estudio")}`,
+    mensaje: (p) => `El contenido: ${texto(p.title, "tu tema")} ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y resuelve las actividades que te prepararon.`,
+    audiencia: "curso",
+    asignacion: (p) => numero(p.assignment_id),
+    cursoPeriodo: (p) => numero(p.cursoPeriodoId),
+  },
 ];
 
 const INDICE = new Map(REGLAS.map((r) => [r.evento.toLowerCase(), r]));
@@ -487,7 +524,7 @@ async function resolverDestinatarios(
         (await construirCurso(payload, asignacionId))) as string | undefined;
 
       if (cursoPeriodoId) {
-        return NotificationService.resolveCursoDocentes(cursoPeriodoId);
+        return NotificationService.resolveCursoStudents(cursoPeriodoId);
       }
 
       const periodoId = regla.cursosDelPeriodo?.(payload);
@@ -496,7 +533,7 @@ async function resolverDestinatarios(
       const cursos = await NotificationService.resolveCursosDelPeriodoConHorarios(periodoId);
       const todos: string[] = [];
       for (const curso of cursos) {
-        todos.push(...await NotificationService.resolveCursoDocentes(curso));
+        todos.push(...await NotificationService.resolveCursoStudents(curso));
       }
       return [...new Set(todos)];
     }

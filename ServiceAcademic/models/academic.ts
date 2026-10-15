@@ -288,6 +288,8 @@ export interface Horario {
   horaInicio: string;
   horaFin: string;
   estado: "activo" | "cancelado";
+  curso?: { nivel: string; grado: string; paralelo: string };
+  turno?: { codigo: CodigoTurno; nombre: string };
   materia?: Materia;
   aula?: Aula;
   maestro?: { id: string; usuarioId?: string; nombre?: string; apellidoPaterno?: string };

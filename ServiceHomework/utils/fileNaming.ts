@@ -8,6 +8,7 @@ export interface CursoMateriaInfo {
   grado: string;
   paralelo: string;
   nivel: NivelMaterial;
+  teacherId?: string;
 }
 
 export function toSlug(text: string, maxLen = 35): string {
@@ -31,17 +32,20 @@ export function sanitizeLevel(nivel?: string | null): NivelMaterial {
 // funcion -> resolver curso por asignacion
 export async function resolveCursoInfoFromAsignacion(asignacionId: string | number): Promise<CursoMateriaInfo> {
   try {
-    const res = await query<{ materiaId: string; materia: string; grado: string; paralelo: string; nivel: string }>(
+    const res = await query<{ materiaId: string; materia: string; grado: string; paralelo: string; nivel: string; teacherId: string }>(
       `SELECT
          m.id AS "materiaId",
          COALESCE(m.nombre, 'materia') AS materia,
          COALESCE(c.grado, '1') AS grado,
          COALESCE(c.paralelo, 'A') AS paralelo,
-         COALESCE(c.nivel, 'primaria') AS nivel
+         COALESCE(c.nivel, 'primaria') AS nivel,
+         u.id AS "teacherId"
        FROM asignaciones_docentes ad
        JOIN materias m ON m.id = ad.materia_id
        JOIN cursos_periodo cp ON cp.id = ad.curso_periodo_id
        JOIN cursos c ON c.id = cp.curso_id
+       JOIN maestros ma ON ma.id = ad.maestro_id
+       JOIN usuarios u ON u.id = ma.usuario_id
        WHERE ad.id = $1`,
       [asignacionId],
     );
@@ -53,6 +57,7 @@ export async function resolveCursoInfoFromAsignacion(asignacionId: string | numb
         grado: row.grado,
         paralelo: row.paralelo,
         nivel: sanitizeLevel(row.nivel),
+        teacherId: String(row.teacherId),
       };
     }
   } catch (err) {

@@ -1,1 +1,1 @@
-"""Persistencia, inicialización y recuperación del RAG Shalom."""
+# rag -> persistencia y recuperacion del indice academico

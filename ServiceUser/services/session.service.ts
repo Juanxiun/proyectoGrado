@@ -166,7 +166,8 @@ export async function createSession(params: {
     await redis.lpush(historySessionsKey, sessionId);
     await redis.ltrim(historySessionsKey, 0, 99);
   } catch (saveErr) {
-    console.warn("[Session] Error guardando nueva sesión en Redis:", saveErr);
+    console.error("[Session] Error guardando nueva sesión en Redis:", saveErr);
+    throw new Error("No se pudo guardar la sesión en Redis", { cause: saveErr });
   }
 
   return {
@@ -238,12 +239,15 @@ export async function getUserSessions(usuarioId: string): Promise<{
         const durationMs = Date.now() - new Date(s.inicioConexion).getTime();
         s.tiempoConectado = formatDuration(durationMs);
         s.tiempoConectadoSegundos = Math.floor(durationMs / 1000);
+        activeSessions.push(s);
+      } else {
+        await redis.srem(`user:active_sessions:${usuarioId}`, sid);
       }
-      activeSessions.push(s);
     }
   }
 
   for (const sid of historyIds) {
+    if (activeIds.includes(sid)) continue;
     const raw = await redis.get(`session:${sid}`);
     if (raw) {
       historySessions.push(JSON.parse(raw));

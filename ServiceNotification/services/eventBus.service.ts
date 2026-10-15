@@ -79,9 +79,21 @@ export async function iniciarBusEventos(): Promise<void> {
     programarReintento();
   });
 
-  await subscriber.subscribe(CANAL);
-  conectado = true;
-  console.log(`[EventBus] Suscrito al canal "${CANAL}"`);
+  try {
+    await subscriber.subscribe(CANAL);
+    conectado = true;
+    console.log(`[EventBus] Suscrito al canal "${CANAL}"`);
+  } catch (err) {
+    conectado = false;
+    try {
+      subscriber.disconnect();
+    } catch {
+      // bus -> liberar suscriptor rechazado
+    }
+    subscriber = null;
+    console.error(`[EventBus] No hay permiso para suscribirse a "${CANAL}":`, err);
+    programarReintento();
+  }
 }
 
 export function estadoBusEventos(): { canal: string; conectado: boolean } {

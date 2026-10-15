@@ -7,10 +7,20 @@ from typing import Any
 from redis.asyncio import Redis
 
 from app.config import settings
+from app.services.activities import activity_statement, remediation, score_activity
 
 
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+# rag -> texto desde redis
+def _text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
 
 
 def _decode_hash(values: dict[bytes, bytes]) -> dict[str, str]:
@@ -21,15 +31,12 @@ class RAGRepository:
     prefix = "shalom:rag"
     content_stream = "shalom:rag:queue:content"
     profile_stream = "shalom:rag:queue:student-profile"
-    index_prefix = "shalom_rag_idx_v2"
+    index_prefix = "shalom_knowledge_v4_idx"
+    knowledge_prefix = "shalom:knowledge:v4"
     content_group = "rag-content-workers"
     profile_group = "rag-profile-workers"
     branches = {
-        "knowledge": "Conocimiento académico validado por materia, tema, documento y fragmento.",
-        "subjects": "Mini-contexto por materia, construido únicamente desde materiales docentes validados.",
-        "topics": "Conceptos, objetivos y evidencia agrupados por tema académico.",
-        "students": "Perfil pedagógico aislado por estudiante y contenido; se actualiza cada cuatro pruebas.",
-        "methodology": "Marcos generales de microlearning e indagación; no son evidencia académica.",
+        "students": "Hitos y perfil pedagógico aislados por estudiante y contenido; el perfil se actualiza cada cuatro pruebas.",
     }
 
     def __init__(self, redis: Redis) -> None:
@@ -37,7 +44,7 @@ class RAGRepository:
         self._vector_dimension: int | None = None
         self._index_name: str | None = None
         self._embedding_namespace = hashlib.sha256(settings.ollama_embedding_model.encode()).hexdigest()[:10]
-        self._vector_key_prefix = f"{self.prefix}:vector:{self._embedding_namespace}:"
+        self._vector_key_prefix = f"{self.knowledge_prefix}:vector:{self._embedding_namespace}:"
 
     @staticmethod
     def now() -> str:
@@ -63,34 +70,70 @@ class RAGRepository:
 
     async def structure_overview(self) -> dict[str, Any]:
         raw = await self._redis.get(f"{self.prefix}:structure")
-        structure = json.loads(raw) if raw else {"name": "Shalom Academic RAG", "version": "1", "branches": []}
-        for branch in structure.get("branches", []):
-            cursor = 0
-            count = 0
-            pattern = f"{self.prefix}:branch:{branch['id']}:record:*"
-            while True:
-                cursor, keys = await self._redis.scan(cursor=cursor, match=pattern, count=200)
-                count += len(keys)
-                if cursor == 0:
-                    break
-            branch["records"] = count
+        structure = json.loads(raw) if raw else {"name": "Shalom Academic Knowledge Base", "version": "3", "levels": []}
+        counts = {"grado": 0, "curso": 0, "materia": 0, "tema": 0, "vectores": 0}
+        cursor = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor=cursor, match=f"{self.knowledge_prefix}:*", count=500)
+            for raw_key in keys:
+                key = raw_key.decode() if isinstance(raw_key, bytes) else str(raw_key)
+                parts = key.split(":")
+                if ":vector:" in key:
+                    counts["vectores"] += 1
+                elif len(parts) == 5:
+                    counts["grado"] += 1
+                elif len(parts) == 7:
+                    counts["curso"] += 1
+                elif len(parts) == 9:
+                    counts["materia"] += 1
+                elif len(parts) == 11:
+                    counts["tema"] += 1
+            if cursor == 0:
+                break
+        structure["records"] = counts
         return structure
 
+    # rag -> metadata base y version de marcos
     async def initialize(self, prompt_documents: dict[str, str]) -> None:
-        """Crea la metadata base y versiona marcos pedagógicos/prompt en Redis."""
         now = utcnow()
         meta_key = f"{self.prefix}:meta"
+        migration_key = f"{self.prefix}:migration:knowledge-v3"
+        if not await self._redis.exists(migration_key):
+            for pattern in (f"{self.prefix}:vector:*", f"{self.prefix}:branch:knowledge:record:*",
+                            f"{self.prefix}:branch:knowledge:entity:*", f"{self.prefix}:branch:subjects:record:*",
+                            f"{self.prefix}:branch:subjects:entity:*", f"{self.prefix}:branch:topics:record:*",
+                            f"{self.prefix}:branch:topics:entity:*", f"{self.prefix}:branch:methodology:record:*",
+                            f"{self.prefix}:branch:methodology:entity:*", f"{self.prefix}:framework:indexed:*"):
+                cursor = 0
+                legacy_keys = []
+                while True:
+                    cursor, keys = await self._redis.scan(cursor=cursor, match=pattern, count=500)
+                    legacy_keys.extend(keys)
+                    if cursor == 0:
+                        break
+                for offset in range(0, len(legacy_keys), 500):
+                    await self._redis.unlink(*legacy_keys[offset:offset + 500])
+            try:
+                for raw_index in await self._redis.execute_command("FT._LIST"):
+                    index = raw_index.decode() if isinstance(raw_index, bytes) else str(raw_index)
+                    if index.startswith("shalom_rag_idx_"):
+                        await self._redis.execute_command("FT.DROPINDEX", index, "DD")
+            except Exception:
+                pass
+            await self._redis.unlink(*(f"{self.prefix}:branch:{branch}" for branch in ("knowledge", "subjects", "topics", "methodology")))
+            await self._redis.set(migration_key, now)
         await self._redis.hset(meta_key, mapping={
-            "schema_version": "1",
+            "schema_version": "3",
             "vector_index_prefix": self.index_prefix,
             "student_profile_policy": "actualizar cada 4 cuestionarios completados",
             "profile_isolation": "student_id + content_id",
         })
         await self._redis.set(f"{self.prefix}:structure", json.dumps({
-            "name": "Shalom Academic RAG",
-            "version": "1",
-            "branches": [{"id": key, "purpose": description} for key, description in self.branches.items()],
-            "flow": ["documento docente", "validacion LLM", "fragmentos y contexto", "perfil tras cuatro pruebas", "recuperacion personalizada"],
+            "name": "Shalom Academic Knowledge Base",
+            "version": "3",
+            "levels": ["grado", "curso", "materia", "tema", "resumen", "microlearning", "indagacion", "practica", "adaptacion_estudiante"],
+            "flow": ["grado", "curso", "materia", "tema", "resumen y microlearning", "practica", "adaptacion privada por estudiante"],
+            "sharing_scope": "El conocimiento academico se comparte entre paralelos del mismo grado; la adaptacion permanece aislada por estudiante y contenido.",
             "privacy": "Los perfiles se consultan siempre con student_id y content_id; no contienen datos personales de identidad.",
         }, ensure_ascii=False))
         for branch, description in self.branches.items():
@@ -102,8 +145,8 @@ class RAGRepository:
             await self._redis.set(f"{self.prefix}:framework:{name}", document)
             await self._redis.hset(f"{self.prefix}:meta:prompts", name, "v1")
 
+    # rag -> indexacion de marcos metodologicos
     async def bootstrap_frameworks(self, prompt_documents: dict[str, str], embed) -> bool:
-        """Indexa los principios generales como conocimiento metodológico, sin inventar contenido de materias."""
         if not prompt_documents:
             return True
         try:
@@ -125,7 +168,7 @@ class RAGRepository:
                 await self._redis.set(marker, digest)
             return True
         except Exception:
-            # El esqueleto RAG se conserva y el bootstrap vectorial se reintenta luego.
+            # rag -> reintento del bootstrap vectorial
             return False
 
     async def enqueue_content(self, content_id: str, job: dict[str, Any]) -> bool:
@@ -172,7 +215,7 @@ class RAGRepository:
         batches = await self._redis.xreadgroup(group, consumer, {stream: ">"}, count=1, block=block_ms)
         if batches:
             return batches[0][1]
-        # Reclama mensajes pendientes después de reiniciar el contenedor.
+        # rag -> reclamo de mensajes tras reiniciar el contenedor
         claimed = await self._redis.xautoclaim(stream, group, consumer, 60_000, start_id="0-0", count=1)
         return claimed[1] if len(claimed) > 1 else []
 
@@ -204,7 +247,7 @@ class RAGRepository:
             await self._redis.execute_command(
                 "FT.CREATE", index_name, "ON", "HASH", "PREFIX", "1", self._vector_key_prefix,
                 "SCHEMA", "branch", "TAG", "content_id", "TAG", "student_id", "TAG", "subject_id", "TAG",
-                "topic_id", "TAG", "record_type", "TAG", "source", "TAG", "text", "TEXT",
+                "topic_id", "TAG", "grade", "TAG", "record_type", "TAG", "source", "TAG", "text", "TEXT",
                 "embedding", "VECTOR", "HNSW", "6", "TYPE", "FLOAT32", "DIM", dimension,
                 "DISTANCE_METRIC", "COSINE",
             )
@@ -213,23 +256,22 @@ class RAGRepository:
 
     async def save_vector(self, content_id: str, chunk_id: str, text: str, embedding: list[float], metadata: dict[str, Any]) -> None:
         await self.ensure_vector_index(len(embedding))
-        safe_content = content_id.replace(":", "_")
-        safe_chunk = chunk_id.replace(":", "_")
-        key = f"{self._vector_key_prefix}{safe_content}:{safe_chunk}"
+        student_id = str(metadata.get("student_id") or "")
+        if student_id:
+            identity = f"student:{student_id}:{content_id}:{chunk_id}"
+        else:
+            scope = "|".join([content_id, *(str(metadata.get(field) or "") for field in ("grade", "subject_id", "topic_id", "record_type"))])
+            slot = str(metadata.get("record_slot") or hashlib.sha256(text.encode("utf-8")).hexdigest())
+            identity = f"{scope}|{slot}"
+        key = f"{self._vector_key_prefix}{hashlib.sha256(identity.encode('utf-8')).hexdigest()}"
         fields = {key: str(value) for key, value in metadata.items() if value is not None and value != ""}
         fields.update({"content_id": content_id, "chunk_id": chunk_id, "text": text, "embedding": struct.pack(f"{len(embedding)}f", *embedding)})
         await self._redis.hset(key, mapping=fields)
-        branch = metadata.get("branch")
-        if branch:
-            await self._redis.hset(f"{self.prefix}:branch:{branch}:record:{safe_content}:{safe_chunk}", mapping={
-                "branch": str(branch), "content_id": content_id, "chunk_id": chunk_id,
-                "record_type": str(metadata.get("record_type", "")),
-            })
 
+    # rag -> mini-contextos rastreables por materia y tema
     async def save_branch_context(self, branch: str, entity_id: str, content_id: str, text: str,
                                   embedding: list[float], metadata: dict[str, Any]) -> None:
-        """Guarda mini-contextos rastreables dentro de una rama semántica explícita."""
-        safe_entity = entity_id.replace(":", "_")
+        safe_entity = f"{metadata.get('grade', 'general')}-{entity_id}".replace(":", "_")
         await self._redis.hset(
             f"{self.prefix}:branch:{branch}:entity:{safe_entity}:content:{content_id}",
             mapping={"branch": branch, "entity_id": entity_id, "content_id": content_id,
@@ -238,18 +280,111 @@ class RAGRepository:
         await self.save_vector(content_id, f"{branch}-{safe_entity}-{content_id}", text, embedding,
                                {**metadata, "branch": branch, "record_type": f"{branch[:-1]}_context"})
 
+    async def save_hierarchy_node(self, branch: str, entity_id: str, content_id: str, context: str,
+                                  metadata: dict[str, Any]) -> None:
+        hash_id = lambda value: hashlib.sha256(str(value or "general").encode("utf-8")).hexdigest()[:20]
+        grade_id = hash_id(metadata.get("grade"))
+        course_id = hash_id(metadata.get("course") or metadata.get("grade"))
+        subject_id = hash_id(metadata.get("subject_id") or entity_id)
+        base = f"{self.knowledge_prefix}:grade:{grade_id}:course:{course_id}"
+        timestamp = utcnow()
+        await self._redis.set(f"{self.knowledge_prefix}:grade:{grade_id}", json.dumps({
+            "level": "grado", "grade": metadata.get("grade", ""), "updated_at": timestamp,
+        }, ensure_ascii=False))
+        await self._redis.set(base, json.dumps({
+            "level": "curso", "grade": metadata.get("grade", ""), "course": metadata.get("course", ""),
+            "updated_at": timestamp,
+        }, ensure_ascii=False))
+        if branch == "subjects":
+            await self._redis.set(f"{base}:subject:{subject_id}", json.dumps({
+                "level": "materia", "grade": metadata.get("grade", ""), "course": metadata.get("course", ""),
+                "subject_id": metadata.get("subject_id") or entity_id, "subject": metadata.get("subject", ""),
+                "updated_at": timestamp,
+            }, ensure_ascii=False))
+        elif branch == "topics":
+            topic_id = hash_id(metadata.get("topic_id") or entity_id)
+            await self._redis.set(f"{base}:subject:{subject_id}:topic:{topic_id}", json.dumps({
+                "level": "tema", "grade": metadata.get("grade", ""), "course": metadata.get("course", ""),
+                "subject_id": metadata.get("subject_id", ""), "subject": metadata.get("subject", ""),
+                "topic_id": metadata.get("topic_id") or entity_id, "content_id": content_id,
+                "data": json.loads(context), "updated_at": timestamp,
+            }, ensure_ascii=False))
+
     async def save_validated_content(self, content_id: str, data: dict[str, Any]) -> None:
+        document_id = str(data.get("document_id") or data.get("source_document_id") or "").strip()
+        if not document_id:
+            base, _, suffix = content_id.rpartition("-")
+            if base.isdigit() and suffix:
+                document_id = base
+        if document_id:
+            data["document_id"] = document_id
         await self._redis.set(f"{self.prefix}:content:{content_id}:validated", json.dumps(data, ensure_ascii=False))
-        await self._redis.set(f"{self.prefix}:content:{content_id}:questions", json.dumps(data.get("questions", []), ensure_ascii=False))
+        await self._redis.set(f"{self.prefix}:content:{content_id}:activities", json.dumps(data.get("activities", []), ensure_ascii=False))
+        if document_id:
+            await self._redis.set(f"{self.prefix}:document:{document_id}:latest_content", content_id)
         await self.mark_content_state(content_id, "processed")
 
     async def get_validated_content(self, content_id: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:content:{content_id}:validated")
         return json.loads(value) if value else None
 
-    async def get_question_bank(self, content_id: str) -> list[dict[str, Any]]:
-        value = await self._redis.get(f"{self.prefix}:content:{content_id}:questions")
+    # rag -> localizar contenido por documento
+    async def _content_id_from_scan(self, match: str, document_id: str | None = None) -> str:
+        cursor = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor=cursor, match=match, count=50)
+            for key in keys:
+                key_text = _text(key)
+                if ":content:" not in key_text or not key_text.endswith(":validated"):
+                    continue
+                found = key_text.split(":content:", 1)[1].rsplit(":validated", 1)[0]
+                if not document_id:
+                    return found
+                raw = await self._redis.get(key)
+                candidate = json.loads(raw) if raw else {}
+                ids = {str(candidate.get("document_id") or ""), str(candidate.get("source_document_id") or "")}
+                if document_id in ids or found == document_id or found.startswith(f"{document_id}-"):
+                    return found
+            if cursor == 0:
+                return ""
+
+    async def get_document_learning_content(self, document_id: str) -> dict[str, Any] | None:
+        document_id = str(document_id or "").strip()
+        if not document_id:
+            return None
+        content_id = _text(await self._redis.get(f"{self.prefix}:document:{document_id}:latest_content"))
+        if content_id and not await self.get_validated_content(content_id):
+            content_id = ""
+        if not content_id:
+            direct = await self.get_validated_content(document_id)
+            if direct:
+                content_id = document_id
+        if not content_id:
+            content_id = await self._content_id_from_scan(f"{self.prefix}:content:{document_id}-*:validated")
+        if not content_id:
+            content_id = await self._content_id_from_scan(f"{self.prefix}:content:{document_id}:validated")
+        if not content_id:
+            content_id = await self._content_id_from_scan(f"{self.prefix}:content:*:validated", document_id)
+        if not content_id:
+            return None
+        content = await self.get_validated_content(content_id)
+        if not content:
+            return None
+        await self._redis.set(f"{self.prefix}:document:{document_id}:latest_content", content_id)
+        return {"content_id": content_id, "content": content}
+
+    # rag -> banco de actividades validadas del contenido
+    async def get_activity_bank(self, content_id: str) -> list[dict[str, Any]]:
+        value = await self._redis.get(f"{self.prefix}:content:{content_id}:activities")
         return json.loads(value) if value else []
+
+    # resumen -> cache de formatos avanzados por contenido
+    async def get_summary_cache(self, content_id: str, formato: str) -> dict[str, Any] | None:
+        value = await self._redis.get(f"{self.prefix}:content:{content_id}:summary:v3:{formato}")
+        return json.loads(value) if value else None
+
+    async def set_summary_cache(self, content_id: str, formato: str, data: dict[str, Any]) -> None:
+        await self._redis.set(f"{self.prefix}:content:{content_id}:summary:v3:{formato}", json.dumps(data, ensure_ascii=False))
 
     async def student_used_questions(self, student_id: str, content_id: str) -> tuple[set[str], list[str]]:
         base = f"{self.prefix}:student:{student_id}:content:{content_id}:used-questions"
@@ -257,30 +392,31 @@ class RAGRepository:
         statements = await self._redis.hvals(f"{base}:statements")
         return {item.decode() for item in ids}, [item.decode() for item in statements]
 
-    async def save_quiz(self, student_id: str, content_id: str, quiz_id: str, questions: list[dict[str, Any]]) -> bool:
+    # quiz -> emision de actividades sin repeticiones por estudiante
+    async def save_quiz(self, student_id: str, content_id: str, quiz_id: str, activities: list[dict[str, Any]]) -> bool:
         base = f"{self.prefix}:student:{student_id}:content:{content_id}:used-questions"
         script = """
         local count = tonumber(ARGV[2])
         local batch_fingerprints = {}
         for i = 1, count do
-          local question_id = ARGV[2 + (i - 1) * 3 + 1]
+          local activity_id = ARGV[2 + (i - 1) * 3 + 1]
           local fingerprint = ARGV[2 + (i - 1) * 3 + 2]
-          if batch_fingerprints[fingerprint] or redis.call('SISMEMBER', KEYS[1], question_id) == 1 or redis.call('HEXISTS', KEYS[2], fingerprint) == 1 then return 0 end
+          if batch_fingerprints[fingerprint] then return 0 end
           batch_fingerprints[fingerprint] = true
         end
         redis.call('SET', KEYS[3], ARGV[1], 'EX', 2592000)
         for i = 1, count do
-          local question_id = ARGV[2 + (i - 1) * 3 + 1]
+          local activity_id = ARGV[2 + (i - 1) * 3 + 1]
           local fingerprint = ARGV[2 + (i - 1) * 3 + 2]
-          local question_text = ARGV[2 + (i - 1) * 3 + 3]
-          redis.call('SADD', KEYS[1], question_id)
-          redis.call('HSET', KEYS[2], fingerprint, question_text)
+          local statement = ARGV[2 + (i - 1) * 3 + 3]
+          redis.call('SADD', KEYS[1], activity_id)
+          redis.call('HSET', KEYS[2], fingerprint, statement)
         end
         return 1
         """
-        args: list[Any] = [json.dumps({"quiz_id": quiz_id, "student_id": student_id, "content_id": content_id, "questions": questions}, ensure_ascii=False), len(questions)]
-        for question in questions:
-            args.extend([question["question_id"], question["fingerprint"], question["question"]])
+        args: list[Any] = [json.dumps({"quiz_id": quiz_id, "student_id": student_id, "content_id": content_id, "activities": activities}, ensure_ascii=False), len(activities)]
+        for activity in activities:
+            args.extend([activity["activity_id"], activity["fingerprint"], activity_statement(activity)])
         result = await self._redis.eval(
             script, 3, f"{base}:ids", f"{base}:statements",
             f"{self.prefix}:student:{student_id}:content:{content_id}:quiz:{quiz_id}", *args,
@@ -290,6 +426,21 @@ class RAGRepository:
     async def get_quiz(self, student_id: str, content_id: str, quiz_id: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:student:{student_id}:content:{content_id}:quiz:{quiz_id}")
         return json.loads(value) if value else None
+
+    # quiz -> valida un emparejamiento
+    async def check_match_pair(self, student_id: str, content_id: str, quiz_id: str, activity_id: str, left: str, right: str) -> dict[str, Any]:
+        quiz = await self.get_quiz(student_id, content_id, quiz_id)
+        if not quiz:
+            raise LookupError("No existe este reto para el estudiante")
+        activity = next((item for item in quiz.get("activities", []) if item.get("activity_id") == activity_id), None)
+        if not activity or activity.get("tipo") != "CONECTAR_FRASES":
+            raise ValueError("La actividad no es un emparejamiento valido")
+        pairs = activity.get("pairs", [])
+        expected = next((item.get("right", "") for item in pairs if item.get("left", "").strip().casefold() == left.strip().casefold()), None)
+        if expected is None:
+            raise ValueError("El concepto no pertenece a esta actividad")
+        correct = expected.strip().casefold() == right.strip().casefold()
+        return {"correct": correct, "feedback": remediation(activity, correct), "expected": "" if correct else expected}
 
     async def vector_search(self, query_vector: list[float], limit: int = 5, filters: dict[str, str] | None = None) -> list[dict[str, str]]:
         index_name = await self.ensure_vector_index(len(query_vector))
@@ -303,41 +454,53 @@ class RAGRepository:
             query = " ".join(clauses)
         result = await self._redis.execute_command(
             "FT.SEARCH", index_name, f"({query})=>[KNN {limit} @embedding $vector AS score]",
-            "PARAMS", "2", "vector", vector, "SORTBY", "score", "RETURN", "8",
-            "content_id", "chunk_id", "text", "subject_id", "topic_id", "student_id", "record_type", "branch", "DIALECT", "2",
+            "PARAMS", "2", "vector", vector, "SORTBY", "score", "RETURN", "9",
+            "content_id", "chunk_id", "text", "subject_id", "topic_id", "grade", "student_id", "record_type", "branch", "DIALECT", "2",
         )
         found = []
+        if isinstance(result, dict):
+            rows = result.get(b"results", result.get("results", []))
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                fields = row.get(b"extra_attributes", row.get("extra_attributes", {}))
+                if isinstance(fields, dict):
+                    found.append({_text(key): _text(value) for key, value in fields.items()})
+                elif isinstance(fields, list):
+                    found.append({_text(fields[i]): _text(fields[i + 1]) for i in range(0, len(fields) - 1, 2)})
+            return found
         for i in range(1, len(result), 2):
             fields = result[i + 1]
             found.append({fields[j].decode(): fields[j + 1].decode(errors="ignore") for j in range(0, len(fields), 2)})
         return found
 
-    async def record_quiz_attempt(self, student_id: str, content_id: str, attempt_id: str, answers: list[dict[str, str]]) -> dict[str, Any]:
+    # quiz -> corrige la entrega segun el tipo de cada actividad
+    async def record_quiz_attempt(self, student_id: str, content_id: str, attempt_id: str, answers: list[dict[str, str]], elapsed_ms: int = 0) -> dict[str, Any]:
         quiz = await self.get_quiz(student_id, content_id, attempt_id)
         if not quiz:
             raise LookupError("No existe un cuestionario emitido para este estudiante y contenido")
-        questions = {str(q["question_id"]): q for q in quiz["questions"]}
-        if len(answers) != len(questions):
-            raise ValueError("Debe responder todas las preguntas del cuestionario")
-        question_ids = [answer["question_id"] for answer in answers]
-        if len(question_ids) != len(set(question_ids)):
-            raise ValueError("La prueba no puede repetir preguntas")
-        if any(answer["question_id"] not in questions for answer in answers):
-            raise ValueError("La prueba contiene preguntas ajenas al contenido")
-        if set(question_ids) != set(questions):
-            raise ValueError("Debe responder exactamente las preguntas emitidas")
+        activities = {str(item["activity_id"]): item for item in quiz.get("activities", [])}
+        if len(answers) != len(activities):
+            raise ValueError("Debe responder todas las actividades de la prueba")
+        activity_ids = [answer["activity_id"] for answer in answers]
+        if len(activity_ids) != len(set(activity_ids)):
+            raise ValueError("La prueba no puede repetir actividades")
+        if any(answer["activity_id"] not in activities for answer in answers):
+            raise ValueError("La prueba contiene actividades ajenas al contenido")
+        if set(activity_ids) != set(activities):
+            raise ValueError("Debe responder exactamente las actividades emitidas")
         evaluation = []
         for answer in answers:
-            question = questions[answer["question_id"]]
-            options = [str(option).strip().casefold() for option in question.get("options", [])]
-            if answer["response"].strip().casefold() not in options:
-                raise ValueError("Una respuesta no coincide con las opciones de su pregunta")
-            correct = answer["response"].strip().casefold() == str(question["correct_answer"]).strip().casefold()
-            evaluation.append({"question_id": answer["question_id"], "correct": correct, "concept": question.get("learning_objective", ""), "difficulty": question.get("difficulty", "inicial")})
+            activity = activities[answer["activity_id"]]
+            correct = score_activity(activity, answer["response"])
+            evaluation.append({"activity_id": answer["activity_id"], "tipo": activity.get("tipo", ""), "correct": correct,
+                               "concept": activity.get("learning_objective", ""),
+                               "difficulty": activity.get("difficulty", "inicial"),
+                               "feedback": remediation(activity, correct)})
         correct_count = sum(1 for answer in evaluation if answer["correct"])
         attempt = {"attempt_id": attempt_id, "student_id": student_id, "content_id": content_id,
                    "score": correct_count / len(evaluation), "correct": correct_count, "total": len(evaluation),
-                   "answers": evaluation, "completed_at": utcnow()}
+                   "answers": evaluation, "elapsed_ms": elapsed_ms, "completed_at": utcnow()}
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:attempts"
         script = """
         if redis.call('SADD', KEYS[1], ARGV[1]) == 0 then return {-1, 0} end
@@ -367,12 +530,13 @@ class RAGRepository:
         values = await self._redis.lrange(key, end - 4, end - 1)
         return [json.loads(value) for value in values]
 
-    async def profile_attempt_summary(self, student_id: str, content_id: str) -> tuple[int, float]:
+    async def profile_attempt_summary(self, student_id: str, content_id: str) -> tuple[int, float, float]:
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:attempts"
         values = await self._redis.lrange(key, 0, -1)
         attempts = [json.loads(value) for value in values]
         average = sum(float(item["score"]) for item in attempts) / len(attempts) if attempts else 0.0
-        return len(attempts), average
+        average_elapsed_ms = sum(float(item.get("elapsed_ms", 0)) for item in attempts) / len(attempts) if attempts else 0.0
+        return len(attempts), average, average_elapsed_ms
 
     async def get_student_profile(self, student_id: str, content_id: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:student:{student_id}:content:{content_id}:profile")

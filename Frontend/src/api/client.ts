@@ -73,8 +73,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     let message = `Error ${response.status}`;
     try {
-      const err = (await response.json()) as ApiError;
-      message = err.error ?? message;
+      const err = (await response.json()) as ApiError & { detail?: unknown; message?: string };
+      const detail = typeof err.detail === 'string' ? err.detail : undefined;
+      message = err.error ?? detail ?? err.message ?? message;
     } catch {
       /* respuesta no JSON */
     }

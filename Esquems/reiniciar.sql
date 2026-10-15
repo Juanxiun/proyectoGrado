@@ -1,40 +1,4 @@
--- =============================================================================
--- REINICIO TOTAL DE LA BASE DE DATOS
---
--- Borra la base, la vuelve a crear desde el esquema y la puebla con los datos
--- de prueba. Deja el sistema como si recién hubiera salido del repositorio,
--- pero con los cambios nuevos ya aplicados:
---
---   · `grado_materias` reemplaza a `curso_materias`: las materias y la maya
---     curricular se configuran por GRADO (nivel + grado), no por paralelo. 1°A y
---     1°B siguen siendo filas de `cursos` porque horarios, inscripciones y
---     asignaciones docentes sí son por paralelo.
---   · `malla_temas` es el temario por grado y materia, reutilizable entre
---     gestión. Es distinto de `mallas_curriculares`, que sólo registra qué
---     materia existe en un período.
---
--- ── Orden de carga ───────────────────────────────────────────────────────────
---   1. BDmain.sql → esquema completo: tablas, índices y llaves foráneas.
---   2. datos.sql  → datos de prueba: roles, turnos, aulas, materias, cursos,
---                    materias por grado, temas, gestión 2026, personal,
---                    inscripciones, asignaciones, notas, asistencia y pagos.
---
--- Los roles, las materias y los cursos NO se crean acá: ya vienen en
--- datos.sql. Este script sólo orchestra la reconstrucción.
---
--- ── Cómo se ejecuta ──────────────────────────────────────────────────────────
---   psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f Esquems\reiniciar.sql
---
--- Para usar otra base o credenciales:
---   psql -v dbname=MiBase -f Esquems\reiniciar.sql
---
--- `ON_ERROR_STOP=1` es obligatorio: sin él, un error en BDmain.sql dejaría el
--- script siguiendo adelante sobre una base a medio construir. El propio
--- archivo también lo activa, así que funciona igual aunque se lo olvide en la
--- línea de comandos.
---
--- Es DESTRUCTIVO: borra todos los datos de la base indicada.
--- =============================================================================
+
 
 \set ON_ERROR_STOP on
 \echo ''
@@ -43,9 +7,7 @@
 \echo '=============================================================='
 \echo ''
 
--- ── 1 · Recrear la base ──────────────────────────────────────────────────────
--- La conexión tiene que estar en otra base: Postgres no permite borrar la base
--- a la que está conectada. Por eso el script exige entrar con `-d postgres`.
+
 \set dbname ShalomDB
 
 \connect postgres
@@ -64,7 +26,6 @@ CREATE DATABASE :"dbname" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
 \echo '  -> base :' :dbname 'creada'
 \echo ''
 
--- ── 2 · Esquema ──────────────────────────────────────────────────────────────
 \echo '  -> cargando esquema (BDmain.sql)'
 \echo ''
 \ir BDmain.sql
@@ -72,7 +33,6 @@ CREATE DATABASE :"dbname" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
 \echo '  -> esquema listo'
 \echo ''
 
--- ── 3 · Datos de prueba ──────────────────────────────────────────────────────
 \echo '  -> cargando datos de prueba (datos.sql)'
 \echo ''
 \ir datos.sql
@@ -80,9 +40,6 @@ CREATE DATABASE :"dbname" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
 \echo '  -> datos listos'
 \echo ''
 
--- =============================================================================
--- VERIFICACIÓN
--- =============================================================================
 \echo '=============================================================='
 \echo '  Resultado'
 \echo '=============================================================='
@@ -105,8 +62,15 @@ UNION ALL SELECT 'inscripciones',         COUNT(*) FROM "inscripciones"
 UNION ALL SELECT 'asignaciones_docentes', COUNT(*) FROM "asignaciones_docentes"
 UNION ALL SELECT 'curso_asesor',          COUNT(*) FROM "curso_asesor"
 UNION ALL SELECT 'encargos',              COUNT(*) FROM "encargos"
+UNION ALL SELECT 'encargo_entregas',       COUNT(*) FROM "encargo_entregas"
+UNION ALL SELECT 'horarios',               COUNT(*) FROM "horarios"
+UNION ALL SELECT 'solicitudes',            COUNT(*) FROM "solicitudes_inscripcion"
 UNION ALL SELECT 'calificaciones',        COUNT(*) FROM "calificaciones"
 UNION ALL SELECT 'asistencia',            COUNT(*) FROM "asistencia"
+UNION ALL SELECT 'planes_pago',           COUNT(*) FROM "planes_pago"
+UNION ALL SELECT 'cuotas_plan',           COUNT(*) FROM "cuotas_plan_pago"
+UNION ALL SELECT 'pagos',                 COUNT(*) FROM "pagos"
+UNION ALL SELECT 'pago_pensiones',        COUNT(*) FROM "pago_pensiones"
 UNION ALL SELECT 'pensiones',             COUNT(*) FROM "pensiones"
 ORDER BY 1;
 
@@ -133,10 +97,7 @@ ORDER BY c."nivel", c."grado";
 
 \echo ''
 \echo '  Bandas de riesgo del 1er trimestre (lo que calcula el seguimiento):'
--- El promedio sale de `calificaciones.estudiante_id` y NO de pasar por
--- `inscripciones`: una calificación pertenece al curso de su estudiante, así
--- que unir por `curso_periodo_id` contra las inscripciones del mismo curso
--- multiplicaría cada nota por el tamaño del aula (4510 filas → 462286).
+
 WITH notas AS (
   SELECT cal."estudiante_id",
          SUM(cal."nota" * e."ponderacion") / NULLIF(SUM(e."ponderacion"), 0) AS promedio
@@ -145,7 +106,7 @@ WITH notas AS (
   JOIN "asignaciones_docentes" ad ON ad."id" = e."asignacion_id"
   JOIN "cursos_periodo" cp     ON cp."id" = ad."curso_periodo_id"
   JOIN "trimestres" t          ON t."periodo_id" = cp."periodo_id" AND t."numero" = 1
-  WHERE e."estado" = 'publicado'
+  WHERE e."estado" IN ('publicado', 'cerrado')
     AND e."fecha_publicacion" BETWEEN t."inicio" AND t."fin"
   GROUP BY cal."estudiante_id"
 ),
@@ -186,11 +147,13 @@ ORDER BY banda;
 \echo '=============================================================='
 \echo '  Base lista. Contrasena de todas las cuentas: Shalom2026'
 \echo ''
+\echo '    director01 / director02                  -> director'
 \echo '    control01 / control02 / control03      -> control'
 \echo '    gerencia01 / gerencia02               -> gerencia'
-\echo '    apoder01 … apoder04                   -> apoderado'
+\echo '    apoder01 … apoder12                   -> apoderado'
 \echo '    maestro01 … maestro32                 -> profesor'
-\echo '    est0001 … est0205                     -> estudiante'
+\echo '    est0001 … est0480                     -> estudiante (inscrito)'
+\echo '    est0481 … est0484                     -> estudiante (reserva pendiente)'
 \echo '=============================================================='
 \echo ''
 \echo '  Falta levantar Redis y MinIO: sin Redis las sesiones y el bus de'

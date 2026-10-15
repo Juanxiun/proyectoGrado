@@ -8,7 +8,7 @@
 
 ## Descripción
 
-- **Qué hace:** servicio Python asíncrono (puerto 8890) para procesar materiales académicos cargados en `ServiceHomework`: indexa documentos en un RAG vectorial (Redis Stack), genera guías de microlearning y cuestionarios con Ollama (Gemma + Mistral), calcula perfiles de aprendajaje por alumno y produce contenido personalizado. El repositorio no tenía un índice RAG, modelos de cuestionario, historial de intentos ni perfiles pedagógicos; este servicio introduce el primer índice vectorial en Redis Stack y conserva los IDs académicos que ya entrega el backend.
+- **Qué hace:** servicio Python asíncrono (puerto 8890) para procesar materiales académicos cargados en `ServiceHomework`: conserva el chunking semántico adaptativo para detectar estructura y ejercicios, selecciona fragmentos representativos para guiar a Mistral sin exigir recuperación exhaustiva, e indexa solo referencias seleccionadas y contenido validado en Redis Stack. Gemma evalúa la calidad. Genera guías, resúmenes avanzados y actividades gamificadas con conocimiento académico general compatible con el material. Calcula perfiles de aprendizaje por alumno. Conserva los IDs académicos que ya entrega el backend.
 - **Tablas que usa:** ninguna en SQL — persiste todo en Redis (`shalom:rag:*`, streams de trabajos e intentos por alumno/contenido). No debe agregarse una base paralela.
 - **Nota de nombre:** la carpeta real es `ServiceAcademicLLMs/`; este README históricamente se tituló `serviceLLMs`.
 
@@ -34,6 +34,7 @@ No usa JWT ni roles: la única autenticación es el header `X-Webhook-Secret` (c
 | POST | `/webhooks/quiz-completed` | `X-Webhook-Secret` |
 | GET | `/jobs/{job_id}` | `X-Webhook-Secret` |
 | POST | `/students/{student_id}/contents/{content_id}/quizzes` | `X-Webhook-Secret` |
+| POST | `/contents/{content_id}/summaries` | `X-Webhook-Secret` |
 | GET | `/students/{student_id}/profiles/{content_id}` | `X-Webhook-Secret` |
 | POST | `/students/{student_id}/contents/{content_id}/personalized` | `X-Webhook-Secret` |
 
@@ -67,12 +68,13 @@ Contenedor `shalom_service_llms`, publica `127.0.0.1:8890` y **no tiene hot relo
 
 1. `ServiceHomework` guarda el material y responde al profesor sin esperar al servicio LLM.
 2. En segundo plano envía `content.created` a `POST /webhooks/content-created`. El webhook valida `X-Webhook-Secret`, registra un trabajo idempotente en un Redis Stream y devuelve `202`.
-3. Un worker con concurrencia acotada descarga el archivo desde MinIO, extrae texto de PDF, DOCX, XLSX, XLS o CSV y aplica chunking con overlap.
-4. Gemma sintetiza cada fragmento; Mistral produce una guía de microlearning y preguntas; Gemma evalúa fidelidad, cobertura, coherencia y pedagogía. El promedio interno de los cuatro criterios se compara con 0.97 hasta el máximo configurado.
-5. Al aprobar la evaluación, los fragmentos del documento docente se vectorizan en Redis Stack. La guía validada y el banco de 20 preguntas quedan guardados en claves `shalom:rag:*`.
-6. Un servicio de prueba emite 5 o 6 preguntas inéditas para cada alumno y contenido. Las respuestas correctas se guardan solo en Redis; el endpoint devuelve enunciados y opciones. Se ignoran preguntas utilizadas y se generan preguntas adicionales con Mistral cuando el banco se agota.
-7. El webhook de prueba valida la respuesta contra el cuestionario emitido. Al completar cada cuatro cuestionarios diferentes, un worker calcula el perfil de aprendizaje y lo guarda bajo el par alumno/contenido; posteriormente actualiza el vector del perfil. El nivel recomendado usa los umbrales configurados.
-8. La generación personalizada combina guía docente aprobada, fragmentos del documento fuente y perfil del alumno. El resultado se almacena por alumno/contenido y versión del perfil.
+3. Un worker con concurrencia acotada descarga el archivo desde MinIO, extrae texto de PDF, DOCX, XLSX, XLS o CSV y pide a Gemma un plan breve de tema, contexto, esquema y cantidad objetivo de fragmentos. El chunking semántico conserva títulos y cambios de tema, filtra ruido y selecciona ejercicios representativos; la cantidad y el tamaño se ajustan al plan sin superar el máximo configurado. La generación usa hasta ocho referencias teóricas y dos ejercicios.
+4. Mistral analiza las referencias con prompts compactos y crea una guía de microlearning, indagación y actividades dentro del alcance conceptual del material. Gemma evalúa fidelidad, cobertura, coherencia y pedagogía sin ampliar el tema con fuentes externas.
+5. Redis Stack indexa solo el título y los encabezados conceptuales del contenido como `theory_context`, además del título y los conceptos clave como `validated_summary`. La guía validada, las actividades y los ejercicios base se conservan en claves estructuradas `shalom:rag:*`, no en el vector store.
+6. Un servicio de prueba emite 5 o 6 actividades variadas y sin claves de respuesta para cada alumno y contenido. Las respuestas se guardan solo como resultados de aprendizaje en Redis; la corrección devuelve de inmediato el concepto fallado, la respuesta esperada y una explicación contextual. Se ignoran actividades ya usadas y Mistral genera nuevas cuando el banco se agota.
+7. Cada intento agrega un hito sin la respuesta libre del alumno a la rama `students`. Al completar cuatro pruebas diferentes, un worker calcula el perfil de aprendizaje y lo guarda bajo el par alumno/contenido; posteriormente actualiza el vector del perfil. El nivel y los formatos recomendados usan tendencias observadas y los umbrales configurados.
+8. La generación personalizada combina guía docente aprobada, referencias RAG seleccionadas y perfil del alumno; el documento orienta el tema y los detalles del curso sin limitar cada explicación a coincidencias literales. El resultado se almacena por alumno/contenido y versión del perfil.
+9. `POST /contents/{content_id}/summaries` devuelve únicamente Cartas, Conexiones o Mapa Esquemático, con recomendación de investigación y caché de versión actual. Gemma revisa cada resumen y Mistral puede corregirlo antes de guardarlo.
 
 Al arrancar, `serviceLLMs` crea metadatos y cinco ramas base en Redis: `knowledge`, `subjects`, `topics`, `students` y `methodology`. Un chequeo en segundo plano valida los modelos instalados y ejecuta una inferencia breve con Gemma y Mistral más una solicitud de embedding; si Redis/Ollama no están disponibles, se reintenta y `/ready` permanece en 503. Ollama indexa las guías pedagógicas en `methodology`. Material docente aprobado agrega fragmentos a `knowledge` y mini-contextos trazables a `subjects` y `topics`; los perfiles aparecen en `students` al completar cuatro cuestionarios únicos.
 
@@ -84,12 +86,14 @@ Al arrancar, `serviceLLMs` crea metadatos y cinco ramas base en Redis: `knowledg
 - `POST /webhooks/content-created`: webhook autenticado, respuesta rápida `202` e idempotencia por `content_id`.
 - `GET /jobs/{job_id}`: estado y progreso del pipeline.
 - `GET /rag/search?q=...&content_id=...&subject_id=...`: recuperación vectorial acotada.
-- `POST /students/{student_id}/contents/{content_id}/quizzes`: emitir prueba (5 o 6 preguntas), autenticada con `X-Webhook-Secret`; el cuerpo debe repetir `student_id`, `content_id` y opcionalmente `question_count`.
-- `POST /webhooks/quiz-completed`: registrar respuestas; `attempt_id` debe ser el `quiz_id` recibido al emitir la prueba. Cada respuesta lleva `question_id` y el texto exacto de la opción elegida.
+- `POST /students/{student_id}/contents/{content_id}/quizzes`: emitir prueba (5 o 6 actividades variadas), autenticada con `X-Webhook-Secret`; el cuerpo debe repetir `student_id`, `content_id` y opcionalmente `activity_count`. La respuesta incluye `activities` sin respuestas: `SELECCION_MULTIPLE` (enunciado y 4 opciones), `CUESTIONARIO` (pregunta corta), `FLASHCARD` (anverso y reverso para autoevaluación), `VERDADERO_FALSO` (afirmación), `CONECTAR_FRASES` (pares) y `DRAG_AND_DROP` (elementos en orden mezclado; solo matemáticas, química y física).
+- `POST /webhooks/quiz-completed`: registrar respuestas; `attempt_id` debe ser el `quiz_id` recibido al emitir la prueba. Cada respuesta lleva `activity_id` y `response`. La corrección depende del tipo: opción exacta en selección múltiple, palabras clave en cuestionario, autoevaluación en flashcard, booleano en verdadero/falso, pares `lado A => lado B` en conectar frases y secuencia separada por `;` en drag and drop.
+- `POST /contents/{content_id}/summaries`: resumen avanzado del contenido validado; el cuerpo acepta `formato` con `auto`, `CARTAS_EXPLICATIVAS`, `CONEXIONES` o `MAPA_ESQUEMATICO`. El mapa esquemático devuelve `nodes` y `edges` listos para renderizar en el frontend.
+- `GET /documents/{document_id}/learning`: contenido validado del material, autenticado con `X-Webhook-Secret`.
 - `GET /students/{student_id}/profiles/{content_id}`: perfil después de completar cuatro pruebas.
 - `POST /students/{student_id}/contents/{content_id}/personalized`: generar o recuperar explicación personalizada una vez creado el perfil.
 
-Las rutas de alumnos/cuestionarios y los webhooks están protegidos con el secreto interno. **Todavía no hay proxy en RestApi ni pantallas/contrato de cuestionarios en el Frontend**: no se debe exponer el secreto interno al navegador. Para usarlos desde la aplicación, el gateway debe validar el JWT/rol y reenviar las solicitudes con el secreto guardado solo en el servidor. El repositorio no cuenta actualmente con entidades persistentes para cuestionarios o respuestas; el nuevo flujo conserva sus intentos en Redis por alumno y contenido, sin crear tablas ficticias.
+Las rutas de alumnos/cuestionarios y los webhooks están protegidos con el secreto interno. El móvil usa `/api/aprendizaje/materiales/{id}` en el gateway; ServiceHomework valida el JWT de estudiante y reenvía las llamadas con el secreto guardado solo en el servidor. El repositorio no cuenta actualmente con entidades persistentes para cuestionarios o respuestas; el nuevo flujo conserva sus intentos en Redis por alumno y contenido, sin crear tablas ficticias.
 
 El evento contiene los campos disponibles al crear un material: ID del material, asignación, materia, nivel/grado/paralelo, título, archivo y URL interna de MinIO. La entidad actual no expone un `topic_id`; no se inventa.
 
@@ -104,7 +108,7 @@ El evento contiene los campos disponibles al crear un material: ID del material,
 | `OLLAMA_EMBEDDING_MODEL` | Tag ya instalado que soporte `/api/embed`; necesario para RAG vectorial. |
 | `REDIS_RAG_HOST`, `REDIS_RAG_PORT`, `REDIS_RAG_USERNAME`, `REDIS_RAG_PASSWORD` | Redis Stack. Como vive en un compose separado, se usa el puerto publicado del host (`host.docker.internal:6380`), no el DNS `redis_rag` que no comparte red. |
 | `LLM_WEBHOOK_SECRET` | Secreto compartido entre `ServiceHomework` y este servicio. Configure un valor aleatorio antes de levantar Docker. |
-| `LLM_CHUNK_SIZE`, `LLM_CHUNK_OVERLAP`, `LLM_MAX_CHUNKS_PER_DOCUMENT` | Límites del chunking. |
+| `LLM_CHUNK_SIZE`, `LLM_CHUNK_MIN_CHARS`, `LLM_CHUNK_SEMANTIC_THRESHOLD`, `LLM_MAX_CHUNKS_PER_DOCUMENT` | Límites del chunking semántico: tamaño máximo por fragmento, tamaño mínimo antes de fusionar y umbral de cohesión léxica para detectar cambios de tema. |
 | `LLM_ACCEPTANCE_THRESHOLD`, `LLM_MAX_REFINEMENT_ITERATIONS` | Umbral de rúbrica (no probabilidad científica) e iteraciones. |
 | `LLM_REQUEST_TIMEOUT`, `LLM_MAX_CONCURRENCY`, `LLM_WORKER_COUNT`, `LLM_JOB_MAX_RETRIES` | Límites de ejecución y recuperación. |
 
@@ -139,7 +143,7 @@ Pruebas rápidas y simuladas (desde `ServiceAcademicLLMs/`, con el entorno virtu
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-La prueba `test_full_flow.py` simula Redis y Ollama para validar rápidamente las transiciones. `test_live_integration.py` es una prueba aparte que no usa esos dobles: llama al endpoint real, comprueba Ollama y Redis Stack, ejecuta el pipeline Gemma → Mistral → evaluación → embeddings/Redis Vector Search, crea cuatro cuestionarios por HTTP, espera el perfil y solicita contenido personalizado. También comprueba que el material guardado registra los tags reales de los modelos, la valoración aprobada y el banco de preguntas. Usa IDs aleatorios y elimina las claves y vectores creados al finalizar.
+La prueba `test_full_flow.py` simula Redis y Ollama para validar rápidamente las transiciones. `test_live_integration.py` es una prueba aparte que no usa esos dobles: llama al endpoint real, comprueba Ollama y Redis Stack, ejecuta el pipeline chunking semántico → análisis Mistral → refinamiento → evaluación → embeddings/Redis Vector Search, crea cuatro pruebas por HTTP, espera el perfil y solicita contenido personalizado. También comprueba que el material guardado registra los tags reales de los modelos, la valoración aprobada y el banco de actividades. Usa IDs aleatorios y elimina las claves y vectores creados al finalizar.
 
 Para ejecutar la integración real:
 

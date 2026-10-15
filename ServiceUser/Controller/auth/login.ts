@@ -242,7 +242,7 @@ export async function login(ctx: Context): Promise<void> {
         break;
     }
 
-    const deviceInfo = extractDeviceInfo(ctx);
+    const deviceInfo = extractDeviceInfo(ctx, undefined, body?.dispositivo);
     const locationInfo = extractLocationInfo(ctx, body);
 
     if (is2FARequiredForRole(user.rol)) {

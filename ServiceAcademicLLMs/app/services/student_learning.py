@@ -4,10 +4,41 @@ import logging
 from app.config import settings
 from app.ollama import OllamaClient
 from app.RAG.repository import RAGRepository
-from app.schemas import PersonalizedLearningContent, StudentLearningAnalysis
+from app.schemas import ExplainSectionRequest, PersonalizedLearningContent, StudentLearningAnalysis
 
 logger = logging.getLogger(__name__)
 DIFFICULTIES = ["inicial", "intermedia", "avanzada"]
+
+
+async def explain_section(student_id: str, content_id: str, request: ExplainSectionRequest, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+    content = await repo.get_validated_content(content_id)
+    if not content:
+        raise LookupError("No existe contenido aprobado para explicar")
+    profile = await repo.get_student_profile(student_id, content_id)
+    query_text = " ".join((request.title, request.explanation, request.example)).strip()
+    async with semaphore:
+        query_vector = await llm.embed(query_text)
+    evidence_chunks = await repo.vector_search(
+        query_vector,
+        limit=5,
+        filters={"content_id": content_id, "record_type": "theory_context"},
+    )
+    evidence = json.dumps({
+        "material_validado": {
+            "title": content.get("title"),
+            "summary": content.get("summary"),
+            "concepts": content.get("key_concepts", []),
+            "microlearning_units": content.get("microlearning_units", []),
+            "inquiry_questions": content.get("inquiry_questions", []),
+        },
+        "fragmentos_relevantes_del_tema": evidence_chunks,
+        "seccion_solicitada": request.model_dump(),
+        "perfil_de_avance": profile or {"difficulty_level": "inicial", "instruction": "Explicación clara y gradual; todavía no hay suficiente historial individual."},
+        "formatos_alternativos": ["analogía", "paso_a_paso", "ejemplo", "preguntas"],
+    }, ensure_ascii=False)
+    async with semaphore:
+        generated = await llm.structured(settings.ollama_mistral_model, "mistral/explain_section.txt", evidence, PersonalizedLearningContent)
+    return {**generated.model_dump(), "title": request.title, "format": request.format, "profile_available": bool(profile), "content_id": content_id}
 
 
 def recommended_difficulty(last_batch_average: float, previous: str | None) -> str:
@@ -35,7 +66,7 @@ async def update_student_profile(
     if not content:
         raise LookupError("No existe contenido validado para evaluar el perfil")
     previous = await repo.get_student_profile(student_id, content_id)
-    attempt_count, performance_score = await repo.profile_attempt_summary(student_id, content_id)
+    attempt_count, performance_score, average_elapsed_ms = await repo.profile_attempt_summary(student_id, content_id)
     last_batch_average = sum(float(attempt["score"]) for attempt in attempts) / 4
     prior_difficulty = previous.get("difficulty_level") if previous else "inicial"
     suggested_difficulty = recommended_difficulty(last_batch_average, prior_difficulty)
@@ -51,6 +82,7 @@ async def update_student_profile(
         "batch_average_score": last_batch_average,
         "cumulative_attempt_count": attempt_count,
         "cumulative_performance_score": performance_score,
+        "average_response_time_ms": round(average_elapsed_ms),
         "rule_based_difficulty_recommendation": suggested_difficulty,
     }, ensure_ascii=False)
     async with semaphore:
@@ -73,6 +105,7 @@ async def update_student_profile(
         **analysis.model_dump(),
         "difficulty_level": suggested_difficulty,
         "performance_score": round(performance_score, 4),
+        "average_response_time_ms": round(average_elapsed_ms),
         "attempts": attempt_count,
         "updated_at": repo.now(),
         "batch_number": batch_number,
@@ -120,10 +153,12 @@ async def create_personalized_content(student_id: str, content_id: str, repo: RA
     query_text = " ".join([str(content.get("title", "")), *profile.get("weaknesses", []), *content.get("key_concepts", [])])
     async with semaphore:
         query_vector = await llm.embed(query_text)
+    scope = {"content_id": content_id, "record_type": "theory_context"}
+    # rag -> recuperar solo conceptos del contenido
     evidence_chunks = await repo.vector_search(
         query_vector,
         limit=8,
-        filters={"content_id": content_id, "record_type": "source_chunk"},
+        filters=scope,
     )
     evidence = json.dumps({
         "teacher_validated_content": {

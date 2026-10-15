@@ -6,6 +6,7 @@ import { oakCors } from "@tajpouria/cors";
 
 import { requireAuth, ROLES_DOCENTES, ROLES_LECTURA } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
+import { completarReto, crearResumen, crearReto, explicarSeccion, getContenidoAprendizaje, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
 import {
   createMaterial,
   deleteMaterial,
@@ -47,6 +48,13 @@ const PORT = Number(Deno.env.get("PORT") ?? 8883);
 
 const app = new Application();
 const rt = new Router();
+
+rt.get("/aprendizaje/materiales/:id", requireAuth(["estudiante"]), getContenidoAprendizaje);
+rt.post("/aprendizaje/materiales/:id/resumen", requireAuth(["estudiante"]), crearResumen);
+rt.post("/aprendizaje/materiales/:id/explicar-seccion", requireAuth(["estudiante"]), explicarSeccion);
+rt.post("/aprendizaje/materiales/:id/reto", requireAuth(["estudiante"]), crearReto);
+rt.post("/aprendizaje/materiales/:id/reto/:quizId/completar", requireAuth(["estudiante"]), completarReto);
+rt.post("/aprendizaje/materiales/:id/reto/:quizId/comprobar-pareja", requireAuth(["estudiante"]), validarEmparejamiento);
 
 app.use(
   oakCors({

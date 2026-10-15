@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Linking } from 'react-native';
+import { DocumentWebView } from '../../features/usuarios/components/DocumentWebView';
 
 export interface DocumentViewerProps {
   visible: boolean;
@@ -36,6 +37,18 @@ export function InAppDocumentViewerModal({
   const [loading, setLoading] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    setLoading(visible);
+    setError(null);
+    setZoomLevel(1);
+  }, [visible, url]);
+  useEffect(() => {
+    const name = fileName || title || '';
+    const imageFile = mimeType?.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(name);
+    if (visible && url && imageFile && Platform.OS !== 'web') {
+      Image.prefetch(url).catch(() => setError('No se pudo preparar el archivo para mostrarlo.'));
+    }
+  }, [visible, url, fileName, title, mimeType]);
 
   if (!visible) return null;
 
@@ -59,6 +72,11 @@ export function InAppDocumentViewerModal({
     } catch (e) {
       console.warn('Error opening external browser:', e);
     }
+  };
+
+  const handleImageError = () => {
+    setLoading(false);
+    setError('No se pudo cargar la imagen. Comprueba tu conexión e inténtalo de nuevo.');
   };
 
   const handleDownload = () => {
@@ -101,67 +119,18 @@ export function InAppDocumentViewerModal({
             }}
             resizeMode="contain"
             onLoadEnd={() => setLoading(false)}
+            onError={handleImageError}
           />
+          {error && <Text className="absolute bottom-5 text-white text-center px-5">{error}</Text>}
         </View>
       );
     }
 
     if (isPdf) {
-      if (Platform.OS === 'web') {
-        return (
-          <View className="flex-1 w-full h-full bg-gray-100">
-            {React.createElement('iframe', {
-              src: url,
-              style: {
-                width: '100%',
-                height: '100%',
-                border: 'none',
-              },
-              title: resolvedName,
-              onLoad: () => setLoading(false),
-            })}
-          </View>
-        );
-      } else {
-        // En móvil/nativa, usamos visor embebido de Google Docs para PDF o iframe
-        const googleDocsUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
-        return (
-          <View className="flex-1 w-full h-full bg-gray-100">
-            {React.createElement('iframe', {
-              src: googleDocsUrl,
-              style: {
-                width: '100%',
-                height: '100%',
-                border: 'none',
-              },
-              title: resolvedName,
-              onLoad: () => setLoading(false),
-            })}
-          </View>
-        );
-      }
+      return <DocumentWebView uri={url} title={resolvedName} mimeType={mimeType || 'application/pdf'} isPdf fileName={resolvedName} preferNativePdf={Platform.OS !== 'web'} />;
     }
 
-    if (isOffice) {
-      // Visor en línea de Google Docs / Microsoft Office para documentos Word y Excel
-      const googleViewer = `https://docs.google.com/viewer?url=${encodeURIComponent(url)}&embedded=true`;
-      const officeViewer = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(url)}`;
-
-      return (
-        <View className="flex-1 w-full h-full bg-gray-100 relative">
-          {React.createElement('iframe', {
-            src: googleViewer,
-            style: {
-              width: '100%',
-              height: '100%',
-              border: 'none',
-            },
-            title: resolvedName,
-            onLoad: () => setLoading(false),
-          })}
-        </View>
-      );
-    }
+    if (isOffice) return <DocumentWebView uri={url} title={resolvedName} mimeType={mimeType} fileName={resolvedName} />;
 
     // Archivos generales
     return (

@@ -1,100 +1,186 @@
-import hashlib
 import json
-import re
+import logging
 import uuid
 
 from app.config import settings
 from app.ollama import OllamaClient
 from app.RAG.repository import RAGRepository
-from app.schemas import QuizQuestionSet
+from app.schemas import ActivitySet, ContentEvaluation
+from app.services.activities import (
+    activity_statement,
+    fingerprint,
+    normalize_activity,
+    public_activity,
+)
+
+logger = logging.getLogger(__name__)
+
+# activities -> tipos admitidos para mezclar una prueba
+TIPOS_ACTIVIDAD = (
+    "SELECCION_MULTIPLE",
+    "CUESTIONARIO",
+    "FLASHCARD",
+    "VERDADERO_FALSO",
+    "CONECTAR_FRASES",
+    "DRAG_AND_DROP",
+)
 
 
-def _fingerprint(question: str) -> str:
-    normalized = re.sub(r"\s+", " ", question.casefold()).strip()
-    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+# activities -> banco disponible filtrado por uso previo y huellas
+def _disponibles(bank: list[dict], used_ids: set[str], used_fingerprints: set[str]) -> list[dict]:
+    unicas: list[dict] = []
+    vistos = set(used_fingerprints)
+    for actividad in bank:
+        if actividad.get("activity_id") in used_ids:
+            continue
+        huella = actividad.get("fingerprint") or fingerprint(activity_statement(actividad))
+        if huella in vistos:
+            continue
+        vistos.add(huella)
+        actividad = {**actividad, "fingerprint": huella}
+        unicas.append(actividad)
+    return unicas
 
 
-async def issue_quiz(student_id: str, content_id: str, question_count: int, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+# activities -> seleccion diversa por tipo y dificultad objetivo
+def _seleccion_diversa(disponibles: list[dict], cantidad: int, dificultad: str, formatos_recomendados: list[str] | None = None) -> list[dict]:
+    por_tipo: dict[str, list[dict]] = {}
+    for actividad in disponibles:
+        por_tipo.setdefault(actividad.get("tipo", "SELECCION_MULTIPLE"), []).append(actividad)
+    for lista in por_tipo.values():
+        lista.sort(key=lambda item: (item.get("difficulty") != dificultad, str(item.get("difficulty", "inicial"))))
+    preferencias = {tipo: index for index, tipo in enumerate(formatos_recomendados or [])}
+    orden = sorted(TIPOS_ACTIVIDAD, key=lambda tipo: (preferencias.get(tipo, len(preferencias)), -len(por_tipo.get(tipo, []))))
+    seleccion: list[dict] = []
+    while len(seleccion) < cantidad:
+        avance = False
+        for tipo in orden:
+            lista = por_tipo.get(tipo) or []
+            if lista:
+                seleccion.append(lista.pop(0))
+                avance = True
+                if len(seleccion) == cantidad:
+                    break
+        if not avance:
+            break
+    return seleccion
+
+
+# activities -> emision de prueba con actividades variadas
+async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
-        raise LookupError("El material aun no tiene contenido validado para generar cuestionarios")
+        raise LookupError("El material aun no tiene contenido validado para generar actividades")
     profile = await repo.get_student_profile(student_id, content_id)
     difficulty = profile.get("difficulty_level", "inicial") if profile else "inicial"
     used_ids, used_statements = await repo.student_used_questions(student_id, content_id)
-    fingerprints = {_fingerprint(statement) for statement in used_statements}
-    bank = await repo.get_question_bank(content_id)
-    available = [
-        question for question in bank
-        if question.get("question_id") not in used_ids
-        and _fingerprint(question.get("question", "")) not in fingerprints
-    ]
-    unique_available = []
-    seen_fingerprints = set(fingerprints)
-    for question in available:
-        fingerprint = _fingerprint(question.get("question", ""))
-        if fingerprint in seen_fingerprints:
-            continue
-        seen_fingerprints.add(fingerprint)
-        unique_available.append(question)
-    available = unique_available
-    available.sort(key=lambda question: (question.get("difficulty") != difficulty, question.get("difficulty", "inicial")))
-    selected = available[:question_count]
-
-    if len(selected) < question_count:
-        wanted = question_count - len(selected)
-        evidence = {
-            "material_validado": {
-                "title": content.get("title"),
-                "summary": content.get("summary"),
-                "learning_objectives": content.get("learning_objectives", []),
-                "key_concepts": content.get("key_concepts", []),
-                "microlearning_units": content.get("microlearning_units", []),
-                "inquiry_questions": content.get("inquiry_questions", []),
-            },
-            "perfil_del_estudiante": profile,
+    used_fingerprints = {fingerprint(statement) for statement in used_statements}
+    bank = await repo.get_activity_bank(content_id)
+    selected: list[dict] = []
+    fallback_bank = _seleccion_diversa(
+        _disponibles(bank, set(), set()), activity_count, difficulty,
+        profile.get("recommended_formats", []) if profile else [],
+    )
+    evidence = {
+        "material_validado": {
+            "title": content.get("title"),
+            "summary": content.get("summary"),
+            "learning_objectives": content.get("learning_objectives", []),
+            "key_concepts": content.get("key_concepts", []),
+            "microlearning_units": content.get("microlearning_units", []),
+            "inquiry_questions": content.get("inquiry_questions", []),
+            "ejercicios_base": content.get("base_exercises", []),
+        },
+        "perfil_del_estudiante": profile,
+        "dificultad_objetivo": difficulty,
+        "actividades_ya_utilizadas": used_statements,
+        "actividades_nuevas_requeridas": activity_count,
+    }
+    generated = None
+    evaluation = None
+    revision_gemma: list[str] = []
+    for _ in range(max(1, settings.llm_max_refinement_iterations)):
+        generation_context = {**evidence, "revision_gemma": revision_gemma}
+        try:
+            async with semaphore:
+                generated = await llm.structured(
+                    settings.ollama_mistral_model,
+                    "mistral/generate_activities.txt",
+                    json.dumps(generation_context, ensure_ascii=False),
+                    ActivitySet,
+                )
+        except Exception as exc:
+            logger.warning("Generacion dinamica no disponible content_id=%s: %s", content_id, str(exc)[:300])
+            break
+        review_context = json.dumps({
+            "contenido_validado": evidence["material_validado"],
+            "objetivos": evidence["material_validado"]["learning_objectives"],
             "dificultad_objetivo": difficulty,
-            "preguntas_ya_utilizadas": used_statements,
-            "preguntas_seleccionadas_para_este_cuestionario": [item.get("question") for item in selected],
-            "preguntas_nuevas_requeridas": question_count,
-        }
-        async with semaphore:
-            generated = await llm.structured(
-                settings.ollama_mistral_model,
-                "mistral/generate_quiz.txt",
-                json.dumps(evidence, ensure_ascii=False),
-                QuizQuestionSet,
+            "actividades_propuestas": [item.model_dump() for item in generated.activities],
+        }, ensure_ascii=False)
+        try:
+            async with semaphore:
+                evaluation = await llm.structured(
+                    settings.ollama_gemma_model,
+                    "gemma/evaluate_activities.txt",
+                    review_context,
+                    ContentEvaluation,
+                )
+        except Exception as exc:
+            logger.warning("Evaluacion de actividades no disponible content_id=%s: %s", content_id, str(exc)[:300])
+            evaluation = ContentEvaluation(
+                fidelity=0, coverage=0, coherence=0, pedagogy=0, score=0,
+                approved=False, issues=["Evaluacion automatica no disponible"],
+                required_changes=[], reason="Se conserva el borrador generado como respaldo",
             )
-        for question in generated.questions:
-            data = question.model_dump()
-            fingerprint = _fingerprint(data["question"])
-            if fingerprint in fingerprints:
+            break
+        rubric_score = sum((evaluation.fidelity, evaluation.coverage, evaluation.coherence, evaluation.pedagogy)) / 4
+        evaluation.score = min(evaluation.score, rubric_score)
+        evaluation.approved = evaluation.approved and evaluation.score >= settings.llm_acceptance_threshold
+        if evaluation.approved:
+            break
+        revision_gemma = evaluation.required_changes or evaluation.issues
+    if generated:
+        if not evaluation or not evaluation.approved:
+            logger.warning("Actividades bajo umbral content_id=%s; se usan las mejor evaluadas", content_id)
+        for index, actividad in enumerate(generated.activities, 1):
+            data = normalize_activity(actividad.model_dump(), f"{content_id}:nueva:{uuid.uuid4()}", index)
+            if data["fingerprint"] in used_fingerprints or any(item.get("fingerprint") == data["fingerprint"] for item in selected):
                 continue
-            data["question_id"] = hashlib.sha256(f"{content_id}:{uuid.uuid4()}".encode()).hexdigest()
-            data["fingerprint"] = fingerprint
             selected.append(data)
-            fingerprints.add(fingerprint)
-            if len(selected) == question_count:
+            if len(selected) == activity_count:
                 break
+    if len(selected) < activity_count:
+        fingerprints_selected = {item.get("fingerprint") for item in selected}
+        selected.extend(item for item in fallback_bank if item.get("fingerprint") not in fingerprints_selected)
+        selected = selected[:activity_count]
 
-    if len(selected) < question_count:
-        raise ValueError("No fue posible generar suficientes preguntas nuevas; revise el contenido validado y vuelva a intentar")
-
-    issued = []
-    for item in selected:
-        question = {**item}
-        question.setdefault("question_id", hashlib.sha256(f"{content_id}:{question.get('question')}".encode()).hexdigest())
-        question["fingerprint"] = question.get("fingerprint") or _fingerprint(question["question"])
-        question["difficulty"] = question.get("difficulty") if question.get("difficulty") in {"inicial", "intermedia", "avanzada"} else difficulty
-        issued.append(question)
+    if len(selected) >= 5 and len(selected) < activity_count:
+        logger.warning(
+            "Se emite practica reducida content_id=%s solicitadas=%s disponibles=%s",
+            content_id, activity_count, len(selected),
+        )
+    if len(selected) < 5:
+        logger.error(
+            "Banco insuficiente para emitir actividad content_id=%s solicitadas=%s unicas_banco=%s generadas_validas=%s",
+            content_id, activity_count, len(fallback_bank), len(selected),
+        )
+        raise ValueError("El material no tiene suficientes actividades únicas para iniciar la práctica")
 
     quiz_id = str(uuid.uuid4())
+    issued = []
+    for index, item in enumerate(selected, 1):
+        actividad = normalize_activity(item, content_id, index)
+        actividad["difficulty"] = actividad.get("difficulty") if actividad.get("difficulty") in {"inicial", "intermedia", "avanzada"} else difficulty
+        issued.append(actividad)
+
     if not await repo.save_quiz(student_id, content_id, quiz_id, issued):
-        raise ValueError("Las preguntas fueron emitidas en otra solicitud simultánea; vuelva a solicitar el cuestionario")
+        raise ValueError("Las actividades fueron emitidas en otra solicitud simultánea; vuelva a solicitar la prueba")
     return {
         "quiz_id": quiz_id,
         "student_id": student_id,
         "content_id": content_id,
         "difficulty": difficulty,
-        "question_count": question_count,
-        "questions": [{key: question[key] for key in ("question_id", "question", "options", "difficulty", "learning_objective")} for question in issued],
+        "activity_count": len(issued),
+        "activities": [public_activity(actividad, semilla=quiz_id) for actividad in issued],
     }

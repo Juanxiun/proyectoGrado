@@ -44,6 +44,7 @@ import {
 function notificarMaterialAlServicioLlm(input: {
   materialId: string;
   asignacionId: string;
+  temaId?: string | null;
   titulo: string;
   detalle?: string | null;
   fileName: string;
@@ -58,11 +59,11 @@ function notificarMaterialAlServicioLlm(input: {
       const fingerprint = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("").slice(0, 24);
       const minioBase = String(Deno.env.get("MINIO_ENDPOINT") ?? "http://host.docker.internal:9000").replace(/\/$/, "");
       const encodedKey = input.objectKey.split("/").map(encodeURIComponent).join("/");
-      const response = await fetch(`${String(Deno.env.get("LLM_SERVICE_URL") ?? "http://service-llms:8890").replace(/\/$/, "")}/webhooks/content-created`, {
+      const response = await fetch(`${String(Deno.env.get("LLM_SERVICE_URL") ?? "http://127.0.0.1:8890").replace(/\/$/, "")}/webhooks/content-created`, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "x-webhook-secret": Deno.env.get("LLM_WEBHOOK_SECRET") ?? "",
+          "x-webhook-secret": Deno.env.get("LLM_WEBHOOK_SECRET") || "shalom-llm-dev",
         },
         body: JSON.stringify({
           event: "content.created",
@@ -70,14 +71,17 @@ function notificarMaterialAlServicioLlm(input: {
           document_id: input.materialId,
           document_url: `${minioBase}/materiales/${encodedKey}`,
           document_name: input.fileName,
+          document_size_bytes: input.fileBytes.byteLength,
           mime_type: input.mime,
           title: input.titulo,
           description: input.detalle,
           subject: input.cursoInfo.materia,
           subject_id: input.cursoInfo.materiaId,
           assignment_id: input.asignacionId,
+          topic_id: input.temaId ?? null,
           grade: input.cursoInfo.grado,
           parallel: input.cursoInfo.paralelo,
+          teacher_id: input.cursoInfo.teacherId,
           source: "ServiceHomework",
           timestamp: new Date().toISOString(),
         }),
@@ -101,6 +105,8 @@ export async function createMaterial(ctx: Context): Promise<void> {
       const asignacionId = form.get("asignacionId")?.toString();
       const titulo = form.get("titulo")?.toString();
       const detalle = form.get("detalle")?.toString() ?? null;
+      const temaId = form.get("temaId")?.toString() ?? null;
+      const tipoMaterial = (form.get("tipoMaterial")?.toString() as "estudio" | "actividad") ?? "estudio";
 
       if (!asignacionId || !titulo) {
         throw new HttpError(400, "asignacionId y titulo son requeridos");
@@ -125,6 +131,8 @@ export async function createMaterial(ctx: Context): Promise<void> {
         tipoMime: uploaded.mime,
         tamanioBytes: uploaded.sizeBytes,
         activo: true,
+        temaId,
+        tipoMaterial,
       });
 
       publicarEventoAsync("materiales.create", {
@@ -133,11 +141,13 @@ export async function createMaterial(ctx: Context): Promise<void> {
         itemId: created.id,
       });
 
-      notificarMaterialAlServicioLlm({
-        materialId: String(created.id), asignacionId: String(created.asignacionId),
-        titulo: created.titulo, detalle: created.detalle, fileName: file.name,
-        mime: uploaded.mime, fileBytes: fileBuffer, objectKey, cursoInfo,
-      });
+      if (created.tipoMaterial !== "actividad") {
+        notificarMaterialAlServicioLlm({
+          materialId: String(created.id), asignacionId: String(created.asignacionId), temaId: created.temaId,
+          titulo: created.titulo, detalle: created.detalle, fileName: file.name,
+          mime: uploaded.mime, fileBytes: fileBuffer, objectKey, cursoInfo,
+        });
+      }
 
       respond(ctx, 201, created);
       return;
@@ -170,12 +180,16 @@ export async function updateMaterial(ctx: Context): Promise<void> {
       const detalle = form.get("detalle")?.toString();
       const asignacionId = form.get("asignacionId")?.toString();
       const activoStr = form.get("activo")?.toString();
+      const temaIdStr = form.get("temaId");
+      const tipoMaterialStr = form.get("tipoMaterial");
       let llmFile: Parameters<typeof notificarMaterialAlServicioLlm>[0] | null = null;
 
       const metadataUpdate: UpdateMateriaMaterialInput = {};
       if (titulo !== undefined) metadataUpdate.titulo = titulo;
       if (detalle !== undefined) metadataUpdate.detalle = detalle;
       if (activoStr !== undefined) metadataUpdate.activo = activoStr === "true";
+      if (temaIdStr !== null && temaIdStr !== undefined) metadataUpdate.temaId = temaIdStr.toString() || null;
+      if (tipoMaterialStr !== null && tipoMaterialStr !== undefined) metadataUpdate.tipoMaterial = (tipoMaterialStr.toString() as "estudio" | "actividad") || null;
 
       // minio -> reemplazar archivo adjunto
       if (file instanceof File) {
@@ -199,6 +213,7 @@ export async function updateMaterial(ctx: Context): Promise<void> {
         metadataUpdate.tamanioBytes = uploaded.sizeBytes;
         llmFile = {
           materialId: String(id), asignacionId: asigId, titulo: titulo ?? current.titulo,
+          temaId: temaIdStr?.toString() || current.temaId,
           detalle: detalle ?? current.detalle, fileName: file.name, mime: uploaded.mime,
           fileBytes: fileBuffer, objectKey, cursoInfo,
         };
@@ -209,7 +224,7 @@ export async function updateMaterial(ctx: Context): Promise<void> {
       }
 
       const updated = await materialService.updateMaterial(id, metadataUpdate);
-      if (llmFile) notificarMaterialAlServicioLlm({ ...llmFile, titulo: updated.titulo, detalle: updated.detalle });
+      if (llmFile && updated.tipoMaterial !== "actividad") notificarMaterialAlServicioLlm({ ...llmFile, titulo: updated.titulo, detalle: updated.detalle });
       respond(ctx, 200, updated);
       return;
     }

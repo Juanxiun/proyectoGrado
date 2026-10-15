@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Image, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { notificacionesApi } from '../../api/notificaciones.api';
 import { connectUsersWebSocket } from '../../api/users.websocket';
@@ -7,6 +7,7 @@ import { wsClient } from '../../api/websocket.client';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationsModal } from '../../features/usuarios/components/NotificationsModal';
 import { BentoCard, UserAvatar } from '../../shared/ui';
+import { useResponsive } from '../../utils/responsive';
 
 interface AppHeaderProps {
   title: string;
@@ -18,6 +19,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePress }: AppHeaderProps) {
   const { user, logout } = useAuth();
+  const { isMobile } = useResponsive();
   const [notifModalOpen, setNotifModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -51,29 +53,43 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
     };
   }, [user?.id]);
 
+  const cerrarSesion = async () => {
+    try {
+      await logout();
+    } catch {
+      Alert.alert('Error', 'No se pudo limpiar la sesión local.');
+    }
+  };
+
   const handleLogout = () => {
     setUserMenuOpen(false);
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined' && window.confirm('¿Desea salir del sistema?')) {
+        void cerrarSesion();
+      }
+      return;
+    }
     Alert.alert(
       'Cerrar sesión',
       '¿Desea salir del sistema?',
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Salir', style: 'destructive', onPress: () => void logout() },
+        { text: 'Salir', style: 'destructive', onPress: () => void cerrarSesion() },
       ],
     );
   };
 
   return (
-    <View className="flex-row items-center justify-between px-5 py-3.5 bg-white border-b border-gray-200">
+    <View className={`flex-row items-center justify-between px-4 bg-[#F8F7F6] border-b border-gray-200 ${isMobile ? 'h-16' : 'py-3.5'}`}>
       <View className="flex-row items-center gap-3">
-        <Text className="text-xl font-bold text-gray-900 tracking-tight">{title}</Text>
+        <Text className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-gray-900 tracking-tight`}>{title}</Text>
       </View>
 
       <View className="flex-row items-center gap-3">
         {/* Notificaciones */}
         <TouchableOpacity
           onPress={() => setNotifModalOpen(true)}
-          className="relative w-10 h-10 rounded-xl bg-gray-100 items-center justify-center hover:bg-gray-200"
+          className="relative w-10 h-10 rounded-full items-center justify-center"
         >
           <Ionicons name="notifications-outline" size={20} color="#374151" />
           {unreadCount > 0 && (
@@ -88,19 +104,19 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
         {/* User Chip */}
         <TouchableOpacity
           onPress={() => setUserMenuOpen(true)}
-          className="flex-row items-center gap-2.5 pl-2 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100"
+          className={`flex-row items-center ${isMobile ? 'p-0' : 'gap-2.5 pl-2 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100'}`}
         >
           <UserAvatar
             nombre={user?.nombre}
             apellidoPaterno={user?.apellidoPaterno}
             fotoUrl={userPhoto}
-            className="w-8 h-8 rounded-full bg-maroon"
+            className={`${isMobile ? 'w-9 h-9' : 'w-8 h-8'} rounded-full bg-maroon`}
           />
           <View className="hidden md:flex">
             <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>{userName}</Text>
             <Text className="text-[10px] text-gray-500 uppercase font-medium">{user?.rol ?? 'Usuario'}</Text>
           </View>
-          <Ionicons name="chevron-down" size={14} color="#6B7280" />
+          {!isMobile && <Ionicons name="chevron-down" size={14} color="#6B7280" />}
         </TouchableOpacity>
       </View>
 
@@ -188,4 +204,3 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
     </View>
   );
 }
-

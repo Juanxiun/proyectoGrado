@@ -40,6 +40,8 @@ export interface MateriaMaterial {
   tamanioBytes?: number | null;
   fechaSubida: string;
   activo: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
   asignacion?: {
     id: string;
     maestroId: string;
@@ -59,6 +61,8 @@ export interface CreateMateriaMaterialInput {
   tipoMime?: string | null;
   tamanioBytes?: number | null;
   activo?: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
 }
 
 export interface UpdateMateriaMaterialInput {
@@ -69,6 +73,8 @@ export interface UpdateMateriaMaterialInput {
   tipoMime?: string | null;
   tamanioBytes?: number | null;
   activo?: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
 }
 
 // interfaces -> modelo encargos

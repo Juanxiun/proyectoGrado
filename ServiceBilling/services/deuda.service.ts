@@ -123,9 +123,10 @@ export async function verificarDeudaEstudiantesPeriodo(
 
   for (const _plan of planes) {
     const estudiantesResult = await query(
-      `SELECT e.id
+      `SELECT e.id::int AS id
        FROM estudiantes e
-       WHERE e."periodo_id" = $1`,
+       JOIN inscripciones i ON i.estudiante_id = e.id
+       WHERE i."periodo_id" = $1 AND i.estado = 'activo'`,
       [periodoId]
     );
 

@@ -8,6 +8,7 @@ import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { InteractiveScheduleBuilder } from '../components/InteractiveScheduleBuilder';
 import { getFallbackGradient } from '../components/CoverImagePicker';
 import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
+import { useResponsive } from '../../../utils/responsive';
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'];
 
@@ -19,6 +20,8 @@ type ScheduleRow = {
   materia?: { nombre?: string };
   aula?: { nombre?: string };
   maestro?: { nombre?: string; apellidoPaterno?: string };
+  curso?: { nivel: string; grado: string; paralelo: string };
+  turno?: { codigo: 'manana' | 'tarde'; nombre: string };
   cursoPeriodoId: string;
 };
 
@@ -33,6 +36,7 @@ type CourseOption = {
 
 export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: (route: string) => void; initialPeriodoId?: string }) {
   const { user } = useAuth();
+  const { isMobile } = useResponsive();
   const [rows, setRows] = useState<ScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodoId, setPeriodoId] = useState(String(initialPeriodoId ?? user?.periodoId ?? ''));
@@ -46,6 +50,8 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
 
   // Modo construcción de horarios para dirección, control y administración
   const [showBuilder, setShowBuilder] = useState(false);
+  const [selectedDayIndex, setSelectedDayIndex] = useState(Math.max(0, Math.min(4, new Date().getDay() - 1)));
+  const [weekOffset, setWeekOffset] = useState(0);
 
   const role = (user?.rol ?? '').toLowerCase();
   const isStudent = role.includes('estudiante') || role.includes('alumno');
@@ -58,12 +64,14 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
     try {
       setLoading(true);
       let id = periodoId;
-      if (!id) {
+      if (!id || isTeacher) {
         const periods = await academicManagementApi.listPeriods(isScheduleManager ? {} : { activo: 'true' });
         const options = (periods.data ?? []) as Array<{ id: string; anio: number; nombre: string; activo: boolean; estado: string }>;
         setPeriodOptions(options);
         const currentYear = new Date().getFullYear();
-        const preferred = options.find((period) => period.anio === currentYear && !period.activo)
+        const requested = options.find((period) => String(period.id) === String(id));
+        const preferred = isTeacher && requested?.activo ? requested
+          : options.find((period) => period.anio === currentYear && !period.activo)
           ?? options.find((period) => period.anio === currentYear && period.activo)
           ?? options.find((period) => period.activo)
           ?? options[0];
@@ -96,8 +104,8 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
       const filters: Record<string, string | undefined> = {};
       if (isStudent && user?.cursoPeriodoId) {
         filters.cursoPeriodoId = String(user.cursoPeriodoId);
-      } else if (isTeacher && user?.maestroId) {
-        filters.maestroId = String(user.maestroId);
+      } else if (isTeacher && user) {
+        filters.maestroId = String(user.maestroId ?? user.id);
       }
 
       const response = await academicManagementApi.listSchedules(id, filters);
@@ -143,6 +151,16 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
     day,
     rows: rows.filter((row) => row.diaSemana === index + 1).sort((a, b) => a.horaInicio.localeCompare(b.horaInicio)),
   })), [rows]);
+  const weekDates = useMemo(() => {
+    const now = new Date();
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7);
+    return DAYS.map((day, index) => {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + index);
+      return { day, number: date.getDate(), date };
+    });
+  }, [weekOffset]);
 
   const courseCards = useMemo(() => courses.map((course) => ({
     ...course,
@@ -169,6 +187,26 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
       </View>
     );
   }
+
+  if (isMobile && isStudent) return (
+    <ScrollView className="flex-1" contentContainerClassName="gap-3 pb-6">
+      <View className="rounded-2xl overflow-hidden bg-[#801F3F] flex-row min-h-36">
+        <View className="flex-1 p-4 justify-center"><Text className="self-start rounded-full bg-[#F3D9B7] px-2.5 py-1 text-[#801F3F] text-[9px] font-extrabold">{weekDates[0].date.toLocaleDateString('es-BO', { month: 'long', year: 'numeric' }).toUpperCase()}</Text><Text className="text-white text-xl font-black mt-2">Tu semana de clases</Text><Text className="text-white/75 text-[10px] mt-1">Organiza tus clases y llega a tiempo.</Text><Text className="text-[#F3D9B7] text-[10px] font-bold mt-3">{rows.length} sesiones programadas</Text></View>
+        <View className="w-24 bg-white/10 items-center justify-center"><Ionicons name="calendar" size={42} color="#F3D9B7" /></View>
+      </View>
+      <View className="flex-row gap-3">
+        <View className="flex-1 rounded-2xl bg-[#F3D9B7] p-3.5"><Ionicons name="notifications-outline" size={17} color="#801F3F"/><Text className="text-[#801F3F] text-[10px] font-extrabold mt-2">RECORDATORIO</Text><Text className="text-[#801F3F] text-[10px] mt-1">Revisa tus próximas clases.</Text></View>
+        <View className="flex-1 rounded-2xl bg-[#FBF5EC] p-3.5"><Ionicons name="time-outline" size={17} color="#801F3F"/><Text className="text-[#801F3F] text-[10px] font-extrabold mt-2">HORARIO PUBLICADO</Text><Text className="text-gray-600 text-[10px] mt-1">{rows.length ? 'Consulta el itinerario del día.' : 'Aún no hay clases asignadas.'}</Text></View>
+      </View>
+      <View className="flex-row items-center justify-between px-1 mt-1"><Text className="text-[#801F3F] text-sm font-extrabold">SELECTOR DE DÍA</Text><View className="flex-row gap-4"><TouchableOpacity onPress={() => setWeekOffset((value) => value - 1)}><Ionicons name="chevron-back" size={19} color="#801F3F" /></TouchableOpacity><TouchableOpacity onPress={() => setWeekOffset((value) => value + 1)}><Ionicons name="chevron-forward" size={19} color="#801F3F" /></TouchableOpacity></View></View>
+      <View className="flex-row rounded-2xl bg-[#FBF5EC] p-2 border border-[#EFE6DB]">
+        {weekDates.map((item, index) => <TouchableOpacity key={item.day} onPress={() => setSelectedDayIndex(index)} className={`flex-1 rounded-xl items-center py-2 ${selectedDayIndex === index ? 'bg-[#801F3F]' : ''}`}><Text className={`text-[9px] font-bold ${selectedDayIndex === index ? 'text-white/80' : 'text-gray-500'}`}>{item.day.slice(0, 3).toUpperCase()}</Text><Text className={`text-base font-black mt-1 ${selectedDayIndex === index ? 'text-white' : 'text-gray-700'}`}>{item.number}</Text>{selectedDayIndex === index && <View className="w-1 h-1 bg-[#F3D9B7] rounded-full mt-1"/>}</TouchableOpacity>)}
+      </View>
+      <View className="flex-row items-center justify-between px-1 mt-2"><Text className="text-[#801F3F] text-sm font-extrabold">ITINERARIO DE HOY</Text><View className="rounded-full bg-[#F2E8EC] px-2 py-1"><Text className="text-[#801F3F] text-[9px] font-bold">{grouped[selectedDayIndex]?.rows.length ?? 0} SESIONES</Text></View></View>
+      {(grouped[selectedDayIndex]?.rows ?? []).length === 0 ? <View className="rounded-2xl bg-white border border-gray-200 items-center py-10"><Ionicons name="calendar-clear-outline" size={32} color="#A94E6D"/><Text className="text-gray-700 text-sm font-bold mt-2">Día libre</Text><Text className="text-gray-500 text-xs mt-1">No tienes clases programadas este día.</Text></View> : (grouped[selectedDayIndex]?.rows ?? []).map((row, index) => <View key={row.id} className={`rounded-2xl p-4 border ${index === 0 ? 'bg-[#FBF5EC] border-[#E8D2B6]' : 'bg-white border-gray-200'}`}><View className="flex-row items-center justify-between"><View className="flex-row items-center gap-2"><View className={`w-8 h-8 rounded-lg items-center justify-center ${index === 0 ? 'bg-[#801F3F]' : 'bg-gray-100'}`}><Ionicons name={index === 0 ? 'time' : 'time-outline'} size={16} color={index === 0 ? '#FFFFFF' : '#6B7280'}/></View><View><Text className="text-gray-500 text-[9px] font-bold">{row.horaInicio} - {row.horaFin}</Text><Text className="text-[#801F3F] text-[9px] font-extrabold mt-0.5">{index === 0 ? 'PRÓXIMA CLASE' : 'CLASE PROGRAMADA'}</Text></View></View><View className="rounded-full bg-[#801F3F] px-2 py-1"><Text className="text-white text-[9px] font-bold">{row.turno?.nombre ?? 'Clase'}</Text></View></View><Text className="text-[#801F3F] text-base font-bold mt-3">{row.materia?.nombre ?? 'Materia'}</Text><Text className="text-gray-500 text-xs mt-1">{row.maestro?.nombre ? `${row.maestro.nombre} ${row.maestro.apellidoPaterno ?? ''}` : 'Docente asignado'}</Text><View className="border-t border-gray-200 mt-3 pt-3 flex-row items-center justify-between"><View className="flex-row items-center gap-1.5"><Ionicons name="location-outline" size={13} color="#801F3F"/><Text className="text-gray-600 text-[10px]">{row.aula?.nombre ?? 'Aula por confirmar'}</Text></View><Text className="text-[#801F3F] text-[9px] font-bold">{row.curso ? `${row.curso.grado}° ${row.curso.paralelo}` : ''}</Text></View></View>)}
+      <View className="rounded-2xl bg-[#F8F7F6] border border-dashed border-gray-300 p-4 flex-row items-center gap-3"><Ionicons name="information-circle-outline" size={22} color="#801F3F"/><View className="flex-1"><Text className="text-gray-800 text-xs font-bold">¿Cambió tu horario?</Text><Text className="text-gray-500 text-[10px] mt-1">Contacta a servicios académicos para consultar ajustes.</Text></View><Ionicons name="arrow-forward" size={15} color="#801F3F"/></View>
+    </ScrollView>
+  );
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pb-8">
@@ -429,6 +467,7 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
               <View className="gap-2">
                 {group.rows.map((row) => {
                   const fallback = getFallbackGradient(row.materia?.nombre);
+                  const turno = row.turno?.nombre ?? (row.turno?.codigo === 'tarde' ? 'Turno tarde' : 'Turno mañana');
                   return (
                     <View key={row.id} className="flex-row items-center justify-between bg-gray-50 p-3 rounded-2xl border border-gray-100">
                       <View className="flex-row items-center gap-3 flex-1 mr-2">
@@ -436,9 +475,9 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
                           <Ionicons name={fallback.icon} size={16} color="#FFFFFF" />
                         </View>
                         <View className="flex-1 min-w-0">
-                          <Text className="text-xs font-bold text-gray-800 flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">{row.materia?.nombre ?? 'Materia'}</Text>
+                          <Text className="text-xs font-bold text-gray-800 flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">{row.curso ? `${row.curso.grado}° ${row.curso.paralelo} · ` : ''}{row.materia?.nombre ?? 'Materia'}</Text>
                           <Text className="text-[11px] text-gray-500 mt-0.5" numberOfLines={1} ellipsizeMode="tail">
-                            {row.aula?.nombre ?? 'Aula asignada'}
+                            {turno} · {row.aula?.nombre ?? 'Aula asignada'}
                             {row.maestro?.nombre ? ` · Prof. ${row.maestro.nombre} ${row.maestro.apellidoPaterno ?? ''}` : ''}
                           </Text>
                         </View>

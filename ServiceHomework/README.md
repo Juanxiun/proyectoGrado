@@ -11,6 +11,7 @@
 ## Descripción
 
 - **Qué hace:** aula y evaluación. Gestiona materiales (CRUD con archivos en MinIO; al crear uno envía `content.created` a `service-llms` con el header `x-webhook-secret`), encargos/tareas, entregas de estudiantes, calificaciones (individual y masiva) y asistencia (individual y masiva). Publica eventos en Redis para notificaciones.
+- El flujo estudiante expone `GET /aprendizaje/materiales/:id`, `POST /aprendizaje/materiales/:id/resumen`, `POST /aprendizaje/materiales/:id/reto` y `POST /aprendizaje/materiales/:id/reto/:quizId/completar`. Solo acepta JWT de estudiante; el secreto LLM permanece en el servicio.
 - **Puerto:** 8883.
 - **Tablas que usa** (`Esquems/BDmain.sql`): `usuarios`, `usuario_documentos`, `estudiantes`, `maestros`, `materias`, `cursos`, `cursos_periodo`, `asignaciones_docentes`, `materia_materiales`, `encargos`, `encargo_materiales`, `encargo_entregas`, `calificaciones`, `asistencia`.
 

@@ -64,7 +64,7 @@ function AppNavigator() {
     : 'Login';
 
   return (
-    <NavigationContainer key={activeScreen}>
+    <NavigationContainer>
       <Stack.Navigator
         initialRouteName={activeScreen}
         screenOptions={{ headerShown: false, animation: 'fade' }}

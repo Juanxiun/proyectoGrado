@@ -396,10 +396,13 @@ export function EstudiantesManagementScreen() {
     if (!studentForm.nombre.trim()) errors.studentNombre = 'El nombre es obligatorio.';
     if (!studentForm.apellidoPaterno.trim()) errors.studentApellidoPaterno = 'El apellido paterno es obligatorio.';
     if (!studentForm.nacimiento) errors.studentNacimiento = 'La fecha de nacimiento es obligatoria.';
-    const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
-    const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
-    if (!ciDoc?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
-    if (!rudeDoc?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    // Al editar no se exigen documentos: el estudiante ya existe y puede no tener RUDE registrado.
+    if (!editingStudent) {
+      const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
+      const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
+      if (!ciDoc?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
+      if (!rudeDoc?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };

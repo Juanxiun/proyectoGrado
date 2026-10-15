@@ -147,7 +147,7 @@ services:
       - CLAMAV_HOST=${CLAMAV_HOST:-shalom_antivirus}
       - CLAMAV_PORT=${CLAMAV_PORT:-3310}
       - LLM_SERVICE_URL=http://service-llms:8890
-      - LLM_WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-}
+      - LLM_WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-shalom-llm-dev}
     volumes:
       - ./ServiceHomework:/app
     ports:
@@ -257,6 +257,72 @@ services:
       - shalom_net
     command: deno task dev
 
+  # Servicio Gamificación (estudiantes móvil)
+  service-gamification:
+    build:
+      context: ./ServiceGamification
+      dockerfile: Dockerfile
+    container_name: shalom_service_gamification
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8887
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME_GAMIFICATION:-ShalomDBGM}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=${EVENTOS_CANAL:-notificaciones:eventos}
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+    volumes:
+      - ./ServiceGamification:/app
+    ports:
+      - "8887:8887"
+    networks:
+      - shalom_net
+    command: deno task dev
+
+  # Servicio Control Académico (asistencia, calificaciones, malla, examenes)
+  service-control-academico:
+    build:
+      context: ./ServiceControlAcademic
+      dockerfile: Dockerfile
+    container_name: shalom_service_control_academico
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PORT=8888
+      - DB_HOST=${DB_HOST:-host.docker.internal}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-ShalomAccess}
+      - DB_NAME=${DB_NAME:-ShalomDB}
+      - DB_PASS=${DB_PASS:-ShAloM4}
+      - DB_SSL=false
+      - DB_POOL=10
+      - REDIS_URL=${REDIS_URL:-host.docker.internal}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - REDIS_USER=${REDIS_USER:-cache_user}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-UserCachePass123}
+      - JWT_SECRET=${JWT_SECRET:-nosexd}
+      - EVENTOS_CANAL=${EVENTOS_CANAL:-notificaciones:eventos}
+      - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - INTERNAL_PUSH_TOKEN=shalom-internal-push
+    volumes:
+      - ./ServiceControlAcademic:/app
+    ports:
+      - "8888:8888"
+    networks:
+      - shalom_net
+    command: deno task dev
+
   # Servicio LLM de baja prioridad; Redis RAG y Ollama viven en el stack de infraestructura.
   service-llms:
     build:
@@ -273,19 +339,28 @@ services:
       - OLLAMA_GEMMA_MODEL=${OLLAMA_GEMMA_MODEL:-gemma4:e4b}
       - OLLAMA_MISTRAL_MODEL=${OLLAMA_MISTRAL_MODEL:-mistral:7b}
       - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-}
-      - REDIS_HOST=${REDIS_RAG_HOST:-host.docker.internal}
-      - REDIS_PORT=${REDIS_RAG_PORT:-6380}
-      - REDIS_USERNAME=${REDIS_RAG_USERNAME:-rag_user}
-      - REDIS_PASSWORD=${REDIS_RAG_PASSWORD:-}
-      - REDIS_DB=${REDIS_RAG_DB:-0}
-      - WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-}
+      # Redis RAG (vectorial) -> contenedor redis_rag_server en host:6380 (mapeado a 6379 interno)
+      - REDIS_HOST=host.docker.internal
+      - REDIS_PORT=6380
+      - REDIS_USERNAME=default
+      - REDIS_PASSWORD=AdminRagPass123
+      - REDIS_DB=0
+      # Redis principal notificaciones -> host:6379
+      - NOTIFY_REDIS_HOST=host.docker.internal
+      - NOTIFY_REDIS_PORT=6379
+      - NOTIFY_REDIS_USERNAME=cache_user
+      - NOTIFY_REDIS_PASSWORD=UserCachePass123
+      - NOTIFY_REDIS_DB=0
+      - WEBHOOK_SECRET=${LLM_WEBHOOK_SECRET:-shalom-llm-dev}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://host.docker.internal:9000}
       - CHUNK_SIZE=${LLM_CHUNK_SIZE:-6000}
-      - CHUNK_OVERLAP=${LLM_CHUNK_OVERLAP:-500}
-      - MAX_CHUNKS_PER_DOCUMENT=${LLM_MAX_CHUNKS_PER_DOCUMENT:-200}
-      - LLM_ACCEPTANCE_THRESHOLD=${LLM_ACCEPTANCE_THRESHOLD:-0.97}
-      - LLM_MAX_REFINEMENT_ITERATIONS=${LLM_MAX_REFINEMENT_ITERATIONS:-3}
-      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-240}
+      - CHUNK_MIN_CHARS=${LLM_CHUNK_MIN_CHARS:-400}
+      - CHUNK_SEMANTIC_THRESHOLD=${LLM_CHUNK_SEMANTIC_THRESHOLD:-0.05}
+      - MAX_CHUNKS_PER_DOCUMENT=${LLM_MAX_CHUNKS_PER_DOCUMENT:-6}
+      - LLM_ACCEPTANCE_THRESHOLD=${LLM_ACCEPTANCE_THRESHOLD:-0.85}
+      - LLM_MAX_REFINEMENT_ITERATIONS=${LLM_MAX_REFINEMENT_ITERATIONS:-1}
+      - LLM_REQUEST_TIMEOUT=${LLM_REQUEST_TIMEOUT:-1800}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-16384}
       - LLM_MAX_CONCURRENCY=${LLM_MAX_CONCURRENCY:-2}
       - WORKER_COUNT=${LLM_WORKER_COUNT:-1}
       - JOB_MAX_RETRIES=${LLM_JOB_MAX_RETRIES:-3}
@@ -317,6 +392,8 @@ services:
       - Services__NotificationService=http://service-notification:8884
       - Services__DashboardService=http://service-dashboard:8885
       - Services__BillingService=http://service-billing:8886
+      - Services__GamificationService=http://service-gamification:8887
+      - Services__ControlAcademicoService=http://service-control-academico:8888
     ports:
       - "5141:5141"
       - "7064:7064"

@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useUsuarioDetail, useUsuarioUpdate } from '../../hooks/useUsuarios';
 import { usuariosApi } from '../../api/usuarios.api';
+import { apiRequest } from '../../api/client';
 import { BentoCard } from '../components/BentoCard';
 import { TextField, UserAvatar } from '../../shared/ui';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../shared/validation/credentials';
@@ -13,12 +14,15 @@ import { BirthDatePicker } from '../../features/usuarios/components/BirthDatePic
 import { DocumentInput } from '../../features/usuarios/components/DocumentInput';
 import { ProfilePhotoPicker } from '../../features/usuarios/components/ProfilePhotoPicker';
 import { NotificationsInboxCard } from '../../features/usuarios/components/NotificationsInboxCard';
+import { confirmLogout } from '../../utils/confirmLogout';
 import type { Genero, UsuarioCont, UsuarioDoc, Usuario } from '../../types';
+import { useResponsive } from '../../utils/responsive';
 
 const GENEROS: Genero[] = ['masculino', 'femenino', 'otro'];
 
 export function ProfileScreen() {
   const { user, updateLocalUser, logout } = useAuth();
+  const { isMobile } = useResponsive();
   const { usuario, loading: loadingDetail, fetchById } = useUsuarioDetail();
   const { loading: saving, update, updateWithFiles } = useUsuarioUpdate();
   const [form, setForm] = useState({
@@ -42,6 +46,7 @@ export function ProfileScreen() {
   const [documents, setDocuments] = useState<UsuarioDoc[]>([]);
   const [showCompleteAlert, setShowCompleteAlert] = useState(false);
   const [tutors, setTutors] = useState<Usuario[]>([]);
+  const [sessionDetails, setSessionDetails] = useState<{ dispositivo?: { device?: string; os?: string; ip?: string }; ubicacion?: { ciudad?: string; zona?: string; pais?: string; lat?: number; lon?: number } } | null>(null);
   const isStudent = ['estudiante', 'padre', 'padres', 'apoderado'].includes(user?.rol?.toLowerCase() ?? '');
 
   const setField = (key: keyof typeof form) => (value: string) =>
@@ -50,6 +55,14 @@ export function ProfileScreen() {
   useEffect(() => {
     if (user?.id) void fetchById(user.id);
   }, [user?.id, fetchById]);
+
+  useEffect(() => {
+    let active = true;
+    apiRequest<{ activeSessions?: Array<typeof sessionDetails> }>('/api/auth/sessions/me')
+      .then((data) => { if (active) setSessionDetails(data.activeSessions?.[0] ?? null); })
+      .catch(() => { if (active) setSessionDetails(null); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!usuario) return;
@@ -242,16 +255,26 @@ export function ProfileScreen() {
         </BentoCard>
       )}
 
+      {sessionDetails && <BentoCard className="p-4 bg-slate-50">
+        <View className="flex-row items-center gap-2 mb-2">
+          <Ionicons name="phone-portrait-outline" size={19} color="#801529" />
+          <Text className="font-bold text-gray-900">Dispositivo conectado</Text>
+        </View>
+        <Text className="text-sm text-gray-700">{sessionDetails.dispositivo?.device || 'Dispositivo'} · {sessionDetails.dispositivo?.os || 'Sistema desconocido'}</Text>
+        <Text className="text-xs text-gray-500 mt-1">IP: {sessionDetails.dispositivo?.ip || 'No disponible'}</Text>
+        <Text className="text-xs text-gray-500 mt-1">Ubicación: {[sessionDetails.ubicacion?.ciudad, sessionDetails.ubicacion?.zona, sessionDetails.ubicacion?.pais].filter(Boolean).join(', ') || (sessionDetails.ubicacion?.lat != null ? `${sessionDetails.ubicacion.lat}, ${sessionDetails.ubicacion.lon ?? ''}` : 'No disponible')}</Text>
+      </BentoCard>}
+
       <View className="gap-4 md:flex-row md:items-start">
         <View className="gap-4 md:w-[32%] md:self-start">
-          <BentoCard className="p-5 bg-maroon">
+          <BentoCard className={`p-5 bg-maroon ${isMobile ? 'rounded-3xl' : ''}`}>
           <View className="items-center">
             <TouchableOpacity onPress={pickImage} disabled={!editMode} className="relative w-full">
               <UserAvatar
                 nombre={form.nombre || user?.nombre}
                 apellidoPaterno={form.apellidoPaterno || user?.apellidoPaterno}
                 fotoUrl={photo}
-                className="w-full h-56 rounded-2xl bg-white/15"
+                className={`${isMobile ? 'w-28 h-28 rounded-full' : 'w-full h-56 rounded-2xl'} bg-white/15`}
                 textoClassName="text-white text-4xl font-bold"
                 bordered
               />
@@ -524,7 +547,7 @@ export function ProfileScreen() {
         </BentoCard>
       </View>
 
-      <TouchableOpacity onPress={logout} className="border border-red-200 rounded-2xl py-3 flex-row items-center justify-center gap-2">
+      <TouchableOpacity onPress={() => confirmLogout(logout)} className="border border-red-200 rounded-2xl py-3 flex-row items-center justify-center gap-2">
         <Ionicons name="log-out-outline" size={18} color="#DC2626" />
         <Text className="text-red-600 font-semibold">Cerrar sesión</Text>
       </TouchableOpacity>

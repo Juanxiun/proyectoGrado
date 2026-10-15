@@ -16,6 +16,7 @@ import { MaestroCursosScreen } from '../features/maestros/screens/MaestroCursosS
 import { MaestroMateriasScreen } from '../features/maestros/screens/MaestroMateriasScreen';
 import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroEvaluacionesScreen';
 import { MaestroRendimientoScreen } from '../features/maestros/screens/MaestroRendimientoScreen';
+import { MaestroSeguimientoScreen } from '../features/maestros/screens/MaestroSeguimientoScreen';
 import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteCursosScreen';
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
@@ -25,6 +26,11 @@ import { EconomyManagementScreen } from '../features/billing/screens/EconomyMana
 import { BillingStudentScreen } from '../features/billing/screens/BillingStudentScreen';
 import { ForcePasswordChangeModal } from '../features/usuarios/components/ForcePasswordChangeModal';
 import { FirstLoginProfileModal } from '../features/usuarios/components/FirstLoginProfileModal';
+import { MobileAccessRestrictedScreen } from '../displays/screens/MobileAccessRestrictedScreen';
+import { useResponsive } from '../utils/responsive';
+import { EstudianteDashboardScreen } from '../features/gamificacion/screens/EstudianteDashboardScreen';
+import { EstudianteRendimientoScreen } from '../features/usuarios/screens/EstudianteRendimientoScreen';
+import { EstudianteAsistenciaScreen } from '../features/usuarios/screens/EstudianteAsistenciaScreen';
 
 interface RoleShellProps {
   navItems: NavItem[];
@@ -38,13 +44,16 @@ interface RoleShellProps {
 
 export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: RoleShellProps) {
   const { user } = useAuth();
+  const { isMobile } = useResponsive();
   const [activeRoute, setActiveRoute] = useState('Dashboard');
   const [schedulePeriodoId, setSchedulePeriodoId] = useState('');
   const [seguimientoPeriodoId, setSeguimientoPeriodoId] = useState('');
+  const [materiaTab, setMateriaTab] = useState<'materiales' | 'tareas'>('tareas');
 
-  const handleNavigate = (route: string, params?: { periodoId?: string }) => {
+  const handleNavigate = (route: string, params?: { periodoId?: string; tab?: 'materiales' | 'tareas' }) => {
     if (route === 'Horarios' && params?.periodoId) setSchedulePeriodoId(params.periodoId);
     if (route === 'Seguimiento' && params?.periodoId) setSeguimientoPeriodoId(params.periodoId);
+    if (route === 'Materias' && params?.tab) setMateriaTab(params.tab);
     setActiveRoute(route);
   };
 
@@ -52,17 +61,28 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
 
   const userName = getFullName(user.nombre, user.apellidoPaterno);
   const userEmail = user.email;
-
   const roleName = user.rol.toLowerCase();
   const isTeacher = roleName.includes('maestro') || roleName.includes('profesor') || roleName.includes('docente');
-  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno') || roleName.includes('padre') || roleName.includes('apoderado') || roleName.includes('tutor');
+  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno');
+  const titleByRoute: Record<string, string> = {
+    Dashboard: isStudent ? 'Panel Estudiantil' : panelTitle,
+    Profile: 'Mi Perfil',
+    Materias: 'Mis Materias',
+    Horarios: 'Mi Horario',
+    Horario: 'Mi Horario',
+    Deuda: 'Plan Económico',
+  };
+  const headerTitle = titleByRoute[activeRoute] ?? panelTitle;
+
+  // Restriccion RBAC: la vista movil es exclusiva para Estudiantes
+  if (isMobile && !isStudent) {
+    return <MobileAccessRestrictedScreen role={user.rol} />;
+  }
 
   const renderContent = () => {
     switch (activeRoute) {
       case 'Dashboard':
-        // El tablero de inicio lo alimenta ServiceDashboard (sólo lectura y
-        // recortado por rol). Los dashboards de cada rol siguen disponibles
-        // en sus rutas propias.
+        if (isStudent) return <EstudianteDashboardScreen onNavigate={handleNavigate} />;
         return <DashboardScreen onNavigate={handleNavigate} />;
       case 'Profile':
         return <ProfileScreen />;
@@ -81,14 +101,17 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
         if (isStudent) return <EstudianteEvaluacionesScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Cursos':
-        if (isTeacher) return <MaestroCursosScreen />;
+        if (isTeacher) return <MaestroCursosScreen onNavigate={handleNavigate} />;
         if (isStudent) return <EstudianteCursosScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Calificaciones':
-        if (isStudent) return <EstudianteEvaluacionesScreen />;
+        if (isStudent) return <EstudianteRendimientoScreen />;
+        return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
+      case 'Asistencia':
+        if (isStudent) return <EstudianteAsistenciaScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Materias':
-        if (isTeacher) return <MaestroMateriasScreen />;
+        if (isTeacher) return <MaestroMateriasScreen initialTab={materiaTab} />;
         if (isStudent) return <EstudianteMateriasScreen />;
         return <AcademicServicesScreen area="learning" onNavigate={handleNavigate} />;
       case 'Rendimiento':
@@ -98,6 +121,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
       case 'Horario':
         return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;
       case 'Seguimiento':
+        if (isTeacher) return <MaestroSeguimientoScreen />;
         return <SeguimientoScreen initialPeriodoId={seguimientoPeriodoId} />;
       case 'Economia':
         return <EconomyManagementScreen />;
@@ -113,7 +137,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
   return (
     <>
       <AppLayout
-        title={panelTitle}
+        title={headerTitle}
         userName={userName}
         userEmail={userEmail}
         userPhoto={user.fotoUrl}

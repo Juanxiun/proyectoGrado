@@ -29,6 +29,8 @@ builder.Services.AddHttpClient<HomeworkServiceClient>();
 builder.Services.AddHttpClient<NotificationServiceClient>();
 builder.Services.AddHttpClient<DashboardServiceClient>();
 builder.Services.AddHttpClient<BillingServiceClient>();
+builder.Services.AddHttpClient<GamificationServiceClient>();
+builder.Services.AddHttpClient<ControlAcademicoServiceClient>();
 builder.Services.AddHttpClient<WebhookDispatcherService>();
 builder.Services.AddSingleton<JwtTokenValidator>();
 builder.Services.AddCors(options =>

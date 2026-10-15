@@ -46,7 +46,7 @@ export async function verify2FA(ctx: Context): Promise<void> {
 
     const sData = verification.sessionData;
 
-    const deviceInfo = extractDeviceInfo(ctx);
+    const deviceInfo = extractDeviceInfo(ctx, undefined, body?.dispositivo);
     const locationInfo = extractLocationInfo(ctx, body);
 
     const { session, closedPreviousSessions } = await createSession({

@@ -20,6 +20,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "La ubicación se usa para mostrar el lugar aproximado de inicio de sesión en la información de tu sesión."
+        }
+      ]
+    ]
   }
 }

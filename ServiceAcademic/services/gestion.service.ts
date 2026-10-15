@@ -124,6 +124,11 @@ interface HorarioRow {
   estado: string;
   materiaNombre?: string;
   aulaNombre?: string;
+  cursoNivel?: string;
+  cursoGrado?: string;
+  cursoParalelo?: string;
+  turnoCodigo?: "manana" | "tarde";
+  turnoNombre?: string;
   maestroNombre?: string;
   maestroApellido?: string;
   maestroUsuarioId?: bigint;
@@ -202,6 +207,12 @@ function mapHorario(row: HorarioRow): Horario {
     horaInicio: asTime(row.horaInicio),
     horaFin: asTime(row.horaFin),
     estado: row.estado,
+    curso: row.cursoNivel && row.cursoGrado && row.cursoParalelo
+      ? { nivel: row.cursoNivel, grado: row.cursoGrado, paralelo: row.cursoParalelo }
+      : undefined,
+    turno: row.turnoCodigo && row.turnoNombre
+      ? { codigo: row.turnoCodigo, nombre: row.turnoNombre }
+      : undefined,
     materia: row.materiaNombre ? { id: toId(row.materiaId), nombre: row.materiaNombre } : undefined,
     aula: row.aulaNombre ? { id: toId(row.aulaId), nombre: row.aulaNombre } : undefined,
     maestro: row.maestroId
@@ -1523,11 +1534,14 @@ export async function listarHorarios(
     `SELECT h.id, h.curso_periodo_id AS "cursoPeriodoId", h.materia_id AS "materiaId",
        h.asignacion_id AS "asignacionId", h.maestro_id AS "maestroId", h.aula_id AS "aulaId",
        h.turno_id AS "turnoId", h.dia_semana AS "diaSemana", h.hora_inicio AS "horaInicio",
-       h.hora_fin AS "horaFin", h.estado, m.nombre AS "materiaNombre",
+       h.hora_fin AS "horaFin", h.estado, c.nivel AS "cursoNivel", c.grado AS "cursoGrado",
+       c.paralelo AS "cursoParalelo", t.codigo AS "turnoCodigo", t.nombre AS "turnoNombre",
+       m.nombre AS "materiaNombre",
        a.nombre AS "aulaNombre", u.id AS "maestroUsuarioId", u.nombre AS "maestroNombre", u.apellido_paterno AS "maestroApellido"
      FROM horarios h
      JOIN cursos_periodo cp ON cp.id = h.curso_periodo_id
      JOIN cursos c ON c.id = cp.curso_id
+     LEFT JOIN turnos t ON t.id = h.turno_id
      JOIN materias m ON m.id = h.materia_id AND m.activo = true
      JOIN aulas a ON a.id = h.aula_id
      LEFT JOIN maestros ma ON ma.id = h.maestro_id

@@ -20,7 +20,7 @@ export async function listPlanosPago(
     where += where ? ` AND p.nivel = $${params.length}` : ` WHERE p.nivel = $${params.length}`;
   }
   const result = await query<PlanPago>(
-    `SELECT p.id, p."periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
+    `SELECT p.id::int AS id, p."periodo_id"::int AS "periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
      FROM "planes_pago" p ${where}
      ORDER BY p."periodo_id", p.nivel, p.nombre`,
     params
@@ -31,7 +31,7 @@ export async function listPlanosPago(
 export async function getPlanPago(id: number, viewerRole: string): Promise<PlanPago | null> {
   const visibility = viewerRole !== "director" && viewerRole !== "control" ? `AND p."estado" = 'generado'` : "";
   const result = await query<PlanPago>(
-    `SELECT p.id, p."periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
+    `SELECT p.id::int AS id, p."periodo_id"::int AS "periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
      FROM "planes_pago" p WHERE p.id = $1 ${visibility}`,
     [id]
   );
@@ -40,7 +40,7 @@ export async function getPlanPago(id: number, viewerRole: string): Promise<PlanP
 
 export async function listCuotasPlan(planId: number): Promise<CuotaPlanPago[]> {
   const result = await query<CuotaPlanPago>(
-    `SELECT cp.id, cp."plan_id", cp.numero, cp.anio, cp.mes, cp."fecha_vencimiento", cp.monto, cp.estado
+    `SELECT cp.id::int AS id, cp."plan_id"::int AS "plan_id", cp.numero, cp.anio, cp.mes, cp."fecha_vencimiento", cp.monto, cp.estado
      FROM "cuotas_plan_pago" cp WHERE cp."plan_id" = $1 ORDER BY cp.numero`,
     [planId]
   );
@@ -50,14 +50,14 @@ export async function listCuotasPlan(planId: number): Promise<CuotaPlanPago[]> {
 export async function getEstudianteDeuda(estudianteId: number): Promise<EstudianteDeuda | null> {
   const result = await query<EstudianteDeuda>(
     `SELECT
-       e.id AS estudiante_id,
+       e.id::int AS estudiante_id,
        u.nombre,
        u."apellido_paterno",
        u."apellido_materno",
        COALESCE(SUM(pe.monto) FILTER (WHERE pe.estado IN ('pendiente', 'vencido')), 0)::float8 AS total_deuda,
        COUNT(pe.id) FILTER (WHERE pe.estado IN ('pendiente', 'vencido'))::int AS cuotas_pendientes,
        MAX(pe."fecha_vencimiento") FILTER (WHERE pe.estado IN ('pendiente', 'vencido')) AS ultima_cuota_vencimiento,
-       MAX(pe.plan_pago_id) AS plan_id
+       MAX(pe.plan_pago_id)::int AS plan_id
      FROM estudiantes e
      JOIN usuarios u ON u.id = e.usuario_id
      LEFT JOIN pensiones pe ON pe.estudiante_id = e.id
@@ -70,7 +70,7 @@ export async function getEstudianteDeuda(estudianteId: number): Promise<Estudian
 
 export async function listPagosEstudiante(estudianteId: number): Promise<PagoRealizado[]> {
   const result = await query<PagoRealizado>(
-    `SELECT p.id, p."estudiante_id", p.monto, p.metodo, p."numero_transaccion", p."comprobante_url", p."fecha_pago", p."registrado_por", p.estado, p.observacion
+    `SELECT p.id::int AS id, p."estudiante_id"::int AS "estudiante_id", p.monto, p.metodo, p."numero_transaccion", p."comprobante_url", p."fecha_pago", p."registrado_por"::int AS "registrado_por", p.estado, p.observacion
      FROM "pagos" p WHERE p."estudiante_id" = $1 ORDER BY p."fecha_pago" DESC`,
     [estudianteId]
   );
@@ -88,7 +88,7 @@ export async function registrarPago(
   const result = await query<PagoRealizado>(
     `INSERT INTO "pagos" ("estudiante_id", monto, metodo, "numero_transaccion", "comprobante_url", "fecha_pago", "registrado_por", estado, observacion)
      VALUES ($1, $2, $3, $4, $5, NOW(), $6, 'confirmado', NULL)
-     RETURNING id, "estudiante_id", monto, metodo, "numero_transaccion", "comprobante_url", "fecha_pago", "registrado_por", estado, observacion`,
+     RETURNING id::int AS id, "estudiante_id"::int AS "estudiante_id", monto, metodo, "numero_transaccion", "comprobante_url", "fecha_pago", "registrado_por"::int AS "registrado_por", estado, observacion`,
     [estudianteId, monto, metodo, numeroTransaccion, comprobanteUrl, registradoPor || 0]
   );
   return result.rows[0];
@@ -104,7 +104,7 @@ export async function actualizarEstadoCuota(cuotaId: number, nuevoEstado: string
 
 export async function getPlanosPorPeriodo(periodoId: number): Promise<PlanPago[]> {
   const result = await query<PlanPago>(
-    `SELECT p.id, p."periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
+    `SELECT p.id::int AS id, p."periodo_id"::int AS "periodo_id", p.nivel, p.nombre, p."cantidad_cuotas", p."monto_total", p."monto_cuota", p."dia_vencimiento", p.estado, p."fecha_creacion"
      FROM "planes_pago" p WHERE p."periodo_id" = $1 ORDER BY p.nivel, p.nombre`,
     [periodoId]
   );
@@ -123,7 +123,7 @@ export async function createPlanPago(data: {
   const result = await query<PlanPago>(
     `INSERT INTO "planes_pago" ("periodo_id", nivel, nombre, "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", estado)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 'generado')
-     RETURNING id, "periodo_id", nivel, nombre, "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", estado, "fecha_creacion"`,
+     RETURNING id::int AS id, "periodo_id"::int AS "periodo_id", nivel, nombre, "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", estado, "fecha_creacion"`,
     [data.periodo_id, data.nivel, data.nombre, data.cantidad_cuotas, data.monto_total, data.monto_cuota, data.dia_vencimiento]
   );
   return result.rows[0];
@@ -149,7 +149,7 @@ export async function updatePlanPago(id: number, data: Partial<PlanPago>): Promi
 
   const result = await query<PlanPago>(
     `UPDATE "planes_pago" SET ${setParts.join(", ")} WHERE id = $1
-     RETURNING id, "periodo_id", nivel, nombre, "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", estado, "fecha_creacion"`,
+     RETURNING id::int AS id, "periodo_id"::int AS "periodo_id", nivel, nombre, "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", estado, "fecha_creacion"`,
     params
   );
   return result.rows[0];
@@ -240,8 +240,8 @@ export async function listEconomyStudents(options: {
     )`;
   const count = await query<{ total: number }>(`${base} SELECT COUNT(*)::int AS total FROM filtrados`, params);
   const rows = await query<Record<string, unknown>>(
-    `${base} SELECT id, periodo_id, nombre, apellido_paterno, apellido_materno, nivel, grado, paralelo,
-       plan_id, plan_nombre, cuotas_pendientes, total_deuda, cuotas_pagadas, monto_pagado,
+    `${base} SELECT id::int AS id, periodo_id::int AS periodo_id, nombre, apellido_paterno, apellido_materno, nivel, grado, paralelo,
+       plan_id::int AS plan_id, plan_nombre, cuotas_pendientes, total_deuda, cuotas_pagadas, monto_pagado,
        ultima_cuota_vencimiento,
        CASE WHEN cuotas_pendientes = 0 THEN 'al_dia' WHEN cuotas_pendientes = 1 THEN 'una_cuota' ELSE 'deudor' END AS estado
      FROM filtrados ORDER BY nivel, grado, paralelo, apellido_paterno, nombre LIMIT $7 OFFSET $8`,
@@ -256,12 +256,12 @@ export async function getEconomyStudentDetail(estudianteId: number) {
   if (!estudiante) return null;
   const [planResult, cuotasResult, pagos] = await Promise.all([
     query<Record<string, unknown>>(
-      `SELECT id, periodo_id, nivel, nombre, cantidad_cuotas, monto_total, monto_cuota,
+      `SELECT id::int AS id, periodo_id::int AS periodo_id, nivel, nombre, cantidad_cuotas, monto_total, monto_cuota,
               dia_vencimiento, estado, fecha_creacion FROM planes_pago WHERE id = $1`,
       [estudiante.plan_id ?? 0],
     ),
     query<Record<string, unknown>>(
-      `SELECT id, COALESCE(plan_pago_id, 0) AS plan_id, COALESCE(numero_cuota, 0)::int AS numero,
+      `SELECT id::int AS id, COALESCE(plan_pago_id, 0)::int AS plan_id, COALESCE(numero_cuota, 0)::int AS numero,
               EXTRACT(YEAR FROM fecha_vencimiento)::int AS anio,
               COALESCE(mes, EXTRACT(MONTH FROM fecha_vencimiento)::int) AS mes,
               fecha_vencimiento, monto::float8 AS monto,

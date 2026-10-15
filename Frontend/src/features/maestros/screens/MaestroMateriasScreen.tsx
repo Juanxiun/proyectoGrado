@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { useAuth } from '../../../context/AuthContext';
-import { academicServicesApi } from '../../../api/academicServices.api';
+import { academicServicesApi, type NivelEducativo } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { DateTimePicker } from '../../../displays/components/DateTimePicker';
 import { InAppDocumentViewerModal } from '../../../displays/components/InAppDocumentViewerModal';
@@ -42,6 +42,18 @@ interface MaterialItem {
   tipoMime?: string;
   fechaSubida?: string;
   activo?: boolean;
+  temaId?: string | number | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
+}
+
+interface TemaMallaItem {
+  id: string;
+  unidad: number;
+  titulo: string;
+  contenidos?: string | null;
+  horasPrevistas: number;
+  esEvaluacion: boolean;
+  orden: number;
 }
 
 interface EncargoItem {
@@ -75,6 +87,17 @@ const ALLOWED_TYPES = [
 const ENCARGO_ESTADOS = ['borrador', 'publicado', 'cerrado', 'cancelado'] as const;
 const ENCARGO_TIPOS = ['tarea', 'práctica', 'examen', 'proyecto', 'quiz'] as const;
 
+// upload -> limites y mensajes progresivos
+const MAX_FILE_SIZE_MB = 15;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+const UPLOAD_STEPS = [
+  { key: 'uploading', label: 'Subiendo contenido...' },
+  { key: 'analyzing', label: 'Analizando contenido...' },
+  { key: 'verified', label: 'Contenido verificado...' },
+  { key: 'validating', label: 'Todo listo, estamos validando...' },
+  { key: 'done', label: 'Contenido subido con éxito' },
+] as const;
+
 function getExtBadge(fn?: string): { bg: string; text: string; label: string } {
   const ext = (fn?.split('.').pop() || '').toLowerCase();
   if (ext === 'pdf') return { bg: 'bg-red-100', text: 'text-red-700', label: 'PDF' };
@@ -88,16 +111,20 @@ function fmtBytes(b?: number) {
   return b > 1024 * 1024 ? `${(b / (1024 * 1024)).toFixed(2)} MB` : `${(b / 1024).toFixed(1)} KB`;
 }
 
-export function MaestroMateriasScreen() {
+export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 'materiales' | 'tareas' }) {
   const { user } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [materias, setMaterias] = useState<AsignacionMateria[]>([]);
   const [selectedAsig, setSelectedAsig] = useState<AsignacionMateria | null>(null);
-  const [contentTab, setContentTab] = useState<'materiales' | 'tareas'>('tareas');
+  const [contentTab, setContentTab] = useState<'materiales' | 'tareas'>(initialTab);
   const [materialesList, setMaterialesList] = useState<MaterialItem[]>([]);
   const [encargosList, setEncargosList] = useState<EncargoItem[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
+
+  // Malla curricular
+  const [temasMalla, setTemasMalla] = useState<TemaMallaItem[]>([]);
+  const [loadingMalla, setLoadingMalla] = useState(false);
 
   // Material form
   const [showMaterialForm, setShowMaterialForm] = useState(false);
@@ -106,6 +133,12 @@ export function MaestroMateriasScreen() {
   const [matDetalle, setMatDetalle] = useState('');
   const [matFile, setMatFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [savingMat, setSavingMat] = useState(false);
+  // upload -> estado progreso y mensajes
+  const [uploadProgress, setUploadProgress] = useState<{ step: number; message: string } | null>(null);
+  // malla -> tema seleccionado para subir material
+  const [selectedTemaForUpload, setSelectedTemaForUpload] = useState<TemaMallaItem | null>(null);
+  const [matTipoSubida, setMatTipoSubida] = useState<'estudio' | 'actividad'>('estudio');
+  const [expandedTemaId, setExpandedTemaId] = useState<string | null>(null);
 
   // Encargo form
   const [showTareaForm, setShowTareaForm] = useState(false);
@@ -184,6 +217,23 @@ export function MaestroMateriasScreen() {
     return () => { if (unsub) unsub(); };
   }, [selectedAsig?.id]);
 
+  const loadMallaCurricular = async (asig: AsignacionMateria) => {
+    try {
+      setLoadingMalla(true);
+      const res = await academicServicesApi.getMallaMateria(
+        asig.nivel.toLowerCase() as NivelEducativo,
+        asig.grado,
+        asig.materiaId
+      );
+      setTemasMalla((Array.isArray(res) ? res : (res as any)?.data ?? []) as TemaMallaItem[]);
+    } catch (e) {
+      console.error('Error loading malla curricular:', e);
+      setTemasMalla([]);
+    } finally {
+      setLoadingMalla(false);
+    }
+  };
+
   const reloadContent = async (asig: AsignacionMateria) => {
     const [mRes, eRes] = await Promise.all([
       academicServicesApi.list('materiales', { asignacionId: asig.id, limit: 100 }),
@@ -191,6 +241,8 @@ export function MaestroMateriasScreen() {
     ]);
     setMaterialesList(mRes.data as any[]);
     setEncargosList(eRes.data as any[]);
+    // Cargar malla curricular
+    await loadMallaCurricular(asig);
   };
 
   const handleSelectSubject = async (asig: AsignacionMateria) => {
@@ -202,15 +254,42 @@ export function MaestroMateriasScreen() {
   };
 
   // ── MATERIAL CRUD ─────────────────────────────────────────────────────────
-  const openNewMaterial = () => { setEditingMaterial(null); setMatTitulo(''); setMatDetalle(''); setMatFile(null); setShowMaterialForm(true); };
-  const openEditMaterial = (m: MaterialItem) => { setEditingMaterial(m); setMatTitulo(m.titulo); setMatDetalle(m.detalle || ''); setMatFile(null); setShowMaterialForm(true); };
-  const closeMaterialForm = () => { setShowMaterialForm(false); setEditingMaterial(null); setMatTitulo(''); setMatDetalle(''); setMatFile(null); };
+  const openNewMaterial = (tema?: TemaMallaItem, tipo?: 'estudio' | 'actividad') => {
+    setEditingMaterial(null);
+    setMatTitulo(tema ? tema.titulo : '');
+    setMatDetalle('');
+    setMatFile(null);
+    setUploadProgress(null);
+    setSelectedTemaForUpload(tema ?? null);
+    setMatTipoSubida(tipo ?? 'estudio');
+    setShowMaterialForm(true);
+  };
+  const openEditMaterial = (m: MaterialItem) => {
+    setEditingMaterial(m);
+    setMatTitulo(m.titulo);
+    setMatDetalle(m.detalle || '');
+    setMatFile(null);
+    setUploadProgress(null);
+    const foundTema = m.temaId ? temasMalla.find((t) => String(t.id) === String(m.temaId)) ?? null : null;
+    setSelectedTemaForUpload(foundTema);
+    setMatTipoSubida(m.tipoMaterial === 'actividad' ? 'actividad' : 'estudio');
+    setShowMaterialForm(true);
+  };
+  const closeMaterialForm = () => {
+    setShowMaterialForm(false);
+    setEditingMaterial(null);
+    setMatTitulo('');
+    setMatDetalle('');
+    setMatFile(null);
+    setUploadProgress(null);
+    setSelectedTemaForUpload(null);
+  };
 
   const handlePickFile = async () => {
     const r = await DocumentPicker.getDocumentAsync({ type: ALLOWED_TYPES, copyToCacheDirectory: true });
     if (r.canceled) return;
     const a = r.assets[0];
-    if ((a.size ?? 0) > 25 * 1024 * 1024) { Alert.alert('Archivo excedido', 'Máximo 25 MB.'); return; }
+    if ((a.size ?? 0) > MAX_FILE_SIZE_BYTES) { Alert.alert('Archivo excedido', `Máximo ${MAX_FILE_SIZE_MB} MB.`); return; }
     setMatFile(a);
   };
 
@@ -220,28 +299,61 @@ export function MaestroMateriasScreen() {
     if (!editingMaterial && !matFile) { Alert.alert('Archivo requerido', 'Adjunta un PDF, Word o Excel.'); return; }
     try {
       setSavingMat(true);
+      // upload -> iniciar progreso visual
+      setUploadProgress({ step: 0, message: UPLOAD_STEPS[0].label });
+
       const buildFormData = async () => {
         const data = new FormData();
         data.append('titulo', matTitulo.trim());
         if (matDetalle.trim()) data.append('detalle', matDetalle.trim());
+        if (selectedTemaForUpload) {
+          data.append('temaId', String(selectedTemaForUpload.id));
+        }
+        data.append('tipoMaterial', matTipoSubida);
         if (matFile) {
           if (Platform.OS === 'web' && (matFile as any).file) { data.append('file', (matFile as any).file); }
           else { const b = await (await fetch(matFile.uri)).blob(); data.append('file', b, matFile.name); }
         }
         return data;
       };
+
+      // upload -> paso 1: subiendo
+      await new Promise((r) => setTimeout(r, 300));
+      setUploadProgress({ step: 1, message: UPLOAD_STEPS[1].label });
+
       if (editingMaterial && matFile) {
         await academicServicesApi.updateMaterialWithFile(editingMaterial.id, await buildFormData());
       } else if (editingMaterial) {
-        await academicServicesApi.update('materiales', editingMaterial.id, { titulo: matTitulo.trim(), detalle: matDetalle.trim() || null });
+        await academicServicesApi.update('materiales', editingMaterial.id, {
+          titulo: matTitulo.trim(),
+          detalle: matDetalle.trim() || null,
+          temaId: selectedTemaForUpload ? String(selectedTemaForUpload.id) : null,
+          tipoMaterial: matTipoSubida,
+        });
       } else {
         const data = await buildFormData();
         data.append('asignacionId', selectedAsig.id);
         await academicServicesApi.uploadMaterial(data);
       }
+
+      // upload -> paso 2: analizando / verificado
+      setUploadProgress({ step: 2, message: UPLOAD_STEPS[2].label });
+      await new Promise((r) => setTimeout(r, 400));
+      setUploadProgress({ step: 3, message: UPLOAD_STEPS[3].label });
+      await new Promise((r) => setTimeout(r, 400));
+
+      // upload -> paso final: éxito
+      setUploadProgress({ step: 4, message: UPLOAD_STEPS[4].label });
+      await new Promise((r) => setTimeout(r, 600));
+
       closeMaterialForm();
       await reloadContent(selectedAsig);
-    } catch (e: any) { Alert.alert('Error', e.message || 'No se pudo guardar.'); } finally { setSavingMat(false); }
+    } catch (e: any) {
+      setUploadProgress(null);
+      Alert.alert('Error', e.message || 'No se pudo guardar.');
+    } finally {
+      setSavingMat(false);
+    }
   };
 
   const handleDeleteMaterial = (mat: MaterialItem) => {
@@ -566,32 +678,102 @@ export function MaestroMateriasScreen() {
         </View>
 
       ) : (
-        /* ─────────── MATERIALES ─────────── */
+        /* ─────────── MATERIALES PEDAGÓGICOS ─────────── */
         <View className="gap-4">
           <BentoCard className="p-4">
             <View className="flex-row items-center justify-between">
               <View>
                 <Text className="text-base font-black text-gray-900">Material Pedagógico</Text>
-                <Text className="text-xs text-gray-500 mt-0.5">{materialesList.length} archivos · PDF, DOCX, Excel (máx. 25 MB)</Text>
+                <Text className="text-xs text-gray-500 mt-0.5">
+                  {materialesList.length} archivo{materialesList.length !== 1 ? 's' : ''} · {temasMalla.length} tema{temasMalla.length !== 1 ? 's' : ''}
+                </Text>
               </View>
               <TouchableOpacity
-                onPress={showMaterialForm ? closeMaterialForm : openNewMaterial}
+                onPress={showMaterialForm ? closeMaterialForm : () => openNewMaterial()}
                 className={`px-4 py-2.5 rounded-xl flex-row items-center gap-2 ${showMaterialForm ? 'bg-gray-200' : 'bg-maroon'}`}
               >
                 <Ionicons name={showMaterialForm ? 'close' : 'cloud-upload'} size={18} color={showMaterialForm ? '#374151' : '#fff'} />
-                <Text className={`text-xs font-bold ${showMaterialForm ? 'text-gray-700' : 'text-white'}`}>{showMaterialForm ? 'Cancelar' : 'Subir'}</Text>
+                <Text className={`text-xs font-bold ${showMaterialForm ? 'text-gray-700' : 'text-white'}`}>{showMaterialForm ? 'Cancelar' : 'Subir material'}</Text>
               </TouchableOpacity>
             </View>
           </BentoCard>
 
           {showMaterialForm && (
             <BentoCard className="p-5 border-2 border-maroon/20">
-              <View className="flex-row items-center gap-2 mb-4">
+              <View className="flex-row items-center gap-2 mb-3">
                 <View className="w-8 h-8 rounded-xl bg-maroon items-center justify-center">
                   <Ionicons name="document-attach" size={16} color="#fff" />
                 </View>
                 <Text className="text-base font-black text-gray-900">{editingMaterial ? 'Editar material' : 'Subir nuevo material'}</Text>
               </View>
+
+              {/* Selector / Chip de tema vinculado */}
+              {selectedTemaForUpload ? (
+                <View className="p-3 mb-3 bg-gray-50 rounded-xl border border-gray-200 gap-2">
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center gap-2 flex-1 mr-2">
+                      <View className={`w-7 h-7 rounded-lg items-center justify-center ${matTipoSubida === 'actividad' ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                        <Ionicons name={matTipoSubida === 'actividad' ? 'clipboard' : 'library'} size={14} color={matTipoSubida === 'actividad' ? '#D97706' : '#2563EB'} />
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-[10px] font-bold text-gray-400 uppercase">Vinculado al tema</Text>
+                        <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>{selectedTemaForUpload.titulo}</Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity onPress={() => setSelectedTemaForUpload(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                      <Ionicons name="close-circle" size={18} color="#9CA3AF" />
+                    </TouchableOpacity>
+                  </View>
+                  <View className="flex-row gap-2 mt-1">
+                    <TouchableOpacity
+                      onPress={() => setMatTipoSubida('estudio')}
+                      className={`flex-1 py-1.5 rounded-lg flex-row items-center justify-center gap-1 border ${matTipoSubida === 'estudio' ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-200'}`}
+                    >
+                      <Ionicons name="library-outline" size={13} color={matTipoSubida === 'estudio' ? '#2563EB' : '#6B7280'} />
+                      <Text className={`text-xs font-bold ${matTipoSubida === 'estudio' ? 'text-blue-700' : 'text-gray-600'}`}>Estudio</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setMatTipoSubida('actividad')}
+                      className={`flex-1 py-1.5 rounded-lg flex-row items-center justify-center gap-1 border ${matTipoSubida === 'actividad' ? 'bg-amber-100 border-amber-300' : 'bg-white border-gray-200'}`}
+                    >
+                      <Ionicons name="clipboard-outline" size={13} color={matTipoSubida === 'actividad' ? '#D97706' : '#6B7280'} />
+                      <Text className={`text-xs font-bold ${matTipoSubida === 'actividad' ? 'text-amber-700' : 'text-gray-600'}`}>Actividad</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : temasMalla.length > 0 ? (
+                <View className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200 gap-2">
+                  <Text className="text-xs font-semibold text-gray-600">Vincular a un tema (opcional):</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-1.5 pb-1">
+                    {temasMalla.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => setSelectedTemaForUpload(t)}
+                        className="px-2.5 py-1.5 rounded-lg bg-white border border-gray-200 mr-1.5"
+                      >
+                        <Text className="text-xs font-medium text-gray-700" numberOfLines={1}>U{t.unidad}: {t.titulo}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <View className="flex-row gap-2 mt-1">
+                    <TouchableOpacity
+                      onPress={() => setMatTipoSubida('estudio')}
+                      className={`flex-1 py-1.5 rounded-lg flex-row items-center justify-center gap-1 border ${matTipoSubida === 'estudio' ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-200'}`}
+                    >
+                      <Ionicons name="library-outline" size={13} color={matTipoSubida === 'estudio' ? '#2563EB' : '#6B7280'} />
+                      <Text className={`text-xs font-bold ${matTipoSubida === 'estudio' ? 'text-blue-700' : 'text-gray-600'}`}>Estudio</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setMatTipoSubida('actividad')}
+                      className={`flex-1 py-1.5 rounded-lg flex-row items-center justify-center gap-1 border ${matTipoSubida === 'actividad' ? 'bg-amber-100 border-amber-300' : 'bg-white border-gray-200'}`}
+                    >
+                      <Ionicons name="clipboard-outline" size={13} color={matTipoSubida === 'actividad' ? '#D97706' : '#6B7280'} />
+                      <Text className={`text-xs font-bold ${matTipoSubida === 'actividad' ? 'text-amber-700' : 'text-gray-600'}`}>Actividad</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : null}
+
               <View className="gap-3">
                 <View>
                   <Text className="text-xs font-semibold text-gray-600 mb-1.5">Título *</Text>
@@ -612,16 +794,36 @@ export function MaestroMateriasScreen() {
                         {matFile ? matFile.name : editingMaterial?.nombreArchivo ? `📎 ${editingMaterial.nombreArchivo}` : 'Seleccionar PDF, DOCX o XLSX'}
                       </Text>
                       <Text className="text-[10px] text-gray-400 mt-0.5">
-                        {matFile ? `${Math.round((matFile.size ?? 0) / 1024)} KB · Nuevo archivo seleccionado` : editingMaterial ? 'Toca para reemplazar' : 'Hasta 25 MB'}
+                        {matFile ? `${Math.round((matFile.size ?? 0) / 1024)} KB · Nuevo archivo seleccionado` : editingMaterial ? 'Toca para reemplazar' : `Hasta ${MAX_FILE_SIZE_MB} MB`}
                       </Text>
                     </View>
                     {matFile && (
-                      <TouchableOpacity onPress={() => setMatFile(null)} hitSlop={{ top:8, bottom:8, left:8, right:8 }}>
+                      <TouchableOpacity onPress={() => setMatFile(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
                         <Ionicons name="close-circle" size={20} color="#EF4444" />
                       </TouchableOpacity>
                     )}
                   </TouchableOpacity>
                 </View>
+
+                {uploadProgress && (
+                  <View className="gap-2 mt-2 p-3 bg-maroon/5 rounded-xl border border-maroon/20">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-2">
+                        <ActivityIndicator size="small" color="#801529" />
+                        <Text className="text-xs font-bold text-maroon">{uploadProgress.message}</Text>
+                      </View>
+                      <Text className="text-[10px] font-mono text-gray-500">
+                        Paso {uploadProgress.step + 1} de {UPLOAD_STEPS.length}
+                      </Text>
+                    </View>
+                    <View className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <View
+                        className="h-full bg-maroon rounded-full transition-all duration-300"
+                        style={{ width: `${((uploadProgress.step + 1) / UPLOAD_STEPS.length) * 100}%` }}
+                      />
+                    </View>
+                  </View>
+                )}
                 <TouchableOpacity onPress={handleSaveMaterial} disabled={savingMat} className="bg-maroon rounded-xl py-3 items-center mt-1 shadow">
                   {savingMat ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-white font-black text-sm">{editingMaterial ? 'Guardar cambios' : 'Publicar recurso'}</Text>}
                 </TouchableOpacity>
@@ -629,73 +831,190 @@ export function MaestroMateriasScreen() {
             </BentoCard>
           )}
 
-          {materialesList.length === 0 ? (
-            <BentoCard className="p-10 items-center">
-              <View className="w-14 h-14 rounded-3xl bg-gray-100 items-center justify-center mb-3">
-                <Ionicons name="folder-open-outline" size={28} color="#D1D5DB" />
-              </View>
-              <Text className="text-sm font-bold text-gray-600">Sin materiales publicados</Text>
-              <Text className="text-xs text-gray-400 mt-1">Usa "Subir" para añadir el primer recurso.</Text>
-            </BentoCard>
-          ) : (
-            <View className="flex-row flex-wrap -mx-2">
-              {materialesList.map((mat) => {
-                const badge = getExtBadge(mat.nombreArchivo);
-                return (
-                  <View key={mat.id} className="w-full md:w-1/2 lg:w-1/3 p-2">
-                    <BentoCard className="p-4 h-full flex-col justify-between">
-                      <View>
-                        <View className="flex-row items-start justify-between mb-2">
-                          <View className="w-10 h-10 rounded-2xl bg-gold/20 border border-gold/30 items-center justify-center">
-                            <Ionicons name="document-text" size={20} color="#B45309" />
-                          </View>
-                          <View className="flex-row gap-1.5">
-                            <View className={`px-2 py-0.5 rounded-md ${badge.bg}`}>
-                              <Text className={`text-[10px] font-black ${badge.text}`}>{badge.label}</Text>
+          {(() => {
+            const renderMatCard = (mat: MaterialItem) => {
+              const badge = getExtBadge(mat.nombreArchivo);
+              const esActividad = mat.tipoMaterial === 'actividad';
+              return (
+                <View key={mat.id} className="w-full md:w-1/2 p-2">
+                  <View className="p-4 bg-white rounded-2xl border border-gray-100 shadow-sm flex-col justify-between h-full">
+                    <View>
+                      <View className="flex-row items-start justify-between mb-2">
+                        <View className={`w-9 h-9 rounded-xl items-center justify-center ${esActividad ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                          <Ionicons
+                            name={esActividad ? 'clipboard' : 'library'}
+                            size={16}
+                            color={esActividad ? '#D97706' : '#2563EB'}
+                          />
+                        </View>
+                        <View className="flex-row gap-1">
+                          {mat.tipoMaterial && (
+                            <View className={`px-2 py-0.5 rounded-md ${esActividad ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                              <Text className={`text-[9px] font-black ${esActividad ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {esActividad ? 'ACTIVIDAD' : 'ESTUDIO'}
+                              </Text>
                             </View>
-                            {mat.activo !== false && (
-                              <View className="px-2 py-0.5 bg-green-100 rounded-md">
-                                <Text className="text-[10px] font-black text-green-700">ACTIVO</Text>
-                              </View>
-                            )}
+                          )}
+                          <View className={`px-2 py-0.5 rounded-md ${badge.bg}`}>
+                            <Text className={`text-[9px] font-black ${badge.text}`}>{badge.label}</Text>
                           </View>
                         </View>
-                        <Text className="font-black text-gray-900 text-sm mb-1" numberOfLines={2}>{mat.titulo}</Text>
-                        {mat.detalle ? <Text className="text-xs text-gray-500 mb-2" numberOfLines={2}>{mat.detalle}</Text> : null}
-                        <View className="gap-0.5 mt-1">
-                          {mat.nombreArchivo && <Text className="text-xs text-gray-600 font-medium" numberOfLines={1}>📎 {mat.nombreArchivo}</Text>}
-                          <View className="flex-row items-center gap-2">
-                            {mat.tamanioBytes != null && <Text className="text-[10px] text-gray-400 font-mono">{fmtBytes(mat.tamanioBytes)}</Text>}
-                            {mat.fechaSubida && <Text className="text-[10px] text-gray-400">· {mat.fechaSubida.slice(0,10)}</Text>}
-                          </View>
-                        </View>
-                        {mat.archivoUrl && (
-                          <TouchableOpacity
-                            onPress={() => setViewerDoc({ visible:true, title:mat.titulo, url:mat.archivoUrl, fileName:mat.nombreArchivo, mimeType:mat.tipoMime, fileSize:mat.tamanioBytes, uploadedAt:mat.fechaSubida })}
-                            className="mt-2 py-2 px-3 bg-blue-50 rounded-xl flex-row items-center justify-center gap-1.5"
-                          >
-                            <Ionicons name="eye-outline" size={15} color="#2563EB" />
-                            <Text className="text-xs font-bold text-blue-700">{badge.label === 'PDF' ? 'Vista previa PDF' : 'Abrir en Docs'}</Text>
-                          </TouchableOpacity>
-                        )}
                       </View>
-                      <View className="flex-row items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
-                        <Text className="text-[10px] text-gray-400 font-mono">#{mat.id}</Text>
-                        <View className="flex-row gap-1.5">
-                          <TouchableOpacity onPress={() => openEditMaterial(mat)} className="p-2 bg-gray-100 rounded-xl">
-                            <Ionicons name="create-outline" size={16} color="#801529" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeleteMaterial(mat)} className="p-2 bg-red-50 rounded-xl">
-                            <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                          </TouchableOpacity>
+                      <Text className="font-black text-gray-900 text-sm mb-1" numberOfLines={2}>{mat.titulo}</Text>
+                      {mat.detalle ? <Text className="text-xs text-gray-500 mb-2" numberOfLines={2}>{mat.detalle}</Text> : null}
+                      <View className="gap-0.5 mt-1">
+                        {mat.nombreArchivo && <Text className="text-xs text-gray-600 font-medium" numberOfLines={1}>📎 {mat.nombreArchivo}</Text>}
+                        <View className="flex-row items-center gap-2">
+                          {mat.tamanioBytes != null && <Text className="text-[10px] text-gray-400 font-mono">{fmtBytes(mat.tamanioBytes)}</Text>}
+                          {mat.fechaSubida && <Text className="text-[10px] text-gray-400">· {mat.fechaSubida.slice(0, 10)}</Text>}
                         </View>
                       </View>
-                    </BentoCard>
+                      {mat.archivoUrl && (
+                        <TouchableOpacity
+                          onPress={() => setViewerDoc({
+                            visible: true,
+                            title: mat.titulo,
+                            url: mat.archivoUrl,
+                            fileName: mat.nombreArchivo,
+                            mimeType: mat.tipoMime,
+                            fileSize: mat.tamanioBytes,
+                            uploadedAt: mat.fechaSubida,
+                          })}
+                          className="mt-2 py-2 px-3 bg-blue-50 rounded-xl flex-row items-center justify-center gap-1.5"
+                        >
+                          <Ionicons name="eye-outline" size={15} color="#2563EB" />
+                          <Text className="text-xs font-bold text-blue-700">{badge.label === 'PDF' ? 'Vista previa PDF' : 'Abrir en Docs'}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                    <View className="flex-row items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
+                      <Text className="text-[10px] text-gray-400 font-mono">#{mat.id}</Text>
+                      <View className="flex-row gap-1.5">
+                        <TouchableOpacity onPress={() => openEditMaterial(mat)} className="p-2 bg-gray-100 rounded-xl">
+                          <Ionicons name="create-outline" size={16} color="#801529" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleDeleteMaterial(mat)} className="p-2 bg-red-50 rounded-xl">
+                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                   </View>
-                );
-              })}
-            </View>
-          )}
+                </View>
+              );
+            };
+
+            if (temasMalla.length === 0 && materialesList.length === 0) {
+              return (
+                <BentoCard className="p-10 items-center">
+                  <View className="w-14 h-14 rounded-3xl bg-gray-100 items-center justify-center mb-3">
+                    <Ionicons name="folder-open-outline" size={28} color="#D1D5DB" />
+                  </View>
+                  <Text className="text-sm font-bold text-gray-600">Sin materiales publicados</Text>
+                  <Text className="text-xs text-gray-400 mt-1">Usa el botón "Subir material" para comenzar.</Text>
+                </BentoCard>
+              );
+            }
+
+            const sinTema = materialesList.filter((m) => !m.temaId || !temasMalla.some((t) => String(t.id) === String(m.temaId)));
+
+            return (
+              <View className="gap-5">
+                {temasMalla.map((tema) => {
+                  const temaMats = materialesList.filter((m) => String(m.temaId) === String(tema.id));
+                  const estudios = temaMats.filter((m) => m.tipoMaterial !== 'actividad');
+                  const actividades = temaMats.filter((m) => m.tipoMaterial === 'actividad');
+                  return (
+                    <BentoCard key={tema.id} className={`p-4 gap-3 ${tema.esEvaluacion ? 'border-2 border-amber-300' : ''}`}>
+                      <View className="flex-row items-start justify-between">
+                        <View className="flex-1 mr-2">
+                          <View className="flex-row items-center gap-1.5 mb-1 flex-wrap">
+                            <View className="px-2 py-0.5 bg-gray-100 rounded-md">
+                              <Text className="text-[10px] font-black text-gray-600">Unidad {tema.unidad}</Text>
+                            </View>
+                            <View className={`px-2 py-0.5 rounded-md ${tema.esEvaluacion ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                              <Text className={`text-[10px] font-black ${tema.esEvaluacion ? 'text-amber-700' : 'text-blue-700'}`}>
+                                {tema.esEvaluacion ? 'EVALUABLE' : 'TEÓRICO'}
+                              </Text>
+                            </View>
+                            {tema.horasPrevistas != null && (
+                              <Text className="text-[10px] text-gray-400 font-mono">⏱ {tema.horasPrevistas}h</Text>
+                            )}
+                            <View className="flex-row items-center gap-1 ml-1">
+                              {estudios.length > 0 && (
+                                <View className="px-1.5 py-0.5 bg-blue-50 rounded-md flex-row items-center gap-0.5">
+                                  <Ionicons name="library" size={9} color="#2563EB" />
+                                  <Text className="text-[9px] font-bold text-blue-700">{estudios.length} estudio</Text>
+                                </View>
+                              )}
+                              {actividades.length > 0 && (
+                                <View className="px-1.5 py-0.5 bg-amber-50 rounded-md flex-row items-center gap-0.5">
+                                  <Ionicons name="clipboard" size={9} color="#D97706" />
+                                  <Text className="text-[9px] font-bold text-amber-700">{actividades.length} act.</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          <Text className="font-black text-gray-900 text-sm">{tema.titulo}</Text>
+                          {tema.contenidos ? <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={2}>{tema.contenidos}</Text> : null}
+                        </View>
+
+                        <View className="flex-row gap-1.5">
+                          <TouchableOpacity
+                            onPress={() => openNewMaterial(tema, 'estudio')}
+                            className="px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-xl flex-row items-center gap-1"
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="library-outline" size={13} color="#2563EB" />
+                            <Text className="text-[11px] font-bold text-blue-700">+ Estudio</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => openNewMaterial(tema, 'actividad')}
+                            className="px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded-xl flex-row items-center gap-1"
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="clipboard-outline" size={13} color="#D97706" />
+                            <Text className="text-[11px] font-bold text-amber-700">+ Actividad</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {temaMats.length > 0 ? (
+                        <View className="flex-row flex-wrap -mx-2 mt-1">
+                          {temaMats.map(renderMatCard)}
+                        </View>
+                      ) : (
+                        <View className="py-3 px-3 bg-gray-50 rounded-xl border border-dashed border-gray-200 items-center">
+                          <Text className="text-xs text-gray-400 font-medium">Sin materiales vinculados a este tema todavía.</Text>
+                        </View>
+                      )}
+                    </BentoCard>
+                  );
+                })}
+
+                {sinTema.length > 0 && (
+                  <BentoCard className="p-4 gap-3">
+                    <View className="flex-row items-center justify-between">
+                      <View className="flex-row items-center gap-2">
+                        <View className="w-2 h-2 rounded-full bg-gray-400" />
+                        <Text className="text-sm font-black text-gray-700">Otros materiales / Sin tema específico</Text>
+                        <Text className="text-xs text-gray-400 font-mono">({sinTema.length})</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => openNewMaterial()}
+                        className="px-2.5 py-1.5 bg-gray-100 rounded-xl flex-row items-center gap-1"
+                      >
+                        <Ionicons name="add" size={13} color="#374151" />
+                        <Text className="text-[11px] font-bold text-gray-700">Subir</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View className="flex-row flex-wrap -mx-2 mt-1">
+                      {sinTema.map(renderMatCard)}
+                    </View>
+                  </BentoCard>
+                )}
+              </View>
+            );
+          })()}
         </View>
       )}
 
