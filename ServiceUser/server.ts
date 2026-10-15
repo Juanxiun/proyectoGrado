@@ -22,7 +22,7 @@ import { requireAuth, getClaimsFromToken } from "./middleware/auth.ts";
 import { addClient } from "./services/websocket.service.ts";
 import { handleWebhookEvent } from "./Controller/webhookHandler.ts";
 
-// Rango reservado para microservicios: 8880–8883.
+// config -> puerto microservicios
 const PORT = Number(Deno.env.get("PORT") ?? 8880);
 
 const app = new Application();
@@ -43,23 +43,22 @@ app.use(async (ctx, next) => {
   console.log(`${ctx.request.method} ${ctx.request.url.pathname} → ${ctx.response.status} (${ms}ms)`);
 });
 
-// Rutas de Usuarios (CRUD)
 rt.get("/usuarios", requireAuth(["director", "control", "profesor"]), getUsuarios);
-// La autorización fina (propio perfil o jerarquía de gestión) se realiza en el controlador.
+// auth -> autorizacion en controlador
 rt.get("/usuarios/:id", requireAuth(), getUsuario);
 rt.post("/usuarios", requireAuth(["director", "control"]), createUsuario);
 rt.put("/usuarios/:id", requireAuth(), updateUsuario);
 rt.patch("/usuarios/:id/baja", requireAuth(["director", "control"]), bajaUsuario);
 rt.delete("/usuarios/:id", requireAuth(["director", "control"]), deleteUsuario);
 
-// Rutas de Autenticación y 2FA
+// rutas -> autenticacion y dos factores
 rt.post("/auth/login", login);
 rt.post("/auth/verify-2fa", verify2FA);
 rt.post("/auth/resend-2fa", resend2FA);
 rt.post("/auth/change-password", requireAuth(), changePassword);
 rt.post("/auth/logout", requireAuth(), logout);
 
-// Rutas de Gestión de Sesiones y Auditoría de Dispositivos
+// rutas -> sesiones y dispositivos
 rt.get("/auth/sessions/me", requireAuth(), getMySessions);
 rt.get("/auth/sessions/user/:id", requireAuth(["director", "control", "profesor"]), getUserSessionsById);
 rt.delete("/auth/sessions/:sessionId", requireAuth(["director", "control"]), revokeSession);
@@ -78,7 +77,7 @@ rt.get("/ws", async (ctx) => {
   addClient(socket);
 });
 
-// Health Check
+// ruta -> health check
 rt.get("/health", (ctx) => {
   ctx.response.status = 200;
   ctx.response.body = {

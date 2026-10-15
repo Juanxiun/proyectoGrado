@@ -1,3 +1,4 @@
+// tarjeta_grilla -> componente de tarjetas en diseño de rejilla
 import { View, type ViewProps } from 'react-native';
 
 interface BentoCardProps extends ViewProps {

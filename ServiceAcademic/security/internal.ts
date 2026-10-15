@@ -1,13 +1,6 @@
 import { Context, Next } from "@oak/oak";
 
-/**
- * Acceso interno entre servicios, autenticado con el secreto compartido
- * `INTERNAL_PUSH_TOKEN` en la cabecera `X-Internal-Token`.
- *
- * Es un canal distinto al JWT de usuario: sólo lo usan procesos del propio
- * sistema (hoy ServiceNotification consulta el desempeño de ServiceAcademic).
- * Se mantiene en rutas separadas y explícitas para no relajar `requireAuth`.
- */
+// seguridad -> token interno servicios
 const esperado = () => Deno.env.get("INTERNAL_PUSH_TOKEN") ?? "shalom-internal-push";
 
 function iguales(a: string, b: string): boolean {

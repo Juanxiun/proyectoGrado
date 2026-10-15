@@ -22,7 +22,7 @@ interface AsistenciaRow {
   justificacion?: string | null;
   fechaRegistro: Date | string;
   fechaActualizacion: Date | string;
-  // Estudiante info
+  // fila -> datos estudiante
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;

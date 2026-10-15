@@ -70,7 +70,7 @@ const definitions: Definition[] = [
   ] },
 ];
 
-const fileTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+const fileTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 const managementRoles = ['director', 'admin', 'administrador', 'gerencia', 'control', 'editor', 'secretaria', 'secretario', 'administrativo'];
 const teachingRoles = ['profesor', 'maestro', 'maestros', 'docente'];
 
@@ -667,7 +667,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       setDeleteLoading(false);
     }
   };
-  const chooseFile = async () => { const result = await DocumentPicker.getDocumentAsync({ type: fileTypes, copyToCacheDirectory: true }); if (result.canceled) return; const asset = result.assets[0]; if (!fileTypes.includes(asset.mimeType ?? '') || (asset.size ?? 0) > 150 * 1024 * 1024) { Alert.alert('Archivo no permitido', 'Solo PDF, Word o Excel de hasta 150 MB.'); return; } setFile(asset); };
+  const chooseFile = async () => { const result = await DocumentPicker.getDocumentAsync({ type: fileTypes, copyToCacheDirectory: true }); if (result.canceled) return; const asset = result.assets[0]; if (!fileTypes.includes(asset.mimeType ?? '') || (asset.size ?? 0) > 25 * 1024 * 1024) { Alert.alert('Archivo no permitido', 'Solo PDF, DOCX o Excel de hasta 25 MB.'); return; } setFile(asset); };
   const saveBulk = async () => {
     if (!values[selected.resource === 'calificaciones' ? 'encargoId' : 'asignacionId'] || (selected.resource === 'asistencia' && !values.fecha) || !bulkStudents.length || !bulkValue) { Alert.alert('Lote incompleto', 'Seleccione el encargo o la asignación, estudiantes y el valor a registrar.'); return; }
     try {
@@ -1014,7 +1014,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                 <Ionicons name="attach-outline" size={20} color="#801529" />
                 <View className="flex-1">
                   <Text className="text-maroon font-semibold" numberOfLines={1}>
-                    {file ? file.name : editing?.nombreArchivo ? `📎 ${editing.nombreArchivo}` : 'Adjuntar PDF, Word o Excel (máx. 150 MB)'}
+                    {file ? file.name : editing?.nombreArchivo ? `📎 ${editing.nombreArchivo}` : 'Adjuntar PDF, DOCX o Excel (máx. 25 MB)'}
                   </Text>
                   {editing && !file && (
                     <Text className="text-xs text-gray-400 mt-0.5">Toca para reemplazar el archivo actual</Text>

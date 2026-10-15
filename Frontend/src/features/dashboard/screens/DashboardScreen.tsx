@@ -15,12 +15,16 @@ import { KpisDelTablero } from '../components/KpisDelTablero';
 import { PanelRiesgo } from '../components/PanelRiesgo';
 import { PanelAsistencia, PanelAvance } from '../components/PanelesTablero';
 import { PanelEconomico } from '../components/PanelEconomico';
+import { InstitutionDashboard } from '../components/InstitutionDashboard';
+import { useAuth } from '../../../context/AuthContext';
+import { ResumenAvanceDocente } from '../../maestros/components/ResumenAvanceDocente';
 
 /**
  * Página de inicio. Todo lo que muestra viene de ServiceDashboard, que es un
  * servicio de sólo lectura y ya aplicó el recorte por rol.
  */
-export function DashboardScreen() {
+export function DashboardScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const { user } = useAuth();
   const [datos, setDatos] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
@@ -83,6 +87,19 @@ export function DashboardScreen() {
           <Text className="text-white font-bold text-sm">Reintentar</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  const role = (user?.rol ?? '').toLowerCase();
+  const isTeacher = role.includes('docente') || role.includes('maestro') || role.includes('profesor');
+  if (['director', 'admin', 'administrador', 'directores', 'administradores', 'control', 'gerencia', 'secretaria', 'secretario', 'administrativo', 'editor'].includes(role)) {
+    return (
+      <InstitutionDashboard
+        data={datos}
+        role={role}
+        userName={user?.nombre ?? 'Usuario'}
+        onNavigate={onNavigate}
+      />
     );
   }
 
@@ -171,6 +188,8 @@ export function DashboardScreen() {
           </View>
         </View>
       </BentoCard>
+
+      {isTeacher && datos.contexto.periodo?.id ? <ResumenAvanceDocente periodoId={datos.contexto.periodo.id} /> : null}
 
       <KpisDelTablero kpis={datos.kpis} />
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -14,6 +14,7 @@ import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { useResponsive } from '../../../utils/responsive';
+import { UserAvatar } from '../../../shared/ui';
 
 interface CursoGroup {
   cursoPeriodoId: string;
@@ -36,7 +37,7 @@ interface EstudianteInscrito {
   fechaInscripcion?: string;
 }
 
-export function MaestroCursosScreen() {
+export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: string, params?: { tab?: 'materiales' | 'tareas' }) => void }) {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
 
@@ -44,6 +45,8 @@ export function MaestroCursosScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [cursos, setCursos] = useState<CursoGroup[]>([]);
   const [selectedCurso, setSelectedCurso] = useState<CursoGroup | null>(null);
+  const [selectedMateria, setSelectedMateria] = useState('');
+  const [selectedCursoId, setSelectedCursoId] = useState('');
 
   // Modal de estudiantes
   const [studentsModalOpen, setStudentsModalOpen] = useState(false);
@@ -179,6 +182,16 @@ export function MaestroCursosScreen() {
     );
   }, [students, searchStudent]);
 
+  const materias = useMemo(() => {
+    const nombres = new Set(cursos.flatMap((curso) => curso.materias.map((materia) => materia.nombre)));
+    return [...nombres].sort((a, b) => a.localeCompare(b));
+  }, [cursos]);
+
+  const cursosMateria = useMemo(
+    () => cursos.filter((curso) => curso.materias.some((materia) => materia.nombre === selectedMateria)),
+    [cursos, selectedMateria],
+  );
+
   return (
     <View className="flex-1 gap-4">
       {/* Header Banner */}
@@ -202,6 +215,21 @@ export function MaestroCursosScreen() {
         </View>
       </BentoCard>
 
+      {/* Selección de materia */}
+      {!loading && materias.length > 0 ? (
+        <BentoCard className="p-5">
+          <Text className="text-lg font-bold text-gray-900">Selecciona una materia</Text>
+          <Text className="text-xs text-gray-500 mt-1">Luego elige el curso o paralelo que deseas gestionar.</Text>
+          <View className="flex-row flex-wrap gap-2 mt-4">
+            {materias.map((materia) => (
+              <TouchableOpacity key={materia} onPress={() => { setSelectedMateria(materia); setSelectedCursoId(''); }} className={`px-4 py-2.5 rounded-xl border ${selectedMateria === materia ? 'bg-maroon border-maroon' : 'bg-gray-50 border-gray-200'}`}>
+                <Text className={`text-sm font-semibold ${selectedMateria === materia ? 'text-white' : 'text-gray-700'}`}>{materia}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </BentoCard>
+      ) : null}
+
       {/* Listado de cursos */}
       {loading ? (
         <View className="p-12 items-center justify-center">
@@ -218,7 +246,7 @@ export function MaestroCursosScreen() {
         </BentoCard>
       ) : (
         <View className={`gap-4 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
-          {cursos.map((curso) => {
+          {(selectedMateria ? cursosMateria : []).map((curso) => {
             const isSecundaria = String(curso.nivel).toLowerCase().includes('secundaria');
             return (
               <BentoCard
@@ -273,12 +301,28 @@ export function MaestroCursosScreen() {
 
                 {/* Acción para ver detalle de estudiantes */}
                 <TouchableOpacity
-                  onPress={() => handleOpenCourseStudents(curso)}
+                  onPress={() => setSelectedCursoId(selectedCursoId === curso.cursoPeriodoId ? '' : curso.cursoPeriodoId)}
                   className="mt-5 bg-maroon rounded-xl py-2.5 px-4 flex-row items-center justify-center gap-2 shadow-sm"
                 >
                   <Ionicons name="people-outline" size={18} color="#FFFFFF" />
-                  <Text className="text-white text-sm font-semibold">Ver Nómina de Estudiantes</Text>
+                  <Text className="text-white text-sm font-semibold">{selectedCursoId === curso.cursoPeriodoId ? 'Ocultar opciones' : 'Gestionar curso'}</Text>
                 </TouchableOpacity>
+                {selectedCursoId === curso.cursoPeriodoId ? (
+                  <View className="flex-row gap-2 mt-3">
+                    <TouchableOpacity onPress={() => onNavigate?.('Materias', { tab: 'tareas' })} className="flex-1 p-3 rounded-xl bg-amber-50 items-center">
+                      <Ionicons name="clipboard-outline" size={19} color="#92400E" />
+                      <Text className="text-xs font-semibold text-amber-900 mt-1">Dejar encargo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => onNavigate?.('Materias', { tab: 'materiales' })} className="flex-1 p-3 rounded-xl bg-blue-50 items-center">
+                      <Ionicons name="cloud-upload-outline" size={19} color="#1D4ED8" />
+                      <Text className="text-xs font-semibold text-blue-900 mt-1">Subir material</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleOpenCourseStudents(curso)} className="flex-1 p-3 rounded-xl bg-gray-100 items-center">
+                      <Ionicons name="people-outline" size={19} color="#374151" />
+                      <Text className="text-xs font-semibold text-gray-700 mt-1">Estudiantes</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
               </BentoCard>
             );
           })}
@@ -361,11 +405,12 @@ export function MaestroCursosScreen() {
                       className="p-3 bg-gray-50 rounded-xl border border-gray-100 flex-row items-center justify-between"
                     >
                       <View className="flex-row items-center gap-3">
-                        <View className="w-9 h-9 rounded-full bg-maroon/10 items-center justify-center">
-                          <Text className="text-xs font-bold text-maroon">
-                            {st.apellidoPaterno?.charAt(0) || st.nombre?.charAt(0) || 'E'}
-                          </Text>
-                        </View>
+                        <UserAvatar
+                          nombre={st.nombre}
+                          apellidoPaterno={st.apellidoPaterno}
+                          className="w-9 h-9 rounded-full bg-maroon/10"
+                          textoClassName="text-xs font-bold text-maroon"
+                        />
                         <View>
                           <Text className="text-sm font-bold text-gray-800">
                             {st.apellidoPaterno} {st.apellidoMaterno} {st.nombre}

@@ -1,0 +1,10 @@
+fastapi[standard]
+uvicorn
+httpx
+ollama>=0.5.3,<1.0
+redis[hiredis]
+pydantic-settings
+pymupdf
+python-docx
+openpyxl
+xlrd

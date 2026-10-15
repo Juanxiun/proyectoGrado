@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -30,9 +31,11 @@ export function EstudianteMateriasScreen() {
   const [loading, setLoading] = useState(true);
   const [materias, setMaterias] = useState<MateriaInscrita[]>([]);
   const [selectedMateria, setSelectedMateria] = useState<MateriaInscrita | null>(null);
+  const [busqueda, setBusqueda] = useState('');
 
   // Dos pestañas estrictamente separadas: 'contenido' vs 'tareas'
   const [activeTab, setActiveTab] = useState<'contenido' | 'tareas'>('contenido');
+  const materiasFiltradas = materias.filter((materia) => `${materia.materiaNombre} ${materia.docenteNombre ?? ''}`.toLowerCase().includes(busqueda.toLowerCase()));
 
   useEffect(() => {
     async function loadMateriasEstudiante() {
@@ -90,18 +93,17 @@ export function EstudianteMateriasScreen() {
     <View className="flex-1 gap-4">
       {!selectedMateria ? (
         <>
-          {/* Cabecera del Listado de Materias */}
-          <BentoCard className="p-5">
-            <View className="flex-row items-center justify-between">
-              <View>
-                <Text className="text-2xl font-bold text-gray-900">Mis Materias Inscritas</Text>
-                <Text className="text-sm text-gray-500 mt-1">
-                  Accede a los recursos pedagógicos de estudio y a la entrega de tus deberes por asignatura.
-                </Text>
-              </View>
-              <StatusBadge label={`${materias.length} Asignaturas`} variant="info" />
+          <View className="gap-3">
+            <View className="flex-row items-center gap-2 bg-[#FBF5EC] rounded-2xl border border-[#EFE6DB] px-4 py-3">
+              <Ionicons name="search-outline" size={19} color="#6B7280" />
+              <TextInput value={busqueda} onChangeText={setBusqueda} placeholder="Buscar materia o profesor..." placeholderTextColor="#7B7B80" className="flex-1 text-sm text-gray-800" />
             </View>
-          </BentoCard>
+            <View className="flex-row gap-3">
+              <View className="flex-1 bg-[#801F3F] rounded-2xl p-3.5"><Text className="text-white/80 text-[9px] font-bold">MATERIAS ACTIVAS</Text><Text className="text-white text-xl font-black mt-1">{materias.length}</Text></View>
+              <View className="flex-1 bg-[#F3D9B7] rounded-2xl p-3.5"><Text className="text-[#9C5367] text-[9px] font-bold">CICLO ACTUAL</Text><Text className="text-[#801F3F] text-base font-black mt-1">En curso</Text></View>
+            </View>
+            <View className="flex-row items-center justify-between px-1 mt-1"><Text className="text-[#801F3F] text-lg font-bold">Mis Materias</Text><Ionicons name="options-outline" size={18} color="#801F3F" /></View>
+          </View>
 
           {loading ? (
             <View className="py-12 items-center justify-center">
@@ -121,28 +123,28 @@ export function EstudianteMateriasScreen() {
               </Text>
             </BentoCard>
           ) : (
-            <View className={`gap-4 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
-              {materias.map((mat) => (
+            <View className={`gap-3 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
+              {materiasFiltradas.map((mat, index) => (
                 <BentoCard
                   key={mat.asignacionId}
-                  className={`p-5 ${isMobile ? 'w-full' : 'w-[48%]'}`}
+                  className={`p-4 ${isMobile ? 'w-full bg-[#FBF5EC] border border-[#EFE6DB] rounded-2xl' : 'w-[48%]'}`}
                 >
                   <View className="flex-row items-start justify-between">
                     <View className="flex-row items-center gap-3">
-                      <View className="w-12 h-12 rounded-xl bg-maroon/10 items-center justify-center">
-                        <Ionicons name="school" size={24} color="#801529" />
+                      <View className={`w-12 h-12 rounded-2xl items-center justify-center ${index % 2 ? 'bg-[#A94E6D]' : 'bg-[#801F3F]'}`}>
+                        <Ionicons name={index % 2 ? 'school-outline' : 'book-outline'} size={23} color="#FFFFFF" />
                       </View>
                       <View>
-                        <Text className="text-lg font-bold text-gray-900">{mat.materiaNombre}</Text>
-                        <Text className="text-xs text-gray-500 font-medium">
+                        <Text className="text-sm font-extrabold uppercase text-[#801F3F]">{mat.materiaNombre}</Text>
+                        <Text className="text-xs text-gray-500 mt-1 font-medium">
                           Prof. {mat.docenteNombre}
                         </Text>
                       </View>
                     </View>
-                    <StatusBadge label="En curso" variant="success" />
+                    <View className="px-2 py-1 rounded-full bg-[#F3D9B7]"><Text className="text-[#801F3F] text-[9px] font-bold">EN CURSO</Text></View>
                   </View>
 
-                  <Text className="text-xs text-gray-400 mt-3">
+                  <Text className="text-xs text-gray-500 mt-3">
                     {mat.cursoLabel ? `Curso: ${mat.cursoLabel}` : 'Período Activo'}
                   </Text>
 
@@ -151,10 +153,10 @@ export function EstudianteMateriasScreen() {
                       setSelectedMateria(mat);
                       setActiveTab('contenido');
                     }}
-                    className="mt-5 bg-maroon rounded-xl py-2.5 px-4 flex-row items-center justify-center gap-2 shadow-sm"
+                    className="mt-4 bg-white rounded-xl py-2.5 px-3 flex-row items-center justify-between border border-gray-200"
                   >
-                    <Ionicons name="enter-outline" size={18} color="#FFFFFF" />
-                    <Text className="text-white text-xs font-bold">Ingresar a la Materia</Text>
+                    <Text className="text-[#801F3F] text-xs font-bold">Ver materia</Text>
+                    <Ionicons name="chevron-forward" size={17} color="#801F3F" />
                   </TouchableOpacity>
                 </BentoCard>
               ))}
@@ -238,6 +240,7 @@ export function EstudianteMateriasScreen() {
           {activeTab === 'contenido' ? (
             <ContenidoEstudioSection
               asignacionId={selectedMateria.asignacionId}
+              materiaId={selectedMateria.materiaId}
               materiaNombre={selectedMateria.materiaNombre}
             />
           ) : (

@@ -16,17 +16,7 @@ import type {
   ResumenAsistencia,
 } from "../models/academic.ts";
 
-/**
- * Seguimiento académico: notas y desempeño.
- *
- * Todo se CALCULA en el momento a partir de `calificaciones` + la ponderación
- * de `encargos` y de los registros de `asistencia`. No hay tabla de notas
- * oficiales ni caché: corregir una tarea recalcula el libro entero, y siempre
- * refleja lo que el docente realmente registró.
- *
- * Sólo cuentan los encargos en estado 'publicado'; una nota sobre un encargo
- * en borrador no debe promediar.
- */
+// servicio -> notas desempeno en vivo
 
 interface RowTrimestre {
   id: bigint;
@@ -79,7 +69,7 @@ function esTrimestreValido(valor: string | null): valor is "1" | "2" | "3" {
   return valor === "1" || valor === "2" || valor === "3";
 }
 
-/** Resumen de asistencia; la tasa cuenta como efectiva todo lo que no es falta. */
+// util -> resumen asistencia efectiva
 function construirResumen(filas: Map<string, { estado: string; total: number }>): ResumenAsistencia {
   let presentes = 0;
   let ausentes = 0;
@@ -116,10 +106,7 @@ function construirResumen(filas: Map<string, { estado: string; total: number }>)
   };
 }
 
-/**
- * Índice de desempeño 0-100: mezcla el promedio académico con la asistencia.
- * Se usa para ordenar y para detectar riesgo; NO es una nota oficial.
- */
+// util -> indice desempeno mezcla
 function calcularIndice(promedio: number | null, tasaAsistencia: number | null): number | null {
   if (promedio === null) {
     return tasaAsistencia === null ? null : redondear(tasaAsistencia);
@@ -154,7 +141,7 @@ function clasificarRiesgo(
   const fallaNota = promedio !== null && promedio < umbralNotaRiesgo;
   const fallaAsistencia = tasa !== null && tasa < umbralAsistenciaRiesgo;
 
-  // 1. Riesgo alto: nota o asistencia crítica, o ambos indicadores en riesgo.
+  // riesgo -> nivel alto critico
   if (notaCritica || asistenciaCritica || (fallaNota && fallaAsistencia)) {
     if (notaCritica) {
       observaciones.push(`Promedio ${promedio} por debajo de ${umbralNotaRiesgoAlto}`);
@@ -168,7 +155,7 @@ function clasificarRiesgo(
     return { nivel: "riesgo_alto", observaciones };
   }
 
-  // 2. Riesgo: cualquier indicador por debajo de su mínimo.
+  // riesgo -> indicador bajo minimo
   if (fallaNota) {
     observaciones.push(`Promedio ${promedio} por debajo de ${umbralNotaRiesgo}`);
     return { nivel: "riesgo", observaciones };
@@ -178,7 +165,7 @@ function clasificarRiesgo(
     return { nivel: "riesgo", observaciones };
   }
 
-  // 3. Observación: aún en regla, pero la asistencia se acerca al límite.
+  // riesgo -> observacion cerca limite
   if (tasa !== null && tasa < umbralAsistenciaObservacion) {
     observaciones.push(`Asistencia ${tasa}% en observación`);
     return { nivel: "observacion", observaciones };
@@ -203,7 +190,7 @@ async function obtenerTrimestre(
   return res.rows[0];
 }
 
-/** Asignación docente (materia del curso) a la que pertenece el seguimiento. */
+// tipo -> asignacion docente seguimiento
 async function obtenerAsignacion(cursoPeriodoId: string, materiaId: string) {
   const res = await query<{
     asignacion_id: bigint;
@@ -252,10 +239,7 @@ export interface FiltroLibro {
   trimestre: number;
 }
 
-/**
- * Libro de notas de una materia en un trimestre: matriz estudiantes × encargos
- * con el promedio ponderado, la asistencia y el nivel de riesgo de cada uno.
- */
+// funcion -> libro notas trimestre
 export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
   const { cursoPeriodoId, materiaId, trimestre } = filtro;
   const asignacion = await obtenerAsignacion(cursoPeriodoId, materiaId);
@@ -312,7 +296,7 @@ export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
 
   const pesoPorEncargo = new Map(encargos.map((e) => [e.id, e.ponderacion]));
 
-  // notas[estudianteId][encargoId] = nota
+  // mapa -> notas por estudiante
   const notas = new Map<string, Map<string, number>>();
   for (const fila of notasRes.rows) {
     const clave = String(fila.estudiante_id);
@@ -320,7 +304,7 @@ export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
     notas.get(clave)!.set(String(fila.encargo_id), Number(fila.nota));
   }
 
-  // promedios por encargo (para el comparativo del curso)
+  // mapa -> promedios por encargo
   const sumaPorEncargo = new Map<string, { total: number; cantidad: number }>();
   for (const fila of notasRes.rows) {
     const clave = String(fila.encargo_id);
@@ -446,7 +430,7 @@ export interface FiltroPanel {
   trimestre: number;
 }
 
-/** Panel de desempeño de todo el curso: promedios, asistencia y riesgo por materia. */
+// funcion -> panel desempeno curso
 export async function obtenerPanelCurso(filtro: FiltroPanel): Promise<PanelCurso> {
   const { cursoPeriodoId, trimestre } = filtro;
 
@@ -585,7 +569,7 @@ async function contarEstudiantes(cursoPeriodoId: string): Promise<number> {
   return Number(res.rows[0]?.total ?? 0);
 }
 
-/** Desempeño de un estudiante en todas las materias de un período. */
+// funcion -> desempeno estudiante periodo
 export async function obtenerPanelEstudiante(
   estudianteId: string,
   periodoId: string,
@@ -650,7 +634,7 @@ export async function obtenerPanelEstudiante(
       tareasPublicadas: linea.tareasPublicadas,
       indiceDesempeno: linea.indice ?? 0,
       nivelRiesgo: nivel,
-      // `observaciones` no viaja al modelo público: se recalcula en el resumen.
+      // logica -> observaciones no viajan
     });
   }
 
@@ -709,11 +693,7 @@ export async function obtenerPanelEstudiante(
   };
 }
 
-/**
- * Estudiantes en riesgo de un período, para que control y dirección puedan
- * intervenir a tiempo. Devuelve una fila por estudiante y materia, ordenada
- * por severidad.
- */
+// funcion -> estudiantes en riesgo
 export async function listarRiesgo(filtro: {
   periodoId: string;
   trimestre: number;

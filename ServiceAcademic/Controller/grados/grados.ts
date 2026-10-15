@@ -18,11 +18,7 @@ import {
 } from "../../utils/http.ts";
 import type { AsignarMateriaGradoInput } from "../../models/academic.ts";
 
-/**
- * Materias por GRADO. La interfaz de "Cursos base" muestra un bloque por
- * grado con todos sus paralelos juntos, porque la materia es la misma para
- * todos ellos.
- */
+// control -> materias por grado
 
 function nivelGrado(ctx: Context): { nivel: NivelEducativo; grado: string } {
   const params = ctx.request.url.searchParams;
@@ -40,7 +36,7 @@ function nivelGrado(ctx: Context): { nivel: NivelEducativo; grado: string } {
   return { nivel, grado };
 }
 
-/** GET /grados/materias?nivel=&grado= */
+// ruta -> listar materias grado
 export async function getMateriasGrado(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -50,7 +46,7 @@ export async function getMateriasGrado(ctx: Context): Promise<void> {
   }
 }
 
-/** POST /grados/materias */
+// ruta -> asignar materia grado
 export async function postMateriaGrado(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -61,7 +57,7 @@ export async function postMateriaGrado(ctx: Context): Promise<void> {
   }
 }
 
-/** PUT /grados/materias — reemplaza el conjunto completo. */
+// ruta -> reemplazar materias grado
 export async function putMateriasGrado(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -73,7 +69,7 @@ export async function putMateriasGrado(ctx: Context): Promise<void> {
   }
 }
 
-/** DELETE /grados/materias/:materiaId?nivel=&grado= */
+// ruta -> quitar materia grado
 export async function deleteMateriaGrado(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -87,7 +83,7 @@ export async function deleteMateriaGrado(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /grados?nivel= — grados con y sin materia, para la vista de cursos base. */
+// ruta -> listar grados base
 export async function getGrados(ctx: Context): Promise<void> {
   try {
     const nivelParam = ctx.request.url.searchParams.get("nivel");

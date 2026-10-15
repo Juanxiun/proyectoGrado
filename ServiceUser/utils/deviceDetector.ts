@@ -17,10 +17,10 @@ export interface LocationInfo {
   pais?: string;
 }
 
-export function extractDeviceInfo(ctx: Context, overrideUserAgent?: string): DeviceInfo {
+export function extractDeviceInfo(ctx: Context, overrideUserAgent?: string, metadata?: Record<string, unknown>): DeviceInfo {
   const rawUserAgent = overrideUserAgent || ctx.request.headers.get("user-agent") || "Desconocido";
   
-  // Extraer IP de cabeceras de proxy o conexión
+  // util -> extraer ip proxy
   const forwardedFor = ctx.request.headers.get("x-forwarded-for");
   const realIp = ctx.request.headers.get("x-real-ip");
   const clientIp = forwardedFor ? forwardedFor.split(",")[0].trim() : (realIp || ctx.request.ip || "127.0.0.1");
@@ -31,12 +31,14 @@ export function extractDeviceInfo(ctx: Context, overrideUserAgent?: string): Dev
 
   const browserName = result.browser.name ? `${result.browser.name} ${result.browser.version ?? ""}`.trim() : "Navegador Desconocido";
   const osName = result.os.name ? `${result.os.name} ${result.os.version ?? ""}`.trim() : "SO Desconocido";
-  const deviceType = result.device.type ? `${result.device.type} ${result.device.vendor ?? ""} ${result.device.model ?? ""}`.trim() : (rawUserAgent.includes("Mobile") ? "Móvil" : "Escritorio / PC");
+  const deviceType = /android/i.test(rawUserAgent)
+    ? `Android${result.device.model ? ` ${result.device.model}` : ""}`
+    : result.device.type ? `${result.device.type} ${result.device.vendor ?? ""} ${result.device.model ?? ""}`.trim() : (rawUserAgent.includes("Mobile") ? "Móvil" : "Escritorio / PC");
 
   return {
-    browser: browserName,
-    os: osName,
-    device: deviceType,
+    browser: typeof metadata?.browser === "string" ? metadata.browser : browserName,
+    os: typeof metadata?.os === "string" ? metadata.os : osName,
+    device: typeof metadata?.device === "string" ? metadata.device : deviceType,
     rawUserAgent,
     ip: clientIp,
   };

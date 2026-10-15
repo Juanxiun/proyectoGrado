@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -14,7 +14,7 @@ import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { MateriaSelectorModal } from '../components/MateriaSelectorModal';
-import { RemoteImage } from '../../../displays/components/RemoteImage';
+import { UserAvatar } from '../../../shared/ui';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../../shared/validation/credentials';
 import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
@@ -670,19 +670,13 @@ export function DocentesManagementScreen() {
                     <View>
                       <View className="flex-row items-start justify-between mb-3">
                         <View className="relative">
-                          {doc.fotoUrl ? (
-                            <RemoteImage
-                              uri={doc.fotoUrl}
-                              className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                              fallbackText={`${doc.nombre?.charAt(0) || 'D'}${apPat?.charAt(0) || ''}`}
-                            />
-                          ) : (
-                            <View className="w-20 h-20 rounded-2xl bg-maroon border-2 border-gold/40 items-center justify-center shadow-sm">
-                              <Text className="text-gold font-serif font-bold text-2xl">
-                                {doc.nombre?.charAt(0) || 'D'}{apPat?.charAt(0) || ''}
-                              </Text>
-                            </View>
-                          )}
+                          <UserAvatar
+                            nombre={doc.nombre}
+                            apellidoPaterno={apPat}
+                            fotoUrl={doc.fotoUrl}
+                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                            textoClassName="text-gold font-serif font-bold text-2xl"
+                          />
                           <View
                             className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
                               isOnline ? 'bg-green-500' : 'bg-gray-400'
@@ -829,19 +823,13 @@ export function DocentesManagementScreen() {
                     <View>
                       <View className="flex-row items-start justify-between mb-3">
                         <View className="relative">
-                          {doc.fotoUrl ? (
-                            <RemoteImage
-                              uri={doc.fotoUrl}
-                              className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                              fallbackText={`${doc.nombre?.charAt(0) || 'D'}${apPat?.charAt(0) || ''}`}
-                            />
-                          ) : (
-                            <View className="w-20 h-20 rounded-2xl bg-maroon border-2 border-gold/40 items-center justify-center shadow-sm">
-                              <Text className="text-gold font-serif font-bold text-2xl">
-                                {doc.nombre?.charAt(0) || 'D'}{apPat?.charAt(0) || ''}
-                              </Text>
-                            </View>
-                          )}
+                          <UserAvatar
+                            nombre={doc.nombre}
+                            apellidoPaterno={apPat}
+                            fotoUrl={doc.fotoUrl}
+                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                            textoClassName="text-gold font-serif font-bold text-2xl"
+                          />
                           <View
                             className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
                               isOnline ? 'bg-green-500' : 'bg-gray-400'

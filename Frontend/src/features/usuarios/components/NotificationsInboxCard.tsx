@@ -52,7 +52,7 @@ export function NotificationsInboxCard() {
       <View className="flex-row items-center justify-between mb-3">
         <View className="flex-row items-center gap-3">
           <View className="w-10 h-10 rounded-xl bg-maroon/10 items-center justify-center">
-            <Ionicons name="notifications-outline" size={21} color="#7A1F3D" />
+            <Ionicons name="notifications-outline" size={21} color="#801529" />
           </View>
           <View>
             <Text className="text-base font-bold text-gray-900">Bandeja de Notificaciones</Text>
@@ -64,7 +64,7 @@ export function NotificationsInboxCard() {
 
         <TouchableOpacity
           onPress={() => setModalOpen(true)}
-          className="bg-maroon px-3 py-1.5 rounded-xl flex-row items-center gap-1.5"
+          className="bg-maroon hover:bg-maroon/90 px-3 py-1.5 rounded-xl flex-row items-center gap-1.5"
         >
           <Ionicons name="open-outline" size={14} color="#FFFFFF" />
           <Text className="text-xs font-bold text-white">Ver Todas</Text>
@@ -89,7 +89,7 @@ export function NotificationsInboxCard() {
               key={n.id}
               onPress={() => setModalOpen(true)}
               className={`p-3 rounded-xl border ${
-                n.leido ? 'bg-gray-50 border-gray-100' : 'bg-cream/40 border-gold/40'
+                n.leido ? 'bg-gray-50 border-gray-100' : 'bg-maroon/5 border-maroon/20'
               }`}
             >
               <View className="flex-row items-center justify-between">
@@ -98,7 +98,7 @@ export function NotificationsInboxCard() {
                 </Text>
                 <StatusBadge
                   label={n.publicoTexto ?? ETIQUETAS[n.canal] ?? 'Notificación'}
-                  variant={n.tipo === 'material' ? 'info' : 'warning'}
+                  variant={n.tipo === 'material' ? 'brand' : 'warning'}
                 />
               </View>
               <Text className="text-[11px] text-gray-600 mt-1" numberOfLines={1}>

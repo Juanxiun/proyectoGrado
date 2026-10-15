@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
@@ -6,6 +6,7 @@ import { academicManagementApi, academicServicesApi } from '../../../api/academi
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { getFullName } from '../../../utils/validation';
+import { UserAvatar } from '../../../shared/ui';
 
 export function EstudianteCursosScreen() {
   const { user } = useAuth();
@@ -202,13 +203,12 @@ export function EstudianteCursosScreen() {
                   }`}
                 >
                   <View className="flex-row items-center gap-3 flex-1 min-w-0">
-                    <View className={`w-8 h-8 rounded-full items-center justify-center ${
-                      isMe ? 'bg-maroon' : 'bg-gray-200'
-                    }`}>
-                      <Text className={`text-xs font-bold ${isMe ? 'text-white' : 'text-gray-700'}`}>
-                        {st.apellidoPaterno?.charAt(0) || st.nombre?.charAt(0) || 'A'}
-                      </Text>
-                    </View>
+                    <UserAvatar
+                      nombre={st.nombre}
+                      apellidoPaterno={st.apellidoPaterno}
+                      className={`w-8 h-8 rounded-full ${isMe ? 'bg-maroon' : 'bg-gray-200'}`}
+                      textoClassName={`text-xs font-bold ${isMe ? 'text-white' : 'text-gray-700'}`}
+                    />
                     <Text className={`text-sm flex-1 min-w-0 ${isMe ? 'font-bold text-maroon' : 'font-medium text-gray-800'}`} numberOfLines={1} ellipsizeMode="tail">
                       {st.apellidoPaterno} {st.apellidoMaterno} {st.nombre} {isMe ? '(Tú)' : ''}
                     </Text>

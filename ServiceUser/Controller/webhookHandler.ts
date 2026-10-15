@@ -71,11 +71,10 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
     return;
   }
 
-  // Responder 202 Accepted inmediatamente al RestApi para desacoplar el procesamiento
+  // webhook -> aceptar y procesar despues
   ctx.response.status = 202;
   ctx.response.body = { queued: true, eventId };
 
-  // Ejecutar el procesamiento asíncrono en segundo plano y enviar Webhook Callback
   (async () => {
     let resultStatus = 200;
     // deno-lint-ignore no-explicit-any
@@ -123,7 +122,6 @@ export async function handleWebhookEvent(ctx: Context): Promise<void> {
       mockHeaders.set("content-type", cType);
       if (token) mockHeaders.set("Authorization", `Bearer ${token}`);
 
-      // Crear un contexto 
       // deno-lint-ignore no-explicit-any
       const mockCtx: any = {
         request: {

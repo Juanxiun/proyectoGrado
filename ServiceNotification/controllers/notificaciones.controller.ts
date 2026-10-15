@@ -9,11 +9,7 @@ import {
 } from "../utils/http.ts";
 import type { AuthClaims } from "../security/auth.ts";
 
-/**
- * Identidad del destinatario. Se toma siempre del JWT; el query `usuarioId`
- * sólo se acepta para las llamadas internas del gateway que ya validaron el
- * token, y en ese caso debe coincidir con el sujeto del token.
- */
+// funcion -> resolver usuario jwt
 function resolveUsuarioId(ctx: Context): string {
   const claims = (ctx.state.auth as AuthClaims) ?? null;
   const fromToken = claims?.sub ? String(claims.sub) : null;

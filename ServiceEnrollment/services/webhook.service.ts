@@ -1,4 +1,4 @@
-// services/webhook.service.ts
+// servicio -> despachar callback webhook
 function isAllowedCallbackUrl(value: string): boolean {
   try {
     const url = new URL(value);

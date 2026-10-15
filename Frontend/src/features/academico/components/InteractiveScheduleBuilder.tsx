@@ -13,6 +13,7 @@ import { usuariosApi } from '../../../api/usuarios.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { getFallbackGradient } from './CoverImagePicker';
 import { useAuth } from '../../../context/AuthContext';
+import { useResponsive } from '../../../utils/responsive';
 
 interface InteractiveScheduleBuilderProps {
   periodoId: string;
@@ -100,6 +101,7 @@ export function InteractiveScheduleBuilder({
   onClose,
 }: InteractiveScheduleBuilderProps) {
   const { user } = useAuth();
+  const { isDesktop } = useResponsive();
   const hideDayNames = ['director', 'control', 'gerencia', 'administrativo', 'secretaria', 'secretario', 'editor', 'admin', 'administrador'].includes((user?.rol ?? '').toLowerCase());
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -576,8 +578,9 @@ export function InteractiveScheduleBuilder({
         </View>
       </BentoCard>
 
-      {/* Panel Superior: Tarjetas de Materias con Selector de Profesor */}
-      <BentoCard className="p-4 bg-gray-50 overflow-hidden">
+      <View className={`gap-4 ${isDesktop ? 'flex-row items-start' : ''}`}>
+      {/* Panel de materias y docentes */}
+      <BentoCard className={`p-4 bg-gray-50 overflow-hidden ${isDesktop ? 'flex-1 min-w-0' : ''}`}>
         <View className="flex-row items-start justify-between gap-2 mb-2 min-w-0">
           <View className="flex-1 min-w-0">
             <Text className="text-xs font-bold text-maroon uppercase">
@@ -671,13 +674,13 @@ export function InteractiveScheduleBuilder({
       </BentoCard>
 
       {/* Grilla Semanal de Horario (Lunes a Viernes) */}
-      <BentoCard className="p-4 overflow-hidden">
-        <Text className="text-xs font-bold text-gray-800 uppercase mb-3">
+      <BentoCard className={`p-5 overflow-hidden ${isDesktop ? 'flex-[1.7] min-w-0' : ''}`}>
+        <Text className="text-sm font-bold text-gray-800 uppercase mb-4 text-center">
           Grilla Semanal · {selectedCourse?.label ?? 'Curso'}
         </Text>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator>
-          <View className="min-w-[650px]">
+        <ScrollView horizontal showsHorizontalScrollIndicator className="w-full">
+          <View className="min-w-[900px] self-center">
             {/* Header Días */}
             <View className="flex-row border-b border-gray-200 pb-2 mb-2">
               <View className="w-24 items-center">
@@ -714,7 +717,7 @@ export function InteractiveScheduleBuilder({
               }
 
               return (
-                <View key={block.id} className="flex-row items-center border-b border-gray-100 py-1.5">
+                <View key={block.id} className="flex-row items-center border-b border-gray-100 py-2">
                   <View className="w-24 items-center pr-2">
                     <Text className="text-xs font-bold text-gray-700">{block.horaInicio}</Text>
                     <Text className="text-[10px] text-gray-400">{block.horaFin}</Text>
@@ -729,7 +732,7 @@ export function InteractiveScheduleBuilder({
                       <TouchableOpacity
                         key={d.num}
                         onPress={() => handleSlotClick(d.num, block)}
-                        className={`flex-1 min-w-0 m-1 p-2 min-h-[58px] rounded-xl border items-center justify-center transition-all ${
+                        className={`flex-1 min-w-0 m-1 p-2.5 min-h-[70px] rounded-xl border items-center justify-center transition-all ${
                           slotData
                             ? `${fallback?.bg ?? 'bg-maroon'} border-black/10 shadow-sm`
                             : selectedSubjectToPlace
@@ -764,6 +767,7 @@ export function InteractiveScheduleBuilder({
           </View>
         </ScrollView>
       </BentoCard>
+      </View>
     </View>
   );
 }

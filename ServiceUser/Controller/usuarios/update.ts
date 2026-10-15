@@ -10,8 +10,6 @@ import {
 import {
   buildDocKey,
   buildPhotoKey,
-  detectImageExt,
-  mimeFromExt,
 } from "../../utils/fileNaming.ts";
 import {
   formFieldAsString,
@@ -42,16 +40,7 @@ interface DynamicUsuarioUpdate {
   ocupacion?: string;
 }
 
-/**
- * PUT /usuarios/:id
- *
- * Acepta multipart/form-data o application/json.
- *
- * multipart/form-data:
- *   - campo "datos": JSON string con los datos del usuario
- *   - campo "foto": archivo de imagen (perfil) - opcional
- *   - campos "doc_file_{index}": archivo PDF para cada documento - opcional
- */
+// ruta -> actualizar usuario multipart
 export async function updateUsuario(
   ctx: RouterContext<"/usuarios/:id">,
 ): Promise<void> {
@@ -68,7 +57,7 @@ export async function updateUsuario(
     // deno-lint-ignore no-explicit-any
     let datos: Record<string, any> = {};
     let fotoBytes: Uint8Array | null = null;
-    let fotoExt: "png" | "jpg" | null = null;
+    let fotoExt: "webp" | null = null;
     const documentFiles: Array<
       { index: number; bytes: Uint8Array; name: string }
     > = [];
@@ -93,14 +82,7 @@ export async function updateUsuario(
         const fotoPart = await readFilePart(form.get("foto"));
         if (fotoPart) {
           fotoBytes = fotoPart.bytes;
-          fotoExt = detectImageExt(fotoBytes);
-          if (!fotoExt) {
-            ctx.response.status = 400;
-            ctx.response.body = {
-              error: "La foto debe ser una imagen PNG o JPG valida",
-            };
-            return;
-          }
+          fotoExt = "webp";
         }
 
         if (Array.isArray(datos.documentos)) {
@@ -110,12 +92,11 @@ export async function updateUsuario(
               form.get("doc_file_" + i) || form.get("doc_file_" + doc.tipoDoc),
             );
             if (docPart) {
-              const isPdf = docPart.bytes.length >= 4 &&
-                String.fromCharCode(...docPart.bytes.slice(0, 4)) === "%PDF";
-              if (!isPdf) {
+              const extension = docPart.name.split(".").pop()?.toLowerCase() ?? "";
+              if (!["pdf", "docx", "xlsx", "xls"].includes(extension)) {
                 ctx.response.status = 400;
                 ctx.response.body = {
-                  error: "El documento " + (i + 1) + " debe ser un PDF valido",
+                  error: "El documento " + (i + 1) + " debe ser PDF, DOCX, XLSX o XLS",
                 };
                 return;
               }
@@ -207,9 +188,7 @@ export async function updateUsuario(
       ? "inactivo"
       : estado;
 
-    // Un estudiante/apoderado sólo administra su foto, contraseña, contactos y dirección.
-    // Esta validación es deliberadamente del lado del servidor para que no pueda
-    // eludirse modificando la petición desde el navegador.
+    // seguridad -> servidor valida campos editables
     if (isSelf && viewerRole === "estudiante") {
       const hasForbiddenPersonalFields = [
         nombre, apellidoPaterno, apellidoMaterno, nacimiento, genero, estado, maestro, rolId,
@@ -281,7 +260,7 @@ export async function updateUsuario(
         }
       }
 
-      newFotoUrl = await uploadImage(newKey, fotoBytes, mimeFromExt(fotoExt));
+      newFotoUrl = await uploadImage(newKey, fotoBytes, "image/webp");
     }
 
     let updatedDocumentos = documentos;
@@ -303,8 +282,9 @@ export async function updateUsuario(
             doc.tipoDoc,
             nivel,
             grado,
+            file.name.split(".").pop()?.toLowerCase() ?? "pdf",
           );
-          doc.docUrl = await uploadFile(docKey, file.bytes, "application/pdf");
+          doc.docUrl = await uploadFile(docKey, file.bytes);
         }
       }
     }
@@ -467,9 +447,6 @@ export async function updateUsuario(
               .map((value: unknown) => String(value).trim())
               .filter((value: string) => /^\d+$/.test(value)),
           )];
-          // Un docente legacy sin catálogo explícito conserva su catálogo
-          // vigente si el formulario no selecciona ninguna materia. Sólo una
-          // lista no vacía, o un docente ya configurado, autoriza replace.
           if (materiaIds.length > 0 || maestroRes.rows[0].materiasConfiguradas) {
             await tx.queryObject(
               `UPDATE maestros SET materias_configuradas = true, fecha_actualizacion = NOW() WHERE id = $1`,
@@ -502,8 +479,6 @@ export async function updateUsuario(
         for (const doc of updatedDocumentos) {
           if (!doc?.tipoDoc || !doc?.numeroDoc) continue;
           if (doc.id) {
-            // El frontend envió el id de fila: actualizar directamente usando ON CONFLICT
-            // en numero_doc para evitar duplicados si el número cambia.
             await tx.queryObject(
               `UPDATE usuario_documentos
                SET tipo_doc = $1, numero_doc = $2, doc_url = COALESCE($3, doc_url)
@@ -511,9 +486,6 @@ export async function updateUsuario(
               [doc.tipoDoc, doc.numeroDoc, doc.docUrl ?? null, doc.id, id],
             );
           } else {
-            // Sin id: upsert por (usuario_id, tipo_doc). Si el numero_doc ya pertenece
-            // a otra fila del mismo usuario lo actualiza; si pertenece a otro usuario
-            // el constraint lo impedirá y el error llegará al catch con código 409.
             await tx.queryObject(
               `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc, doc_url)
                VALUES ($1, $2, $3, $4)
@@ -526,7 +498,6 @@ export async function updateUsuario(
         }
       }
 
-      // Actualizar datos del tutor/apoderado si se envían para el estudiante
       const tutorData = dynamicData.apoderado ?? dynamicData.tutor;
       const parentescoInput = dynamicData.parentesco;
       if (tutorData || parentescoInput !== undefined) {
@@ -571,7 +542,6 @@ export async function updateUsuario(
 
             if (tutorData.ci?.trim()) {
               const ciVal = tutorData.ci.trim();
-              // Upsert CI del tutor/apoderado
               await tx.queryObject(
                 `INSERT INTO usuario_documentos (usuario_id, tipo_doc, numero_doc)
                  VALUES ($1, 'CI', $2)
@@ -683,10 +653,9 @@ export async function updateUsuario(
       onboarding,
     };
   } catch (err) {
-    // sTransaction wraps PostgresError inside a TransactionError (.cause).
-    // Leer el error real tanto del propio err como de err.cause.
     // deno-lint-ignore no-explicit-any
     const cause = (err as any)?.cause as any;
+    const uploadStatus = (err as { status?: number })?.status;
     const msg = [
       (err as Error)?.message ?? "",
       cause?.message ?? "",
@@ -698,6 +667,12 @@ export async function updateUsuario(
     ].join(" ").toLowerCase();
 
     console.error("[updateUsuario]", err);
+
+    if (uploadStatus && uploadStatus >= 400) {
+      ctx.response.status = uploadStatus;
+      ctx.response.body = { error: (err as Error)?.message ?? "No se pudo procesar el archivo" };
+      return;
+    }
 
     if (msg.includes("unique") || msg.includes("duplicate") || msg.includes("23505") || constraint.trim().length > 0) {
       let field = "general";
