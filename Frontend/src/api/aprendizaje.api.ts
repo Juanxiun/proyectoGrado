@@ -23,7 +23,7 @@ async function solicitarConReintento<T>(solicitud: () => Promise<T>, intentos = 
   throw errorFinal;
 }
 
-export type FormatoResumen = 'CARTAS_EXPLICATIVAS' | 'CONEXIONES' | 'MAPA_ESQUEMATICO';
+export type FormatoResumen = 'CARTAS_EXPLICATIVAS' | 'CONEXIONES' | 'ESQUEMA_GEMMA';
 
 export interface ContenidoAprendizaje {
   content_id: string;

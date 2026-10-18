@@ -7,7 +7,7 @@ from typing import Any
 from redis.asyncio import Redis
 
 from app.config import settings
-from app.services.activities import activity_statement, remediation, score_activity
+from app.services.activities import activity_statement, remediation, score_activity, _is_seed_format
 
 
 def utcnow() -> str:
@@ -427,13 +427,17 @@ class RAGRepository:
         value = await self._redis.get(f"{self.prefix}:student:{student_id}:content:{content_id}:quiz:{quiz_id}")
         return json.loads(value) if value else None
 
-    # quiz -> valida un emparejamiento
+    # quiz -> valida un emparejamiento (LEGACY: solo formato CONECTAR_FRASES)
     async def check_match_pair(self, student_id: str, content_id: str, quiz_id: str, activity_id: str, left: str, right: str) -> dict[str, Any]:
         quiz = await self.get_quiz(student_id, content_id, quiz_id)
         if not quiz:
             raise LookupError("No existe este reto para el estudiante")
         activity = next((item for item in quiz.get("activities", []) if item.get("activity_id") == activity_id), None)
-        if not activity or activity.get("tipo") != "CONECTAR_FRASES":
+        if not activity:
+            raise ValueError("Actividad no encontrada")
+        if _is_seed_format(activity):
+            raise ValueError("El formato de reactivo unificado no soporta emparejamiento interactivo")
+        if activity.get("tipo") != "CONECTAR_FRASES":
             raise ValueError("La actividad no es un emparejamiento valido")
         pairs = activity.get("pairs", [])
         expected = next((item.get("right", "") for item in pairs if item.get("left", "").strip().casefold() == left.strip().casefold()), None)
@@ -522,7 +526,21 @@ class RAGRepository:
         )
         if int(attempt_count) < 0:
             return {**attempt, "duplicate": True, "attempt_count": int(await self._redis.llen(key)), "profile_queued": False}
-        return {**attempt, "duplicate": False, "attempt_count": int(attempt_count), "profile_queued": bool(batch_number)}
+        
+        # Calcular tiempo promedio de otros estudiantes para gamificación
+        avg_time_others = await self.get_average_time_others(content_id, student_id)
+        time_comparison = "faster" if elapsed_ms > 0 and avg_time_others > 0 and elapsed_ms < avg_time_others else "slower"
+        time_ratio = round(elapsed_ms / avg_time_others, 2) if avg_time_others > 0 and elapsed_ms > 0 else 1.0
+        
+        return {
+            **attempt, 
+            "duplicate": False, 
+            "attempt_count": int(attempt_count), 
+            "profile_queued": bool(batch_number),
+            "avg_time_others_ms": round(avg_time_others),
+            "time_comparison": time_comparison,
+            "time_ratio": time_ratio,
+        }
 
     async def profile_attempt_batch(self, student_id: str, content_id: str, batch_number: int) -> list[dict[str, Any]]:
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:attempts"
@@ -537,6 +555,28 @@ class RAGRepository:
         average = sum(float(item["score"]) for item in attempts) / len(attempts) if attempts else 0.0
         average_elapsed_ms = sum(float(item.get("elapsed_ms", 0)) for item in attempts) / len(attempts) if attempts else 0.0
         return len(attempts), average, average_elapsed_ms
+
+    # quiz -> tiempo promedio de otros estudiantes para comparativa (gamificación)
+    async def get_average_time_others(self, content_id: str, exclude_student_id: str | None = None) -> float:
+        pattern = f"{self.prefix}:student:*:content:{content_id}:attempts"
+        cursor = 0
+        total_time = 0.0
+        total_attempts = 0
+        while True:
+            cursor, keys = await self._redis.scan(cursor=cursor, match=pattern, count=50)
+            for key in keys:
+                key_str = _text(key)
+                student_id = key_str.split(":student:", 1)[1].split(":content:", 1)[0]
+                if exclude_student_id and student_id == exclude_student_id:
+                    continue
+                values = await self._redis.lrange(key_str, 0, -1)
+                for value in values:
+                    attempt = json.loads(value)
+                    total_time += float(attempt.get("elapsed_ms", 0))
+                    total_attempts += 1
+            if cursor == 0:
+                break
+        return total_time / total_attempts if total_attempts > 0 else 0.0
 
     async def get_student_profile(self, student_id: str, content_id: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:student:{student_id}:content:{content_id}:profile")

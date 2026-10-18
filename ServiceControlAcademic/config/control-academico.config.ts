@@ -33,6 +33,7 @@ export const controlAcademicoConfig = {
     examenRegistrado: "control:examen_registrado",
     alertaRiesgo: "control:alerta_riesgo",
     reporteGenerado: "control:reporte_generado",
+    recompensaGlobal: "control:recompensa_global",
   },
 
   // horarios - validacion

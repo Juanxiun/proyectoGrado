@@ -13,7 +13,6 @@ import {
   TrimestreNumero,
   TIPOS_EVALUACION,
   TRIMESTRES,
-  CalificacionRowDB,
 } from "../models/control-academico.ts";
 
 interface CalificacionRowDB {
@@ -52,11 +51,11 @@ async function mapCalificacion(row: CalificacionRowDB): Promise<CalificacionCont
     tipoEvaluacion: row.tipoEvaluacion as any,
     trimestre: row.trimestre as any,
     nota: Number(row.nota),
-    observacion: row.observacion,
+    observacion: row.observacion ?? null,
     peso: Number(row.peso),
-    fechaEvaluacion: asDateString(row.fechaEvaluacion),
-    fechaRegistro: asDateTimeString(row.fechaRegistro),
-    fechaActualizacion: asDateTimeString(row.fechaActualizacion),
+    fechaEvaluacion: (asDateString(row.fechaEvaluacion) as string) ?? new Date().toISOString().split("T")[0],
+    fechaRegistro: (asDateTimeString(row.fechaRegistro) as string) ?? new Date().toISOString(),
+    fechaActualizacion: (asDateTimeString(row.fechaActualizacion) as string) ?? new Date().toISOString(),
     estudiante: row.usuarioId
       ? {
         id: toId(row.estudianteId),

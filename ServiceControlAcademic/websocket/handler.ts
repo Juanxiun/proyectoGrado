@@ -67,7 +67,7 @@ export function initWebSocketServer(server: any): void {
 
 export function broadcastToCanal(canal: string, evento: string, payload: Record<string, unknown>): void {
   const mensaje = JSON.stringify({ evento, payload, timestamp: new Date().toISOString() });
-  redis.publish(canal, mensaje).catch((err) => {
+  redis.publish(canal, mensaje).catch((err: unknown) => {
     console.warn("[WS] Error publicando en canal:", err);
   });
 }

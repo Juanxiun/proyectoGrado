@@ -36,8 +36,7 @@ interface ContenidoEstudioSectionProps {
 
 const FORMATOS: Array<{ id: FormatoResumen; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'CARTAS_EXPLICATIVAS', label: 'Cartas', detail: 'Ideas clave en tarjetas', icon: 'albums-outline' },
-  { id: 'CONEXIONES', label: 'Conexiones', detail: 'Relaciona conceptos del tema', icon: 'git-compare-outline' },
-  { id: 'MAPA_ESQUEMATICO', label: 'Esquema', detail: 'Mira como se organiza', icon: 'share-social-outline' },
+  { id: 'ESQUEMA_GEMMA', label: 'Esquema', detail: 'Diagrama interactivo con Skia', icon: 'share-social-outline' },
 ];
 
 interface ZonaActividad {

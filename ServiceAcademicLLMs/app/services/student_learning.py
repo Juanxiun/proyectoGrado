@@ -41,6 +41,47 @@ async def explain_section(student_id: str, content_id: str, request: ExplainSect
     return {**generated.model_dump(), "title": request.title, "format": request.format, "profile_available": bool(profile), "content_id": content_id}
 
 
+# feedback -> solo fallidas microlearning + pizarra
+async def generate_remediation_failed_only(answers: list[dict], content: dict, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+    incorrect = [a for a in answers if not a.get("correct", True)]
+    if not incorrect:
+        return {"remediation": [], "message": "¡Todas las respuestas son correctas!"}
+    
+    remediation_list = []
+    for answer in incorrect:
+        concept = answer.get("concept", "Concepto evaluado")
+        feedback = answer.get("feedback", {})
+        explanation = feedback.get("explanation", "")
+        correct_answer = feedback.get("correct_answer", "")
+        
+        request = ExplainSectionRequest(
+            title=f"Repaso: {concept}",
+            explanation=explanation or f"Revisa el concepto: {concept}",
+            example=correct_answer,
+            format="paso_a_paso",
+        )
+        try:
+            explained = await explain_section(answer.get("student_id", ""), content.get("content_id", ""), request, repo, llm, semaphore)
+            microlearning = explained.get("microlearning_units", [])
+            examples = explained.get("examples", [])
+            remediation_list.append({
+                "activity_id": answer.get("activity_id"),
+                "concept": concept,
+                "microlearning": microlearning[:1] if microlearning else [{"title": concept, "explanation": explanation, "objective": f"Comprender {concept}", "inquiry_question": f"¿Cómo se aplica {concept}?"}],
+                "blackboard_example": examples[0] if examples else f"Ejemplo guiado para {concept}: {correct_answer}",
+            })
+        except Exception as exc:
+            logger.warning("Error generando remediación para %s: %s", concept, exc)
+            remediation_list.append({
+                "activity_id": answer.get("activity_id"),
+                "concept": concept,
+                "microlearning": [{"title": concept, "explanation": explanation, "objective": f"Comprender {concept}", "inquiry_question": f"¿Cómo se aplica {concept}?"}],
+                "blackboard_example": f"Ejemplo: {correct_answer}",
+            })
+    
+    return {"remediation": remediation_list, "total_failed": len(incorrect)}
+
+
 def recommended_difficulty(last_batch_average: float, previous: str | None) -> str:
     current = previous if previous in DIFFICULTIES else DIFFICULTIES[0]
     index = DIFFICULTIES.index(current)

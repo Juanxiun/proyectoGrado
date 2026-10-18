@@ -14,7 +14,7 @@ from app.chunking import CATEGORIA_EJERCICIOS, SemanticChunk, filter_noise, spli
 from app.documents import extract_text
 from app.ollama import OllamaClient
 from app.RAG.repository import RAGRepository
-from app.schemas import ChunkAnalysis, ContentCreatedEvent, ContentEvaluation, DocumentPlan, RefinedContent
+from app.schemas import ChunkAnalysis, ContentCreatedEvent, ContentEvaluation, Phase1Output, RefinedContent
 from app.services.activities import normalize_activity
 
 logger = logging.getLogger(__name__)
@@ -87,53 +87,11 @@ def _compact_analyses(summaries: list[tuple[SemanticChunk, ChunkAnalysis]], max_
     return compact
 
 
-def _expand_activity_bank(refined: RefinedContent) -> list[dict[str, Any]]:
-    activities = [item.model_dump() for item in refined.activities]
-    additions: list[dict[str, Any]] = []
-    seen = {
-        (" ".join(str(item.get("front", item.get("question", item.get("statement", "")))).casefold().split()),
-         " ".join(str(item.get("back", item.get("correct_answer", item.get("model_answer", item.get("justification", ""))))).casefold().split()))
-        for item in activities
-    }
-
-    def add_card(front: str, back: str, objective: str) -> None:
-        tarjeta = {"tipo": "FLASHCARD", "front": front.strip()[:180], "back": back.strip()[:180],
-                   "difficulty": "inicial", "learning_objective": objective.strip()[:180], "source_chunk_ids": []}
-        fingerprint = (" ".join(tarjeta["front"].casefold().split()), " ".join(tarjeta["back"].casefold().split()))
-        if fingerprint not in seen and tarjeta["front"] and tarjeta["back"] and len(activities) + len(additions) < 20:
-            seen.add(fingerprint)
-            additions.append(tarjeta)
-
-    for item in activities:
-        tipo = item.get("tipo")
-        if tipo == "SELECCION_MULTIPLE":
-            add_card(item.get("question", ""), f"{item.get('correct_answer', '')}. {item.get('explanation', '')}", item.get("learning_objective", ""))
-        elif tipo == "CUESTIONARIO":
-            add_card(item.get("question", ""), f"{item.get('model_answer', '')}. {item.get('explanation', '')}", item.get("learning_objective", ""))
-        elif tipo == "VERDADERO_FALSO":
-            respuesta = "Verdadero" if item.get("answer") else "Falso"
-            add_card(item.get("statement", ""), f"{respuesta}. {item.get('justification', '')}", item.get("learning_objective", ""))
-        elif tipo == "CONECTAR_FRASES":
-            for par in item.get("pairs", []):
-                add_card(f"Relaciona: {par.get('left', '')}", str(par.get("right", "")), item.get("learning_objective", ""))
-        elif tipo == "DRAG_AND_DROP":
-            add_card(item.get("question", ""), " → ".join(item.get("correct_order", [])), item.get("learning_objective", ""))
-
-    for unidad in refined.microlearning_units:
-        add_card(unidad.title, unidad.explanation, unidad.objective)
-    for indice, concepto in enumerate(refined.key_concepts):
-        unidad = refined.microlearning_units[indice % len(refined.microlearning_units)] if refined.microlearning_units else None
-        add_card(f"Explica: {concepto}", unidad.explanation if unidad else refined.summary, concepto)
-    for objetivo in refined.learning_objectives:
-        add_card(f"¿Cómo aplicarías {objetivo}?", refined.summary, objetivo)
-    return (activities + additions)[:20]
-
-
-# contenido -> respaldo local si Mistral incumple el formato
+# contenido -> respaldo local si Mistral incumple el formato (Fase 2: 20 ActivitySeed)
 def _fallback_refined_content(event: ContentCreatedEvent, reference_chunks: list[tuple[int, SemanticChunk]]) -> RefinedContent:
     title = (event.title or event.subject or "Material de estudio")[:120]
     conceptos = list(dict.fromkeys(chunk.heading.strip() for _, chunk in reference_chunks
-                                   if chunk.heading and chunk.category != CATEGORIA_EJERCICIOS))[:8]
+                                   if chunk.heading and chunk.category != CATEGORIA_EJERCICIOS))[:12]
     excerpts = [" ".join(chunk.text.split())[:320] for _, chunk in reference_chunks
                 if chunk.category != CATEGORIA_EJERCICIOS and chunk.text.strip()]
     if not conceptos:
@@ -141,38 +99,44 @@ def _fallback_refined_content(event: ContentCreatedEvent, reference_chunks: list
     summary = " ".join(excerpts[:3])[:500] or f"Conceptos principales: {title}."
     units = [
         {"title": concepto[:100], "explanation": (excerpts[index] if index < len(excerpts) else concepto)[:320],
-         "objective": f"Reconocer {concepto}"[:160], "inquiry_question": f"¿Qué evidencia del material explica {concepto}?"[:240]}
+         "objective": f"Reconocer {concepto}"[:160], "inquiry_question": f"¿Qué evidencia del material explica {concepto}?"[:240],
+         "examples_blackboard": []}
         for index, concepto in enumerate(conceptos[:6])
     ]
-    concepto = conceptos[0]
-    objetivo = f"Comprender {concepto}"[:180]
-    actividades: list[dict[str, Any]] = [
-        {"tipo": "SELECCION_MULTIPLE", "question": f"¿Qué tema aborda {title[:50]}?"[:180],
-         "options": [concepto[:90], "Otro tema", "Ninguno", "No se indica"],
-         "correct_answer": concepto[:90], "explanation": "El encabezado identifica el tema.", "learning_objective": objetivo},
-        {"tipo": "CUESTIONARIO", "question": f"Explica la idea principal de {concepto}."[:180],
-         "keywords": [concepto[:50], "idea principal"], "model_answer": summary[:180],
-         "explanation": "Usa la evidencia del resumen.", "learning_objective": objetivo},
-        {"tipo": "FLASHCARD", "front": concepto[:180], "back": summary[:180], "learning_objective": objetivo},
-        {"tipo": "VERDADERO_FALSO", "statement": f"El material aborda {concepto}."[:180], "answer": True,
-         "justification": "El concepto aparece en el material.", "learning_objective": objetivo},
-        {"tipo": "CONECTAR_FRASES", "pairs": [
-            {"left": concepto[:180], "right": (excerpts[0] if excerpts else concepto)[:180]},
-            {"left": "Idea central", "right": summary[:180]},
-        ], "explanation": "Relaciona cada concepto con su referencia.", "learning_objective": objetivo},
-    ]
-    if any(word in f"{event.subject or ''} {title}".casefold() for word in ("matem", "número", "numero", "álgebra", "algebra", "física", "fisica", "química", "quimica")):
-        actividades.append({"tipo": "DRAG_AND_DROP", "question": "Ordena los pasos para resolver un ejercicio.",
-                            "items": ["Identificar datos", "Elegir procedimiento", "Resolver", "Comprobar"],
-                            "correct_order": ["Identificar datos", "Elegir procedimiento", "Resolver", "Comprobar"],
-                            "explanation": "Comprueba el resultado al final.", "learning_objective": "Aplicar un procedimiento paso a paso"})
-    else:
-        actividades.append({"tipo": "FLASHCARD", "front": f"¿Qué evidencia presenta {concepto}?"[:180],
-                            "back": (excerpts[1] if len(excerpts) > 1 else summary)[:180], "learning_objective": objetivo})
+    objetivo = f"Comprender {conceptos[0]}"[:180]
+    # 20 ActivitySeed (10 teoricos + 10 practicos) basicos para fallback - siempre 20
+    actividades: list[dict[str, Any]] = []
+    # 10 teoricos
+    for i in range(10):
+        concepto = conceptos[i % len(conceptos)]
+        excerpt = excerpts[i % len(excerpts)] if excerpts else concepto
+        actividades.append({
+            "type": "THEORETICAL",
+            "question": f"¿Que define a {concepto}?"[:500],
+            "answer": excerpt[:500],
+            "explanation": f"El concepto {concepto} se define segun el material de referencia."[:500],
+            "difficulty": "inicial",
+            "learning_objective": f"Identificar la definicion de {concepto}"[:180],
+            "source_chunk_ids": []
+        })
+    # 10 practicos
+    for i in range(10):
+        concepto = conceptos[i % len(conceptos)]
+        actividades.append({
+            "type": "PRACTICAL",
+            "question": f"Aplica el concepto de {concepto} en un ejercicio basico."[:500],
+            "answer": "Segun el procedimiento descrito en el material."[:500],
+            "explanation": "La aplicacion practica sigue los pasos del material validado."[:500],
+            "difficulty": "inicial",
+            "learning_objective": f"Aplicar {concepto} en contexto"[:180],
+            "source_chunk_ids": []
+        })
     return RefinedContent.model_validate({
-        "title": title, "summary": summary, "learning_objectives": [objetivo], "key_concepts": conceptos[:12],
-        "microlearning_units": units, "inquiry_questions": [unit["inquiry_question"] for unit in units[:6]],
+        "title": title, "summary": summary, "learning_objectives": [f"Objetivo {i+1}" for i in range(6)],
+        "key_concepts": conceptos[:12], "microlearning_units": units,
+        "inquiry_questions": [unit["inquiry_question"] for unit in units[:6]],
         "common_mistakes": [], "difficulty": "inicial", "activities": actividades,
+        "examples_blackboard": []
     })
 
 
@@ -222,6 +186,54 @@ async def _ollama_with_retry(coro_factory, max_retries: int = OLLAMA_MAX_RETRIES
     raise last_exc
 
 
+# LLM -> fase 1 extraccion gemma: analisis completo del documento
+async def _phase1_gemma_extraction(llm: OllamaClient, document_text: str, semaphore: asyncio.Semaphore) -> Phase1Output:
+    started = time.perf_counter()
+    input_data = json.dumps({"document_text": document_text}, ensure_ascii=False)
+    async with semaphore:
+        result = await _ollama_with_retry(lambda: llm.structured(
+            settings.ollama_gemma_model, "gemma/phase1_extraction.txt", input_data, Phase1Output))
+    logger.info(f"Fase 1 (Gemma) completada en {time.perf_counter() - started:.2f}s")
+    return result
+
+
+# LLM -> fase 2 refinamiento mistral: genera contenido educativo refinado usando salida de Fase 1
+async def _phase2_mistral_refinement(
+    llm: OllamaClient,
+    phase1_output: Phase1Output,
+    reference_chunks: list[tuple[int, SemanticChunk]],
+    event: ContentCreatedEvent,
+    semaphore: asyncio.Semaphore
+) -> RefinedContent:
+    started = time.perf_counter()
+    # Construir input compacto para Mistral combinando Fase 1 + chunks de referencia
+    base_exercises = [chunk.text for _, chunk in reference_chunks if chunk.category == CATEGORIA_EJERCICIOS]
+    compact = json.dumps({
+        "phase1": phase1_output.model_dump(),
+        "title": event.title,
+        "description": event.description,
+        "subject": event.subject,
+        "grade": event.grade,
+        "theory_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+                                                if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading)),
+        "practical_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+                                                   if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading)),
+        "chunks": [{"chunk_id": f"{index:04d}-{hashlib.sha256(chunk.text.encode('utf-8')).hexdigest()[:20]}",
+                    "heading": chunk.heading, "category": chunk.category, "text": chunk.text[:6000]}
+                   for index, chunk in reference_chunks],
+        "ejercicios_base_seleccionados": [item[:300] for item in base_exercises[:8]],
+    }, ensure_ascii=False)
+    try:
+        async with semaphore:
+            result = await _ollama_with_retry(lambda: llm.structured(
+                settings.ollama_mistral_model, "mistral/phase2_refinement.txt", compact, RefinedContent))
+        logger.info(f"Fase 2 (Mistral) completada en {time.perf_counter() - started:.2f}s")
+        return result
+    except ValueError as exc:
+        logger.warning("Mistral devolvio una salida invalida; se usa respaldo local: %s", str(exc)[:400])
+        return _fallback_refined_content(event, reference_chunks)
+
+
 async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGRepository, llm: OllamaClient, http: httpx.AsyncClient, semaphore: asyncio.Semaphore, notify_redis: Redis) -> None:
     event = ContentCreatedEvent.model_validate(raw_event)
     async with http.stream("GET", str(event.document_url), follow_redirects=True) as response:
@@ -233,41 +245,30 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
                 raise ValueError("El documento supera el límite de tamaño configurado")
     await repo.update_job(content_id, status="EXTRACTING", progress="5", total_chunks="0", current_chunk="0")
     source_text = extract_text(bytes(data), event.document_name)
-    plan_input = json.dumps({
-        "filename": event.document_name,
-        "format": event.document_name.rsplit(".", 1)[-1].lower(),
-        "characters": len(source_text),
-        "maximum_chunks": 6,
-        "samples": _document_samples(filter_noise(source_text)),
-    }, ensure_ascii=False)
-    await repo.update_job(content_id, status="GEMMA_PLANNING", progress="8")
+    
+    await repo.update_job(content_id, status="GEMMA_EXTRACTION", progress="8")
+    
+    # FASE 1: Extracción completa con Gemma (documento entero)
+    phase1_started = time.perf_counter()
+    phase1_output = await _phase1_gemma_extraction(llm, source_text, semaphore)
+    await repo.update_job(content_id, status="GEMMA_EXTRACTION", progress="15", gemma_extraction_ms=str(round((time.perf_counter() - phase1_started) * 1000)))
+    
+    # Chunking usando info de Fase 1
     desired_chunks = 6
     effective_chunk_size = max(settings.chunk_size, min(settings.chunk_size * 3, (len(source_text) + desired_chunks - 1) // desired_chunks))
     chunks = split_chunks(source_text, effective_chunk_size, 6, settings.chunk_min_chars, settings.chunk_semantic_threshold)
     if not chunks:
         raise ValueError("No se pudieron crear fragmentos útiles del documento")
     reference_chunks = _select_reference_chunks(chunks)
-    base_exercises = [chunk.text for _, chunk in reference_chunks if chunk.category == CATEGORIA_EJERCICIOS]
-    await repo.update_job(content_id, status="GEMMA_PLANNING", progress="8", total_chunks=str(len(chunks)), current_chunk="0")
-    compact = json.dumps({
-        "title": event.title, "description": event.description, "subject": event.subject, "grade": event.grade,
-        "theory_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
-                                                if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading)),
-        "practical_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
-                                                   if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading)),
-        "chunks": [{"chunk_id": f"{index:04d}-{hashlib.sha256(chunk.text.encode('utf-8')).hexdigest()[:20]}",
-                    "heading": chunk.heading, "category": chunk.category, "text": chunk.text[:6000]}
-                   for index, chunk in reference_chunks],
-        "ejercicios_base_seleccionados": [item[:300] for item in base_exercises[:8]],
-    }, ensure_ascii=False)
-
     total_chunks = len(reference_chunks)
+    
     processed_key = f"{repo.prefix}:content:{content_id}:processed_chunks:v3"
     processed_raw = await repo.get_cache(processed_key)
     processed_indices = set(json.loads(processed_raw)) if processed_raw else set()
-    plan_digest = hashlib.sha256(source_text.encode("utf-8")).hexdigest()
-    plan_cache_key = f"{repo.prefix}:cache:document-plan:v3:{settings.ollama_gemma_model}:{plan_digest}"
-    cached_plan = await repo.get_cache(plan_cache_key)
+    
+    base_exercises = [chunk.text for _, chunk in reference_chunks if chunk.category == CATEGORIA_EJERCICIOS]
+    
+    # Embeddings en paralelo (no bloqueante para Fase 2)
     embedding_entries: list[tuple[int, SemanticChunk, str, str]] = []
     vector_by_chunk: dict[str, list[float]] = {}
     for index, chunk in reference_chunks:
@@ -281,69 +282,29 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
             vector_by_chunk[chunk_id] = json.loads(cached)
         else:
             embedding_entries.append((index, chunk, chunk_id, cache_key))
-
-    async def _plan_document() -> DocumentPlan:
-        if cached_plan:
-            await repo.update_job(content_id, gemma_plan_ms="0", gemma_plan_cache="hit")
-            return DocumentPlan.model_validate_json(cached_plan)
-        started = time.perf_counter()
-        try:
-            async with semaphore:
-                result = await _ollama_with_retry(lambda: llm.structured(
-                    settings.ollama_gemma_model, "gemma/plan_document.txt", plan_input, DocumentPlan))
-            cache_state = "miss"
-        except ValueError:
-            result = DocumentPlan(
-                subject=(event.subject or event.title)[:80],
-                context=(event.description or "Material analizado desde sus secciones relevantes.")[:240],
-                outline=[chunk.heading[:100] for _, chunk in reference_chunks if chunk.heading][:8],
-                key_theoretical_content=list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
-                                                           if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading))[:8],
-                practical_content=list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
-                                                     if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading))[:6],
-                desired_chunks=len(chunks), chunking_reason="Seis fragmentos agrupados por tema y practica.",
-            )
-            cache_state = "fallback"
-        await repo.update_job(content_id, gemma_plan_ms=str(round((time.perf_counter() - started) * 1000)), gemma_plan_cache=cache_state)
-        await repo.set_cache(plan_cache_key, result.model_dump_json(), 30 * 24 * 60 * 60)
-        return result
-
+    
     async def _embed_pending() -> None:
         if not embedding_entries:
-            await repo.update_job(content_id, embedding_ms="0")
             return
         started = time.perf_counter()
         async with semaphore:
             vectors = await _ollama_with_retry(lambda: llm.embed_many(["\n".join(part for part in (event.title, chunk.heading) if part) for _, chunk, _, _ in embedding_entries]))
-        await repo.update_job(content_id, embedding_ms=str(round((time.perf_counter() - started) * 1000)))
         for (_, _, chunk_id, cache_key), vector in zip(embedding_entries, vectors):
             vector_by_chunk[chunk_id] = vector
             await repo.set_cache(cache_key, json.dumps(vector), 30 * 24 * 60 * 60)
-
-    refinement_fallback = False
-
-    async def _refine_content() -> RefinedContent:
-        nonlocal refinement_fallback
-        started = time.perf_counter()
-        try:
-            async with semaphore:
-                result = await _ollama_with_retry(lambda: llm.structured(
-                    settings.ollama_mistral_model, "mistral/refine.txt", compact, RefinedContent))
-            await repo.update_job(content_id, mistral_summary_ms=str(round((time.perf_counter() - started) * 1000)),
-                                  mistral_output="structured")
-        except ValueError as exc:
-            refinement_fallback = True
-            logger.warning("Mistral devolvio una salida invalida; se conserva el job con extraccion local: %s", str(exc)[:400])
-            result = _fallback_refined_content(event, reference_chunks)
-            await repo.update_job(content_id, mistral_summary_ms=str(round((time.perf_counter() - started) * 1000)),
-                                  mistral_output="source_fallback")
-            await repo.set_cache(f"{repo.prefix}:content:{content_id}:mistral_fallback", "1", 24 * 60 * 60)
-        return result
-
-    document_plan, _, refined = await asyncio.gather(_plan_document(), _embed_pending(), _refine_content())
-    refined = RefinedContent.model_validate({**refined.model_dump(), "activities": _expand_activity_bank(refined)})
+        logger.info(f"Embeddings completados en {time.perf_counter() - started:.2f}s")
+    
+    embed_task = asyncio.create_task(_embed_pending())
+    
+    # FASE 2: Refinamiento con Mistral (usa salida de Fase 1)
+    await repo.update_job(content_id, status="MISTRAL_REFINEMENT", progress="20", total_chunks=str(total_chunks), current_chunk="0")
+    refined = await _phase2_mistral_refinement(llm, phase1_output, reference_chunks, event, semaphore)
+    
+    # Esperar embeddings
+    await embed_task
+    
     refined.summary = _resumen_conceptual(refined.summary, event.document_name, refined.key_concepts)
-    await repo.update_job(content_id, status="MISTRAL_ANALYSIS", progress="20", total_chunks=str(total_chunks), current_chunk="0")
+    await repo.update_job(content_id, status="MISTRAL_ANALYSIS", progress="35", total_chunks=str(total_chunks), current_chunk="0")
     summaries: list[tuple[SemanticChunk, ChunkAnalysis]] = []
     for selected_index, (index, chunk) in enumerate(reference_chunks, 1):
         digest = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
@@ -377,31 +338,26 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
                 "inquiry_questions": refined.inquiry_questions[:8],
                 "common_mistakes": refined.common_mistakes[:8],
                 "activities_sample": [item.model_dump() for item in refined.activities[:4]],
+                "examples_blackboard": refined.examples_blackboard[:5],
             },
         }, ensure_ascii=False)
         quality_started = time.perf_counter()
-        if refinement_fallback:
-            evaluation = ContentEvaluation(approved=True, confidence=0.86, score=0.86, fidelity=0.86,
-                                           coverage=0.86, coherence=0.86, pedagogy=0.86, issues=["Resumen construido desde el texto extraido; revision LLM omitida"],
-                                           required_changes=[], reason="Respaldo de continuidad: contenido derivado directamente del documento")
-            await repo.update_job(content_id, gemma_quality_ms="0", quality_method="source_fallback")
-        else:
-            try:
-                async with semaphore:
-                    async def _evaluate():
-                        return await llm.structured(settings.ollama_gemma_model, "gemma/evaluate.txt", evidence, ContentEvaluation)
-                    evaluation = await _ollama_with_retry(_evaluate)
-                await repo.update_job(content_id, gemma_quality_ms=str(round((time.perf_counter() - quality_started) * 1000)),
-                                      quality_method="gemma")
-            except ValueError as exc:
-                fallback_score = max(0.86, min(settings.llm_acceptance_threshold, 1.0))
-                evaluation = ContentEvaluation(approved=True, confidence=fallback_score, score=fallback_score,
-                                               fidelity=fallback_score, coverage=fallback_score, coherence=fallback_score,
-                                               pedagogy=fallback_score, issues=["Gemma no devolvio JSON valido"], required_changes=[],
-                                               reason="Revision local de contenido y estructura para continuar el job")
-                await repo.update_job(content_id, gemma_quality_ms=str(round((time.perf_counter() - quality_started) * 1000)),
-                                      quality_method="local_fallback")
-                logger.warning("Evaluacion Gemma invalida; se aplico validacion local: %s", str(exc)[:400])
+        try:
+            async with semaphore:
+                async def _evaluate():
+                    return await llm.structured(settings.ollama_gemma_model, "gemma/evaluate.txt", evidence, ContentEvaluation)
+                evaluation = await _ollama_with_retry(_evaluate)
+            await repo.update_job(content_id, gemma_quality_ms=str(round((time.perf_counter() - quality_started) * 1000)),
+                                  quality_method="gemma")
+        except ValueError as exc:
+            fallback_score = max(0.86, min(settings.llm_acceptance_threshold, 1.0))
+            evaluation = ContentEvaluation(approved=True, confidence=fallback_score, score=fallback_score,
+                                           fidelity=fallback_score, coverage=fallback_score, coherence=fallback_score,
+                                           pedagogy=fallback_score, issues=["Gemma no devolvio JSON valido"], required_changes=[],
+                                           reason="Revision local de contenido y estructura para continuar el job")
+            await repo.update_job(content_id, gemma_quality_ms=str(round((time.perf_counter() - quality_started) * 1000)),
+                                  quality_method="local_fallback")
+            logger.warning("Evaluacion Gemma invalida; se aplico validacion local: %s", str(exc)[:400])
         # quality -> criterios explicitos con limite superior informado
         rubric_score = sum((evaluation.fidelity, evaluation.coverage, evaluation.coherence, evaluation.pedagogy)) / 4
         evaluation.score = min(evaluation.score, rubric_score)
@@ -428,6 +384,12 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         await repo.set_cache(summary_cache_key, json.dumps(summary_vector), 30 * 24 * 60 * 60)
     # rag -> guardando resumen general del tema vectorizado
     await repo.save_vector(content_id, "validated-summary", summary_text, summary_vector, {**_metadata(event), "record_type": "validated_summary", "record_slot": "validated-summary", "branch": "topics"})
+
+    # highlights teoricos y practicos desde reference_chunks (reemplaza DocumentPlan legacy)
+    theoretical_highlights = list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+                                                if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading))
+    practical_highlights = list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+                                              if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading))
 
     learning_structure = {
         "grado": event.grade,
@@ -475,8 +437,8 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         "activities": generated_activities,
         "base_exercises": base_exercises,
         "document_highlights": {
-            "theoretical": document_plan.key_theoretical_content,
-            "practical": document_plan.practical_content,
+            "theoretical": theoretical_highlights,
+            "practical": practical_highlights,
         },
         "source_chunk_ids": [item.chunk_id for _, item in summaries],
     })

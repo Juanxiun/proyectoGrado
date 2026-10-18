@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
-import Svg, { Circle, Line } from 'react-native-svg';
+import { Text, TouchableOpacity, View } from 'react-native';
 import type { FormatoResumen } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { EjemploCanvas } from './EjemploCanvas';
+import { EsquemaSkia } from './EsquemaSkia';
 
 interface ResumenInteractivoProps {
   formato: FormatoResumen;
@@ -17,13 +17,7 @@ interface ResumenInteractivoProps {
 export function ResumenInteractivo({ formato, data, explicacion, explicacionLoading, onExplain, onStartActivity }: ResumenInteractivoProps) {
   const [indiceCarta, setIndiceCarta] = useState(0);
   const [cartasFinalizadas, setCartasFinalizadas] = useState(false);
-  const [nodoActivo, setNodoActivo] = useState<string | null>(null);
-  const { width } = useWindowDimensions();
   const cartas = data.cards || [];
-  const conexiones = (data.connections || []).slice(0, 3);
-  const ancho = Math.max(300, width - 56);
-  const centro = ancho / 2;
-  const coordenadas: Array<{ x: number; y: number }> = conexiones.map((_: unknown, index: number) => ({ x: (ancho * (index + 0.5)) / conexiones.length, y: 225 }));
 
   const renderCartas = () => {
     const carta = cartas[indiceCarta];
@@ -51,42 +45,39 @@ export function ResumenInteractivo({ formato, data, explicacion, explicacionLoad
     </View>;
   };
 
-  const renderConexiones = () => {
-    const activo = conexiones.find((item: any) => item.id === nodoActivo);
-    return <View className="gap-3">
-      <Text className="text-sm text-gray-700">{data.summary}</Text>
-      <View style={{ width: ancho, height: 310 }}>
-        <Svg width={ancho} height={280} style={{ position: 'absolute', left: 0, top: 0 }}>
-          {coordenadas.map((punto, index) => <Line key={`linea-${index}`} x1={centro} y1={75} x2={punto.x} y2={punto.y} stroke="#9CA3AF" strokeWidth={2} />)}
-          {coordenadas.map((punto, index) => <Circle key={`nodo-${index}`} cx={punto.x} cy={punto.y} r={5} fill="#801F3F" />)}
-        </Svg>
-        <View style={{ position: 'absolute', left: centro - 95, top: 24, width: 190 }}>
-          <BentoCard className="items-center p-3 bg-[#F7E9ED]"><Text className="text-center text-xs font-black text-[#801F3F]">{data.central_concept || data.title}</Text></BentoCard>
-        </View>
-        {conexiones.map((item: any, index: number) => <TouchableOpacity key={item.id || index} onPress={() => setNodoActivo(item.id)} style={{ position: 'absolute', left: coordenadas[index].x - 54, top: 174, width: 108 }}>
-          <BentoCard className={`min-h-16 items-center justify-center p-2 ${nodoActivo === item.id ? 'bg-sky-100' : 'bg-sky-50'}`}><Text className="text-center text-xs font-bold text-sky-900">{item.concept}</Text></BentoCard>
-        </TouchableOpacity>)}
-      </View>
-      {activo ? <BentoCard className="p-4 bg-sky-50"><Text className="font-bold text-sky-950">{activo.concept} · {activo.relation}</Text><Text className="text-sm text-gray-700 mt-2">{activo.context}</Text></BentoCard> : null}
-    </View>;
-  };
-
-  const renderEsquema = () => {
-    const nodo = (data.nodes || []).find((item: any) => item.id === nodoActivo);
-    const relaciones = (data.edges || []).filter((edge: any) => edge.source === nodoActivo);
-    return <View className="gap-2">
-      <BentoCard className="items-center p-3 bg-[#F7E9ED]"><Text className="text-center font-black text-[#801F3F]">{data.title}</Text></BentoCard>
-      {(data.nodes || []).map((item: any) => <TouchableOpacity key={item.id} onPress={() => setNodoActivo(item.id)}>
-        <BentoCard className={`p-3 ${item.id === nodoActivo ? 'bg-violet-100' : 'bg-violet-50'}`}><Text className="text-[10px] font-bold uppercase text-violet-800">{item.kind}</Text><Text className="font-semibold text-gray-900 mt-1">{item.label}</Text></BentoCard>
-      </TouchableOpacity>)}
-      {nodo ? <BentoCard className="p-4 bg-white"><Text className="font-bold text-gray-900">{nodo.label}</Text><Text className="text-sm text-gray-700 mt-2">{nodo.detail}</Text>{relaciones.map((edge: any, index: number) => <Text key={`${edge.source}-${edge.target}-${index}`} className="text-sm text-gray-700 mt-2">{edge.label}: {(data.nodes || []).find((target: any) => target.id === edge.target)?.label}</Text>)}</BentoCard> : null}
-    </View>;
-  };
+  const renderEsquema = () => (
+    <EsquemaSkia
+      nodes={data.nodes || []}
+      edges={data.edges || []}
+      relatedTopics={data.related_topics || data.relatedTopics || []}
+      title={data.title || 'Esquema del tema'}
+      onNodePress={(node) => onExplain({ title: node.label, explanation: node.detail || node.label })}
+    />
+  );
 
   const recommendation = data.recommendation || '¿Qué concepto del tema te gustaría investigar y explicar con tus propias palabras?';
-  return <View className="gap-4">
-    {formato === 'CARTAS_EXPLICATIVAS' ? renderCartas() : formato === 'CONEXIONES' ? renderConexiones() : renderEsquema()}
-    {(formato !== 'CARTAS_EXPLICATIVAS' || cartasFinalizadas) ? <><BentoCard className="p-4 bg-amber-50"><Text className="text-xs font-bold text-amber-800">SIGUE INVESTIGANDO</Text><Text className="text-sm text-gray-800 mt-1">{recommendation}</Text></BentoCard>
-      <TouchableOpacity onPress={onStartActivity} className="rounded-2xl bg-[#801F3F] p-4"><Text className="text-center font-black text-white">Empezar actividad</Text></TouchableOpacity></> : null}
-  </View>;
+  return (
+    <View className="gap-4">
+      {formato === 'CARTAS_EXPLICATIVAS' ? renderCartas() : (
+        <EsquemaSkia
+          nodes={data.nodes || []}
+          edges={data.edges || []}
+          relatedTopics={data.related_topics || data.relatedTopics || []}
+          title={data.title || 'Esquema del tema'}
+          onNodePress={(node) => onExplain({ title: node.label, explanation: node.detail || node.label })}
+        />
+      )}
+      {(formato !== 'CARTAS_EXPLICATIVAS' || cartasFinalizadas) ? (
+        <>
+          <BentoCard className="p-4 bg-amber-50">
+            <Text className="text-xs font-bold text-amber-800">SIGUE INVESTIGANDO</Text>
+            <Text className="text-sm text-gray-800 mt-1">{recommendation}</Text>
+          </BentoCard>
+          <TouchableOpacity onPress={onStartActivity} className="rounded-2xl bg-[#801F3F] p-4">
+            <Text className="text-center font-black text-white">Empezar actividad</Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
+    </View>
+  );
 }

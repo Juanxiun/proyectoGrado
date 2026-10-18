@@ -7,9 +7,6 @@ import {
   PreguntaExamen,
   CreateExamenInput,
   RespuestaExamenEstudiante,
-  ExamenRowDB,
-  PreguntaRowDB,
-  RespuestaRowDB,
 } from "../models/control-academico.ts";
 
 interface ExamenRowDB {

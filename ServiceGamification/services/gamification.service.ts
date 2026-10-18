@@ -431,10 +431,13 @@ export async function procesarActividadCompletada(input: {
   tiempoTotalMs: number;
   fechaInicio: string;
   fechaFin: string;
+  mediaTiempoOtrosMs?: number; // Para gamificación: tiempo promedio de otros estudiantes
+  intentoAnterior?: { puntuacion: number; fecha: string } | null; // Para insignia de mejora
 }): Promise<{
   actividad: ActividadGamificada;
   racha: RachasDiarias;
   puntosGanados: number;
+  puntuacion: number; // Nueva puntuación 2-10
   insigniasNuevas: InsigniaEstudiante[];
   trofeosNuevos: TrofeoEstudiante[];
 }> {
@@ -447,6 +450,10 @@ export async function procesarActividadCompletada(input: {
 
   const completada = aciertos === total;
   const rachaCompletada = completada && porcentajeAcierto >= gamificationConfig.racha.umbralAcierto;
+  
+  // Nueva puntuación 2-10 para gamificación
+  const mediaTiempoOtros = input.mediaTiempoOtrosMs ?? 0;
+  const puntuacion = calcularPuntuacion(aciertos, total, input.tiempoTotalMs, mediaTiempoOtros);
 
   // transaccion -> procesar actividad completada
   return await sTransaction(async (_tx) => {
@@ -497,7 +504,8 @@ export async function procesarActividadCompletada(input: {
       await agregarPuntosGlobales(input.cursoPeriodoId, input.paralelo, fecha, puntosGlobales, `Racha completada: ${actividad.titulo}`);
     }
 
-    const insigniasNuevas = await evaluarInsignias(input.usuarioId, input.estudianteId, {
+    // Evaluar insignias tradicionales + dinámicas
+    const insigniasTradicionales = await evaluarInsignias(input.usuarioId, input.estudianteId, {
       actividad,
       racha,
       puntosGanados,
@@ -505,10 +513,20 @@ export async function procesarActividadCompletada(input: {
       total,
       tiempoTotalMs: input.tiempoTotalMs,
     });
+    
+    const insigniasDinamicas = await otorgarInsigniaDinamica(
+      input.usuarioId,
+      puntuacion,
+      input.tiempoTotalMs,
+      mediaTiempoOtros,
+      input.intentoAnterior ?? null,
+    );
+    
+    const insigniasNuevas = [...insigniasTradicionales, ...insigniasDinamicas];
 
     const trofeosNuevos = await evaluarTrofeos(input.usuarioId, input.cursoPeriodoId, input.paralelo);
 
-    return { actividad, racha, puntosGanados, insigniasNuevas, trofeosNuevos };
+    return { actividad, racha, puntosGanados, puntuacion, insigniasNuevas, trofeosNuevos };
   });
 }
 
@@ -542,6 +560,85 @@ function calcularPuntos(
   const puntosGanados = aciertos * 5 + puntosCalidad + puntosTiempo;
 
   return { aciertos, total, porcentajeAcierto, puntosGanados, puntosCalidad, puntosTiempo };
+}
+
+// gamificacion -> puntos 2-10
+export function calcularPuntuacion(
+  aciertos: number,
+  total: number,
+  tiempoMs: number,
+  mediaTiempoOtros: number,
+): number {
+  if (total === 0) return 2;
+  const porcentaje = aciertos / total;
+  let puntuacion = 2; // mínimo 2
+  
+  // Base por aciertos (2-6 puntos)
+  if (porcentaje >= 0.9) puntuacion += 4;
+  else if (porcentaje >= 0.7) puntuacion += 3;
+  else if (porcentaje >= 0.5) puntuacion += 2;
+  else if (porcentaje >= 0.3) puntuacion += 1;
+  
+  // Bonus por velocidad relativa (0-2 puntos)
+  if (tiempoMs > 0 && mediaTiempoOtros > 0) {
+    const ratio = tiempoMs / mediaTiempoOtros;
+    if (ratio <= 0.5) puntuacion += 2;
+    else if (ratio <= 0.75) puntuacion += 1;
+  }
+  
+  // Bonus por perfección (0-2 puntos)
+  if (aciertos === total) puntuacion += 2;
+  
+  return Math.min(10, Math.max(2, puntuacion));
+}
+
+// gamificacion -> insignia dinamica
+export async function otorgarInsigniaDinamica(
+  estudianteId: string,
+  puntuacion: number,
+  tiempoMs: number,
+  mediaTiempoOtros: number,
+  intentoAnterior: { puntuacion: number; fecha: string } | null,
+): Promise<InsigniaEstudiante[]> {
+  const nuevas: InsigniaEstudiante[] = [];
+  const insigniasActivas = await getInsigniasActivas();
+  const insigniasEstudiante = await getInsigniasEstudiante(estudianteId);
+  const tieneInsignia = new Set(insigniasEstudiante.map((i) => i.insigniaId));
+  
+  // Determinar insignia según puntuación y mejora
+  let codigoInsignia: string | null = null;
+  let metadata: Record<string, unknown> = { puntuacion };
+  
+  if (puntuacion === 10) {
+    codigoInsignia = "maestro_perfecto";
+  } else if (puntuacion >= 8) {
+    codigoInsignia = "experto_rapido";
+  } else if (puntuacion >= 6) {
+    codigoInsignia = "vamos_buen_camino";
+  } else if (puntuacion >= 4) {
+    codigoInsignia = "esfuerzo_constante";
+  } else {
+    codigoInsignia = "empezando";
+  }
+  
+  // Si hay intento anterior y mejoró significativamente
+  if (intentoAnterior && puntuacion > intentoAnterior.puntuacion + 2) {
+    codigoInsignia = "mejora_notable";
+    metadata = { ...metadata, mejora: puntuacion - intentoAnterior.puntuacion };
+  }
+  
+  // Speedrunner: 10 puntos en tiempo récord (menos de la mitad de la media)
+  if (puntuacion === 10 && tiempoMs > 0 && mediaTiempoOtros > 0 && tiempoMs < mediaTiempoOtros / 2) {
+    codigoInsignia = "speedrunner";
+  }
+  
+  const insignia = insigniasActivas.find((i) => i.codigo === codigoInsignia);
+  if (insignia && !tieneInsignia.has(insignia.id)) {
+    const otorgada = await otorgarInsignia(estudianteId, insignia.id, metadata);
+    if (otorgada) nuevas.push(otorgada);
+  }
+  
+  return nuevas;
 }
 
 async function evaluarInsignias(

@@ -3,7 +3,7 @@ import random
 import re
 import unicodedata
 
-# activities -> campos que revelan la respuesta segun el tipo
+# activities -> campos que revelan la respuesta segun el tipo (LEGACY: mantener para compatibilidad UI)
 CAMPOS_RESPUESTA = {
     "SELECCION_MULTIPLE": ("correct_answer", "explanation", "source_chunk_ids"),
     "CUESTIONARIO": ("keywords", "model_answer", "explanation", "source_chunk_ids"),
@@ -13,7 +13,7 @@ CAMPOS_RESPUESTA = {
     "DRAG_AND_DROP": ("correct_order", "explanation", "source_chunk_ids"),
 }
 
-# activities -> campos visibles para el estudiante
+# activities -> campos visibles para el estudiante (LEGACY: mantener para compatibilidad UI)
 CAMPOS_PUBLICOS = {
     "SELECCION_MULTIPLE": ("question", "options"),
     "CUESTIONARIO": ("question",),
@@ -23,8 +23,11 @@ CAMPOS_PUBLICOS = {
     "DRAG_AND_DROP": ("question", "items"),
 }
 
-# activities -> respuestas validas de autoevaluacion flashcard
+# activities -> respuestas validas de autoevaluacion flashcard (LEGACY)
 RESPUESTAS_FLASHCARD = {"recordado", "recordada", "si", "verdadero", "lo recuerdo", "ya lo se"}
+
+# activities -> nuevos tipos de reactivo Fase 2
+ACTIVITY_SEED_TYPES = ("THEORETICAL", "PRACTICAL")
 
 
 # activities -> normalizacion sin acentos ni mayusculas
@@ -34,8 +37,15 @@ def _norm(texto: str) -> str:
     return re.sub(r"\s+", " ", limpio).strip()
 
 
+# activities -> detectar si es formato nuevo (ActivitySeed) o legacy
+def _is_seed_format(activity: dict) -> bool:
+    return activity.get("type") in ACTIVITY_SEED_TYPES
+
+
 # activities -> texto canonico usado como huella de la actividad
 def activity_statement(activity: dict) -> str:
+    if _is_seed_format(activity):
+        return str(activity.get("question", ""))
     tipo = activity.get("tipo", "SELECCION_MULTIPLE")
     if tipo == "FLASHCARD":
         return str(activity.get("front", ""))
@@ -56,8 +66,17 @@ def activity_id(content_id: str, index: int, statement: str) -> str:
     return hashlib.sha256(f"{content_id}:{index}:{statement}".encode("utf-8")).hexdigest()
 
 
-# activities -> copia sin respuestas ni metadatos internos
+# activities -> copia sin respuestas ni metadatos internos (LEGACY: para UI con formatos de interaccion)
 def public_activity(activity: dict, semilla: str = "") -> dict:
+    if _is_seed_format(activity):
+        # Formato nuevo: devolver campos basicos para UI simple (pregunta/respuesta)
+        return {
+            "activity_id": activity.get("activity_id", ""),
+            "type": activity.get("type"),
+            "question": activity.get("question", ""),
+            "difficulty": activity.get("difficulty", "inicial"),
+            "learning_objective": activity.get("learning_objective", ""),
+        }
     tipo = activity.get("tipo", "SELECCION_MULTIPLE")
     publico = {"activity_id": activity.get("activity_id", ""), "tipo": tipo}
     for campo in CAMPOS_PUBLICOS.get(tipo, ("question",)):
@@ -92,7 +111,7 @@ def normalize_activity(activity: dict, content_id: str, index: int, chunk_ids: l
     return data
 
 
-# activities -> pares de conectar frases desde texto libre
+# activities -> pares de conectar frases desde texto libre (LEGACY)
 def _parse_pares(response: str) -> dict[str, str]:
     pares: dict[str, str] = {}
     for trozo in [item.strip() for item in response.split(";") if item.strip()]:
@@ -107,6 +126,15 @@ def _parse_pares(response: str) -> dict[str, str]:
 
 # activities -> correccion de una respuesta segun el tipo de actividad
 def score_activity(activity: dict, response: str) -> bool:
+    if _is_seed_format(activity):
+        # Formato nuevo: comparacion simple de respuesta normalizada
+        respuesta = _norm(response)
+        if not respuesta:
+            raise ValueError("La respuesta no puede estar vacía")
+        expected = _norm(activity.get("answer", ""))
+        return respuesta == expected
+
+    # LEGACY: logica original para formatos de interaccion
     tipo = activity.get("tipo", "SELECCION_MULTIPLE")
     respuesta = _norm(response)
     if not respuesta:
@@ -144,6 +172,18 @@ def score_activity(activity: dict, response: str) -> bool:
 
 # feedback -> explicacion correctiva ligada al concepto evaluado
 def remediation(activity: dict, correct: bool) -> dict[str, str]:
+    if _is_seed_format(activity):
+        concept = str(activity.get("learning_objective", "Concepto evaluado"))
+        answer = str(activity.get("answer", ""))
+        explanation = str(activity.get("explanation", ""))
+        return {
+            "concept": concept,
+            "where_failed": "" if correct else f"Revisa: {concept}.",
+            "correct_answer": answer,
+            "explanation": explanation,
+        }
+
+    # LEGACY: logica original para formatos de interaccion
     tipo = activity.get("tipo", "")
     concept = str(activity.get("learning_objective", "Concepto evaluado"))
     if tipo == "SELECCION_MULTIPLE":

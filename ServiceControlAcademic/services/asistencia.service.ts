@@ -11,9 +11,8 @@ import {
   BulkAsistenciaInput,
   FiltroAsistencia,
   EstadoAsistencia,
-  AsistenciaRow,
-  controlAcademicoConfig,
 } from "../models/control-academico.ts";
+import { controlAcademicoConfig } from "../config/control-academico.config.ts";
 
 interface AsistenciaRowDB {
   id: bigint;
@@ -49,13 +48,13 @@ async function mapAsistencia(row: AsistenciaRowDB): Promise<Asistencia> {
     asignacionId: toId(row.asignacionId),
     materiaId: toId(row.materiaId),
     temaId: row.temaId ? toId(row.temaId) : undefined,
-    fecha: asDateString(row.fecha),
+    fecha: (asDateString(row.fecha) as string) ?? new Date().toISOString().split("T")[0],
     estado: row.estado as EstadoAsistencia,
-    justificacion: row.justificacion,
-    horaRegistro: row.horaRegistro,
+    justificacion: row.justificacion ?? null,
+    horaRegistro: row.horaRegistro ?? null,
     validadoPorHorario: Boolean(row.validadoPorHorario),
-    fechaRegistro: asDateTimeString(row.fechaRegistro),
-    fechaActualizacion: asDateTimeString(row.fechaActualizacion),
+    fechaRegistro: (asDateTimeString(row.fechaRegistro) as string) ?? new Date().toISOString(),
+    fechaActualizacion: (asDateTimeString(row.fechaActualizacion) as string) ?? new Date().toISOString(),
     estudiante: row.usuarioId
       ? {
         id: toId(row.estudianteId),
@@ -75,7 +74,7 @@ async function mapAsistencia(row: AsistenciaRowDB): Promise<Asistencia> {
         horarioFin: row.horarioFin,
       }
       : null,
-  });
+  }) as unknown as Asistencia;
 }
 
 const SELECT = `
@@ -410,8 +409,8 @@ export async function saveBulkAsistencias(input: BulkAsistenciaInput): Promise<{
 
         // validar horario
         let validadoPorHorario = false;
-        if (item.horaRegistro) {
-          const validacion = await validarHorarioClase(asigId, String(item.materiaId ?? ""), input.fecha, item.horaRegistro);
+        if ((item as any).horaRegistro) {
+          const validacion = await validarHorarioClase(asigId, matId, input.fecha, (item as any).horaRegistro);
           validadoPorHorario = validacion.valido;
         }
 
@@ -427,7 +426,7 @@ export async function saveBulkAsistencias(input: BulkAsistenciaInput): Promise<{
              hora_registro = EXCLUDED.hora_registro,
              validado_por_horario = EXCLUDED.validado_por_horario,
              fecha_actualizacion = CURRENT_TIMESTAMP`,
-          [realEstId, asigId, String(item.materiaId ?? ""), input.fecha, item.estado, item.justificacion?.trim() ?? null, item.horaRegistro ?? null, validadoPorHorario],
+          [realEstId, asigId, matId, input.fecha, item.estado, item.justificacion?.trim() ?? null, (item as any).horaRegistro ?? null, validadoPorHorario],
         );
 
         guardados++;

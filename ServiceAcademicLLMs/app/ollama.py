@@ -96,8 +96,8 @@ class OllamaClient:
             prompt = prompt.replace("{{" + key + "}}", document)
         prompt = prompt.replace("{{context}}", context)
         errors = ""
-        output_limits = {"DocumentPlan": 300, "ChunkAnalysisBatch": 1200, "RefinedContent": 2000, "ContentEvaluation": 500, "ActivitySet": 2800}
-        max_attempts = 1 if schema.__name__ in {"DocumentPlan", "RefinedContent", "ContentEvaluation"} else 2
+        output_limits = {"ChunkAnalysisBatch": 1200, "RefinedContent": 2000, "ContentEvaluation": 500, "ActivitySet": 2800}
+        max_attempts = 1 if schema.__name__ in {"RefinedContent", "ContentEvaluation"} else 2
         for attempt in range(max_attempts):
             strict = "\nDevuelve únicamente JSON válido que cumpla exactamente el esquema solicitado. No uses Markdown."
             response_format = "json" if schema.__name__ == "RefinedContent" else schema.model_json_schema()

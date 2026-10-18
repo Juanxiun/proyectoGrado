@@ -5,6 +5,16 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 TextoBreve = Annotated[str, Field(max_length=180)]
 
 
+# LLM -> fase 1 extraccion gemma
+class Phase1Output(BaseModel):
+    title: str = Field(max_length=120)
+    start_limit: str = Field(max_length=200)
+    end_limit: str = Field(max_length=200)
+    preliminary_summary: str = Field(max_length=500)
+    inquiry_areas: list[str] = Field(default_factory=list, max_length=8)
+    friction_points: list[str] = Field(default_factory=list, max_length=8)
+
+
 class ContentCreatedEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -29,21 +39,12 @@ class ContentCreatedEvent(BaseModel):
     timestamp: str | None = None
 
 
-class DocumentPlan(BaseModel):
-    subject: str = Field(max_length=80)
-    context: str = Field(max_length=240)
-    outline: list[str] = Field(default_factory=list, max_length=8)
-    key_theoretical_content: list[str] = Field(default_factory=list, max_length=8)
-    practical_content: list[str] = Field(default_factory=list, max_length=6)
-    desired_chunks: int = Field(ge=1, le=6)
-    chunking_reason: str = Field(max_length=140)
-
-
 class LearningUnit(BaseModel):
     title: str = Field(max_length=100)
     explanation: str = Field(max_length=320)
     objective: str = Field(max_length=160)
     inquiry_question: str = Field(max_length=240)
+    examples_blackboard: list[str] = Field(default_factory=list, max_length=5)
 
 
 # llm -> analisis pedagogico de cada fragmento semantico
@@ -63,7 +64,7 @@ class ChunkAnalysisBatch(BaseModel):
     analyses: list[ChunkAnalysis] = Field(min_length=1, max_length=8)
 
 
-# generator -> actividad de seleccion multiple
+# generator -> actividad de seleccion multiple (LEGACY: mantener para compatibilidad)
 class ActivitySeleccionMultiple(BaseModel):
     tipo: Literal["SELECCION_MULTIPLE"]
     question: TextoBreve
@@ -101,7 +102,7 @@ class ActivitySeleccionMultiple(BaseModel):
         return self
 
 
-# generator -> actividad de cuestionario abierto corto
+# generator -> actividad de cuestionario abierto corto (LEGACY: mantener para compatibilidad)
 class ActivityCuestionario(BaseModel):
     tipo: Literal["CUESTIONARIO"]
     question: TextoBreve
@@ -113,7 +114,7 @@ class ActivityCuestionario(BaseModel):
     source_chunk_ids: list[str] = []
 
 
-# generator -> actividad flashcard concepto y explicacion
+# generator -> actividad flashcard concepto y explicacion (LEGACY: mantener para compatibilidad)
 class ActivityFlashcard(BaseModel):
     tipo: Literal["FLASHCARD"]
     front: TextoBreve
@@ -123,7 +124,7 @@ class ActivityFlashcard(BaseModel):
     source_chunk_ids: list[str] = []
 
 
-# generator -> actividad de verdad o falso
+# generator -> actividad de verdad o falso (LEGACY: mantener para compatibilidad)
 class ActivityVerdaderoFalso(BaseModel):
     tipo: Literal["VERDADERO_FALSO"]
     statement: TextoBreve
@@ -139,7 +140,7 @@ class MatchPair(BaseModel):
     right: TextoBreve
 
 
-# generator -> actividad de conectar frases por pares
+# generator -> actividad de conectar frases por pares (LEGACY: mantener para compatibilidad)
 class ActivityConectarFrases(BaseModel):
     tipo: Literal["CONECTAR_FRASES"]
     pairs: list[MatchPair] = Field(min_length=2, max_length=4)
@@ -149,7 +150,7 @@ class ActivityConectarFrases(BaseModel):
     source_chunk_ids: list[str] = []
 
 
-# generator -> actividad de arrastrar y soltar pasos ordenados
+# generator -> actividad de arrastrar y soltar pasos ordenados (LEGACY: mantener para compatibilidad)
 class ActivityDragAndDrop(BaseModel):
     tipo: Literal["DRAG_AND_DROP"]
     question: TextoBreve
@@ -167,6 +168,7 @@ class ActivityDragAndDrop(BaseModel):
         return self
 
 
+# LEGACY: union de tipos antiguos para compatibilidad con codigo existente
 Activity = Annotated[
     Union[
         ActivitySeleccionMultiple,
@@ -180,6 +182,17 @@ Activity = Annotated[
 ]
 
 
+# activities -> nuevo formato de reactivo unificado (Fase 2)
+class ActivitySeed(BaseModel):
+    type: Literal["THEORETICAL", "PRACTICAL"]
+    question: str = Field(max_length=500)
+    answer: str = Field(max_length=500)
+    explanation: str = Field(max_length=500)
+    difficulty: str = Field(default="inicial", max_length=20)
+    learning_objective: str = Field(max_length=180)
+    source_chunk_ids: list[str] = Field(default_factory=list)
+
+
 class RefinedContent(BaseModel):
     title: str = Field(max_length=120)
     summary: str = Field(max_length=500)
@@ -189,7 +202,8 @@ class RefinedContent(BaseModel):
     inquiry_questions: list[str] = Field(max_length=8)
     common_mistakes: list[str] = Field(max_length=8)
     difficulty: str = Field(max_length=20)
-    activities: list[Activity] = Field(min_length=6, max_length=20)
+    activities: list[ActivitySeed] = Field(min_length=20, max_length=20)
+    examples_blackboard: list[str] = Field(default_factory=list, max_length=10)
 
 
 class ContentEvaluation(BaseModel):
@@ -240,7 +254,7 @@ class StudentLearningAnalysis(BaseModel):
     strengths: list[str]
     weaknesses: list[str]
     recommended_explanation_style: str
-    recommended_formats: list[Literal["FLASHCARD", "CONECTAR_FRASES", "SELECCION_MULTIPLE", "MAPA_ESQUEMATICO"]] = []
+    recommended_formats: list[Literal["FLASHCARD", "CONECTAR_FRASES", "SELECCION_MULTIPLE"]] = []
     difficulty_level: str
     next_steps: list[str]
 
@@ -254,79 +268,59 @@ class PersonalizedLearningContent(BaseModel):
     concepts_to_reinforce: list[str]
 
 
-# generator -> cartas explicativas de conceptos clave
-class ConceptCard(BaseModel):
-    concept: str
-    definition: str
-    key_points: list[str] = []
-
-
-class CartasExplicativas(BaseModel):
-    formato: Literal["CARTAS_EXPLICATIVAS"]
-    title: str
-    cards: list[ConceptCard] = Field(min_length=3)
-    recommendation: str = Field(min_length=1, max_length=500)
-
-
-# generator -> enlace entre tema actual y temas previos
-class ConnectionLink(BaseModel):
-    id: str
-    concept: str
-    relation: str
-    context: str
-
-
-class Conexiones(BaseModel):
-    formato: Literal["CONEXIONES"]
-    title: str
-    central_concept: str
-    summary: str
-    connections: list[ConnectionLink] = Field(min_length=2)
-    recommendation: str = Field(min_length=1, max_length=500)
-
-
-class MapNode(BaseModel):
+# LLM -> fase 3b esquema gemma
+class SchemaNode(BaseModel):
     id: str
     label: str
     kind: Literal["concepto", "procedimiento", "relacion"]
     detail: str = Field(min_length=1, max_length=1200)
 
 
-class MapEdge(BaseModel):
+class SchemaEdge(BaseModel):
     source: str
     target: str
-    label: str
+    label: Literal["es un", "tiene", "implica", "requiere", "ejemplo de", "se aplica en", "deriva de", "contrasta con"]
 
 
-# generator -> mapa esquematico de nodos y relaciones
-class MapaEsquematico(BaseModel):
-    formato: Literal["MAPA_ESQUEMATICO"]
-    title: str
-    nodes: list[MapNode] = Field(min_length=3)
-    edges: list[MapEdge] = []
-    recommendation: str = Field(min_length=1, max_length=500)
+class SchemaOutput(BaseModel):
+    nodes: list[SchemaNode] = Field(min_length=5, max_length=15)
+    edges: list[SchemaEdge] = Field(min_length=4, max_length=20)
+    related_topics: list[str] = Field(min_length=3, max_length=6)
 
     @model_validator(mode="after")
     def edges_reference_nodes(self):
         ids = {nodo.id for nodo in self.nodes}
         for edge in self.edges:
             if edge.source not in ids or edge.target not in ids:
-                raise ValueError("Cada relación debe referenciar nodos existentes del mapa")
+                raise ValueError("Cada relación debe referenciar nodos existentes del esquema")
         return self
 
-
-LearningSummary = Annotated[
-    Union[CartasExplicativas, Conexiones, MapaEsquematico],
-    Field(discriminator="formato"),
-]
+    @model_validator(mode="after")
+    def graph_connected(self):
+        if not self.nodes:
+            return self
+        # Verificar conectividad básica (grafo no dirigido)
+        adj = {n.id: set() for n in self.nodes}
+        for e in self.edges:
+            adj[e.source].add(e.target)
+            adj[e.target].add(e.source)
+        visited = set()
+        stack = [self.nodes[0].id]
+        while stack:
+            current = stack.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            stack.extend(adj[current] - visited)
+        if len(visited) != len(self.nodes):
+            raise ValueError("El esquema debe ser navegable: todos los nodos conectados")
+        return self
 
 
 class LearningSummaryRequest(BaseModel):
     formato: Literal[
         "auto",
-        "CARTAS_EXPLICATIVAS",
-        "CONEXIONES",
-        "MAPA_ESQUEMATICO",
+        "ESQUEMA_GEMMA",
     ] = "auto"
 
 
