@@ -46,6 +46,7 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
   const [cursos, setCursos] = useState<CursoGroup[]>([]);
   const [selectedCurso, setSelectedCurso] = useState<CursoGroup | null>(null);
   const [selectedMateria, setSelectedMateria] = useState('');
+  const [selectedNivel, setSelectedNivel] = useState<'Primaria' | 'Secundaria' | ''>('');
   const [selectedCursoId, setSelectedCursoId] = useState('');
 
   // Modal de estudiantes
@@ -104,7 +105,8 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         const cursoInfo = item.cursoPeriodo?.curso || {};
         const grado = cursoInfo.grado || item.grado || '1';
         const paralelo = cursoInfo.paralelo || item.paralelo || 'A';
-        const nivel = cursoInfo.nivel || item.nivel || 'Secundaria';
+        const nivelOriginal = String(cursoInfo.nivel || item.nivel || 'Secundaria');
+        const nivel = nivelOriginal.toLowerCase().includes('primaria') ? 'Primaria' : 'Secundaria';
         const anio = item.cursoPeriodo?.periodo?.anio || item.periodo?.anio || new Date().getFullYear();
 
         const materiaNombre = item.materia?.nombre || item.materiaNombre || 'Materia';
@@ -187,9 +189,14 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
     return [...nombres].sort((a, b) => a.localeCompare(b));
   }, [cursos]);
 
+  const materiasPorNivel = useMemo(() => ({
+    Primaria: [...new Set(cursos.filter((curso) => curso.nivel === 'Primaria').flatMap((curso) => curso.materias.map((materia) => materia.nombre)))].sort((a, b) => a.localeCompare(b)),
+    Secundaria: [...new Set(cursos.filter((curso) => curso.nivel === 'Secundaria').flatMap((curso) => curso.materias.map((materia) => materia.nombre)))].sort((a, b) => a.localeCompare(b)),
+  }), [cursos]);
+
   const cursosMateria = useMemo(
-    () => cursos.filter((curso) => curso.materias.some((materia) => materia.nombre === selectedMateria)),
-    [cursos, selectedMateria],
+    () => cursos.filter((curso) => curso.nivel === selectedNivel && curso.materias.some((materia) => materia.nombre === selectedMateria)),
+    [cursos, selectedMateria, selectedNivel],
   );
 
   return (
@@ -220,12 +227,19 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         <BentoCard className="p-5">
           <Text className="text-lg font-bold text-gray-900">Selecciona una materia</Text>
           <Text className="text-xs text-gray-500 mt-1">Luego elige el curso o paralelo que deseas gestionar.</Text>
-          <View className="flex-row flex-wrap gap-2 mt-4">
-            {materias.map((materia) => (
-              <TouchableOpacity key={materia} onPress={() => { setSelectedMateria(materia); setSelectedCursoId(''); }} className={`px-4 py-2.5 rounded-xl border ${selectedMateria === materia ? 'bg-maroon border-maroon' : 'bg-gray-50 border-gray-200'}`}>
-                <Text className={`text-sm font-semibold ${selectedMateria === materia ? 'text-white' : 'text-gray-700'}`}>{materia}</Text>
-              </TouchableOpacity>
-            ))}
+          <View className="gap-4 mt-4">
+            {(['Primaria', 'Secundaria'] as const).map((nivel) => materiasPorNivel[nivel].length > 0 ? (
+              <View key={nivel} className="gap-2">
+                <Text className={`text-xs font-black uppercase ${nivel === 'Primaria' ? 'text-green-700' : 'text-blue-700'}`}>{nivel}</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {materiasPorNivel[nivel].map((materia) => (
+                    <TouchableOpacity key={`${nivel}-${materia}`} onPress={() => { setSelectedMateria(materia); setSelectedNivel(nivel); setSelectedCursoId(''); }} className={`px-4 py-2.5 rounded-xl border ${selectedMateria === materia && selectedNivel === nivel ? 'bg-maroon border-maroon' : 'bg-gray-50 border-gray-200'}`}>
+                      <Text className={`text-sm font-semibold ${selectedMateria === materia && selectedNivel === nivel ? 'text-white' : 'text-gray-700'}`}>{materia}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null)}
           </View>
         </BentoCard>
       ) : null}
@@ -245,8 +259,18 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
           </Text>
         </BentoCard>
       ) : (
-        <View className={`gap-4 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
-          {(selectedMateria ? cursosMateria : []).map((curso) => {
+        <View className="gap-5">
+          {(['Primaria', 'Secundaria'] as const).map((nivel) => {
+            const cursosNivel = (selectedMateria ? cursosMateria : []).filter((curso) => curso.nivel === nivel);
+            if (cursosNivel.length === 0) return null;
+            return <View key={nivel} className="gap-3">
+              <View className="flex-row items-center gap-2 px-1">
+                <View className={`w-2 h-6 rounded-r-xl ${nivel === 'Primaria' ? 'bg-green-500' : 'bg-blue-500'}`} />
+                <Text className={`text-lg font-black ${nivel === 'Primaria' ? 'text-green-700' : 'text-blue-700'}`}>{nivel}</Text>
+                <Text className="text-xs text-gray-400">{cursosNivel.length} curso{cursosNivel.length !== 1 ? 's' : ''}</Text>
+              </View>
+              <View className={`gap-4 ${isMobile ? '' : 'flex-row flex-wrap'}`}>
+          {cursosNivel.map((curso) => {
             const isSecundaria = String(curso.nivel).toLowerCase().includes('secundaria');
             return (
               <BentoCard
@@ -325,6 +349,9 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
                 ) : null}
               </BentoCard>
             );
+          })}
+              </View>
+            </View>;
           })}
         </View>
       )}

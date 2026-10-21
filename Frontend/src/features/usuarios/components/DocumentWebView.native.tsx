@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Image, Text, TurboModuleRegistry, View } from 'react-native';
+import { ActivityIndicator, Image, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 
 let NativePdf: React.ComponentType<any> | null = null;
 try {
-  if (TurboModuleRegistry.get('ReactNativeBlobUtil')) NativePdf = require('react-native-pdf').default;
+  NativePdf = require('react-native-pdf').default;
 } catch {
   NativePdf = null;
 }

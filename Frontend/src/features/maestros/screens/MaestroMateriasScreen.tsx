@@ -189,6 +189,7 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
       const src = filtered.length > 0 ? filtered : all;
       setMaterias(src.map((asig) => {
         const c = asig.cursoPeriodo?.curso || {};
+        const nivel = String(c.nivel || 'Secundaria').toLowerCase().includes('primaria') ? 'Primaria' : 'Secundaria';
         return {
           id: String(asig.id),
           materiaId: String(asig.materiaId || asig.materia?.id || ''),
@@ -197,7 +198,7 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
           cursoPeriodoId: String(asig.cursoPeriodoId || asig.cursoPeriodo?.id || ''),
           grado: c.grado || '1',
           paralelo: c.paralelo || 'A',
-          nivel: c.nivel || 'Secundaria',
+          nivel,
           anio: asig.cursoPeriodo?.periodo?.anio,
         };
       }));
@@ -491,41 +492,61 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
             <Text className="text-sm text-gray-400 mt-1 text-center">No tienes materias activas en la gestión académica actual.</Text>
           </BentoCard>
         ) : (
-          <View className="flex-row flex-wrap -mx-2">
-            {materias.map((item) => (
-              <View key={item.id} className="w-full md:w-1/2 lg:w-1/3 p-2">
-                <BentoCard className="p-5 h-full flex-col justify-between">
-                  <View>
-                    <View className="flex-row items-start justify-between mb-3">
-                      <View className="w-12 h-12 rounded-2xl bg-maroon/10 border border-maroon/20 items-center justify-center">
-                        <Ionicons name="book" size={24} color="#801529" />
-                      </View>
-                      <View className="px-2.5 py-1 bg-blue-50 border border-blue-200 rounded-lg">
-                        <Text className="text-[10px] font-black text-blue-700 uppercase">{item.nivel}</Text>
-                      </View>
-                    </View>
-                    <Text className="text-lg font-black text-gray-900" numberOfLines={2}>{item.materiaNombre}</Text>
-                    {item.materiaCodigo && <Text className="text-xs text-gray-400 font-mono mt-0.5">{item.materiaCodigo}</Text>}
-                    <View className="flex-row flex-wrap gap-2 mt-3">
-                      <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-                        <Text className="text-[10px] text-gray-500 font-semibold">Grado</Text>
-                        <Text className="text-xs font-bold text-gray-800">{item.grado}° "{item.paralelo}"</Text>
-                      </View>
-                      {item.anio && (
-                        <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
-                          <Text className="text-[10px] text-amber-700 font-semibold">Gestión</Text>
-                          <Text className="text-xs font-bold text-amber-800">{item.anio}</Text>
-                        </View>
-                      )}
-                    </View>
+          <View className="gap-6">
+            {(['Primaria', 'Secundaria'] as const).map((nivel) => {
+              const materiasNivel = materias.filter(m => m.nivel === nivel);
+              if (materiasNivel.length === 0) return null;
+              const color = nivel === 'Primaria' ? 'green' : 'blue';
+              const colorBg = nivel === 'Primaria' ? 'bg-green-50' : 'bg-blue-50';
+              const colorBorder = nivel === 'Primaria' ? 'border-green-200' : 'border-blue-200';
+              const colorText = nivel === 'Primaria' ? 'text-green-700' : 'text-blue-700';
+              const icon = nivel === 'Primaria' ? 'school-outline' : 'book-outline';
+              return (
+                <View key={nivel} className="gap-3">
+                  <View className="flex-row items-center gap-2 px-1">
+                    <View className={`w-2 h-6 rounded-r-xl ${colorBg.replace('50', '500')}`} />
+                    <Text className={`text-lg font-black ${colorText}`}>{nivel}</Text>
+                    <Text className="text-xs text-gray-400 font-mono">{materiasNivel.length} materia{materiasNivel.length !== 1 ? 's' : ''}</Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleSelectSubject(item)} className="mt-4 bg-maroon rounded-xl py-2.5 flex-row items-center justify-center gap-2">
-                    <Ionicons name="folder-open-outline" size={17} color="#fff" />
-                    <Text className="text-white text-sm font-bold">Gestionar Contenido</Text>
-                  </TouchableOpacity>
-                </BentoCard>
-              </View>
-            ))}
+                  <View className="flex-row flex-wrap -mx-2">
+                    {materiasNivel.map((item) => (
+                      <View key={item.id} className="w-full md:w-1/2 lg:w-1/3 p-2">
+                        <BentoCard className="p-5 h-full flex-col justify-between">
+                          <View>
+                            <View className="flex-row items-start justify-between mb-3">
+                              <View className={`w-12 h-12 rounded-2xl ${colorBg} border ${colorBorder} items-center justify-center`}>
+                                <Ionicons name={icon} size={24} color={colorText} />
+                              </View>
+                              <View className={`px-2.5 py-1 ${colorBg} border ${colorBorder} rounded-lg`}>
+                                <Text className={`text-[10px] font-black ${colorText} uppercase`}>{item.nivel}</Text>
+                              </View>
+                            </View>
+                            <Text className="text-lg font-black text-gray-900" numberOfLines={2}>{item.materiaNombre}</Text>
+                            {item.materiaCodigo && <Text className="text-xs text-gray-400 font-mono mt-0.5">{item.materiaCodigo}</Text>}
+                            <View className="flex-row flex-wrap gap-2 mt-3">
+                              <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
+                                <Text className="text-[10px] text-gray-500 font-semibold">Grado</Text>
+                                <Text className="text-xs font-bold text-gray-800">{item.grado}° "{item.paralelo}"</Text>
+                              </View>
+                              {item.anio && (
+                                <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
+                                  <Text className="text-[10px] text-amber-700 font-semibold">Gestión</Text>
+                                  <Text className="text-xs font-bold text-amber-800">{item.anio}</Text>
+                                </View>
+                              )}
+                            </View>
+                          </View>
+                          <TouchableOpacity onPress={() => handleSelectSubject(item)} className="mt-4 bg-maroon rounded-xl py-2.5 flex-row items-center justify-center gap-2">
+                            <Ionicons name="folder-open-outline" size={17} color="#fff" />
+                            <Text className="text-white text-sm font-bold">Gestionar Contenido</Text>
+                          </TouchableOpacity>
+                        </BentoCard>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
           </View>
         )
 

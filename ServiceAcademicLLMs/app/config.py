@@ -7,11 +7,12 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     port: int = 8890
-    # ollama -> en Docker usa host.docker.internal, en local 127.0.0.1
-    ollama_base_url: str = "http://host.docker.internal:11434"
-    ollama_gemma_model: str = "gemma4:e4b"
-    ollama_mistral_model: str = "mistral:7b"
-    ollama_embedding_model: str = "nomic-embed-text:latest"
+    # LM Studio -> en Docker usa host.docker.internal, en local 127.0.0.1
+    lmstudio_base_url: str = "http://host.docker.internal:1234"
+    lmstudio_embedding_url: str | None = None
+    lmstudio_gemma_model: str = "mistral-7b-instruct-v0.3"
+    lmstudio_mistral_model: str = "mistral-7b-instruct-v0.3"
+    lmstudio_embedding_model: str = "nomic-embed-text-v2-moe"
     # redis RAG (vectorial) -> contenedor redis_rag_server en puerto 6380
     redis_host: str = "redis_rag_server"
     redis_port: int = 6380
@@ -34,13 +35,13 @@ class Settings(BaseSettings):
     max_chunks_per_document: int = 6
     llm_acceptance_threshold: float = 0.85
     llm_max_refinement_iterations: int = 2
-    # ollama -> espera para generaciones largas
+    # LM Studio -> espera para generaciones largas
     llm_request_timeout: float = 1800.0
-    # ollama -> timeout de conexion
+    # LM Studio -> timeout de conexion
     llm_connect_timeout: float = 30.0
-    llm_max_concurrency: int = 2
-    worker_count: int = 1
-    ollama_num_ctx: int = 16384
+    llm_max_concurrency: int = 4
+    worker_count: int = 2
+    pipeline_max_duration_sec: int = 540
     max_document_bytes: int = 157_286_400
     job_max_retries: int = 3
     quiz_advance_threshold: float = 0.80

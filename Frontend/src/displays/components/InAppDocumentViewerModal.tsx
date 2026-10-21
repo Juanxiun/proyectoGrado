@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Linking } from 'react-native';
 import { DocumentWebView } from '../../features/usuarios/components/DocumentWebView';
+import { API_BASE_URL } from '../../constants/config';
 
 export interface DocumentViewerProps {
   visible: boolean;
@@ -53,6 +54,18 @@ export function InAppDocumentViewerModal({
   if (!visible) return null;
 
   const resolvedName = fileName || title || 'Documento';
+  const displayUrl = (() => {
+    if (!url || Platform.OS !== 'android') return url;
+    try {
+      const media = new URL(url);
+      if (!['localhost', '127.0.0.1', 'host.docker.internal'].includes(media.hostname)) return url;
+      const apiHost = new URL(API_BASE_URL).hostname;
+      media.hostname = apiHost === 'localhost' || apiHost === '127.0.0.1' ? '10.0.2.2' : apiHost;
+      return media.toString();
+    } catch {
+      return url;
+    }
+  })();
   const ext = (resolvedName.split('.').pop() || '').toLowerCase();
 
   const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(ext) ||
@@ -67,7 +80,7 @@ export function InAppDocumentViewerModal({
       if (Platform.OS === 'web') {
         window.open(url, '_blank', 'noopener,noreferrer');
       } else {
-        await Linking.openURL(url);
+        await Linking.openURL(displayUrl || url);
       }
     } catch (e) {
       console.warn('Error opening external browser:', e);
@@ -111,7 +124,7 @@ export function InAppDocumentViewerModal({
       return (
         <View className="flex-1 items-center justify-center bg-gray-950/90 p-4">
           <Image
-            source={{ uri: url }}
+            source={{ uri: displayUrl || url }}
             style={{
               width: '100%',
               height: '100%',
@@ -127,10 +140,10 @@ export function InAppDocumentViewerModal({
     }
 
     if (isPdf) {
-      return <DocumentWebView uri={url} title={resolvedName} mimeType={mimeType || 'application/pdf'} isPdf fileName={resolvedName} preferNativePdf={Platform.OS !== 'web'} />;
+      return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType || 'application/pdf'} isPdf fileName={resolvedName} preferNativePdf={Platform.OS !== 'web'} />;
     }
 
-    if (isOffice) return <DocumentWebView uri={url} title={resolvedName} mimeType={mimeType} fileName={resolvedName} />;
+    if (isOffice) return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType} fileName={resolvedName} />;
 
     // Archivos generales
     return (
@@ -161,7 +174,7 @@ export function InAppDocumentViewerModal({
       onRequestClose={onClose}
     >
       <View className="flex-1 bg-black/70 items-center justify-center p-2 md:p-6">
-        <View className="bg-white rounded-3xl w-full max-w-5xl h-[92vh] overflow-hidden shadow-2xl flex-col border border-gray-200">
+        <View className="bg-white rounded-3xl overflow-hidden shadow-2xl flex-col border border-gray-200" style={{ height: '92%', maxWidth: 1152, width: '100%' }}>
           {/* Header Barra Superior */}
           <View className="p-4 bg-maroon text-white flex-row items-center justify-between">
             <View className="flex-row items-center gap-3 flex-1 mr-3">

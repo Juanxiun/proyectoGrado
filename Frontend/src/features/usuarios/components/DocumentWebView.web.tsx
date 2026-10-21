@@ -40,6 +40,6 @@ export function DocumentWebView({ uri, title, mimeType, fileName }: { uri: strin
   if (isImage) return <img alt={title} src={uri} style={{ width: '100%', height: 520, objectFit: 'contain' }} />;
   if (error) return <div style={{ height: 520, display: 'grid', placeItems: 'center', color: '#801529' }}>No se pudo mostrar el documento. Comprueba tu conexión e inténtalo de nuevo.</div>;
   if (loading) return <div style={{ height: 520, display: 'grid', placeItems: 'center', color: '#801529' }}>Preparando vista previa...</div>;
-  if (preview) return <iframe title={title} srcDoc={preview} style={{ width: '100%', height: 520, border: 0, background: '#f3f4f6' }} />;
-  return <iframe title={title} src={uri} style={{ width: '100%', height: 520, border: 0, background: '#f3f4f6' }} />;
+  if (preview) return <iframe title={title} srcDoc={preview} style={{ display: 'block', width: '100%', height: '100%', minHeight: 520, border: 0, background: '#f3f4f6' }} />;
+  return <iframe title={title} src={uri} style={{ display: 'block', width: '100%', height: '100%', minHeight: 520, border: 0, background: '#f3f4f6' }} />;
 }

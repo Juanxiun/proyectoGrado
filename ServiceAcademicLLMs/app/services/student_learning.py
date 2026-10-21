@@ -2,7 +2,7 @@ import json
 import logging
 
 from app.config import settings
-from app.ollama import OllamaClient
+from app.lmstudio import LMStudioClient
 from app.RAG.repository import RAGRepository
 from app.schemas import ExplainSectionRequest, PersonalizedLearningContent, StudentLearningAnalysis
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 DIFFICULTIES = ["inicial", "intermedia", "avanzada"]
 
 
-async def explain_section(student_id: str, content_id: str, request: ExplainSectionRequest, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def explain_section(student_id: str, content_id: str, request: ExplainSectionRequest, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("No existe contenido aprobado para explicar")
@@ -20,29 +20,43 @@ async def explain_section(student_id: str, content_id: str, request: ExplainSect
         query_vector = await llm.embed(query_text)
     evidence_chunks = await repo.vector_search(
         query_vector,
-        limit=5,
+        limit=3,  # Reducido de 5 a 3
         filters={"content_id": content_id, "record_type": "theory_context"},
     )
+    # Truncar texto de chunks para evitar exceso de contexto
+    for chunk in evidence_chunks:
+        if "text" in chunk and len(chunk["text"]) > 400:
+            chunk["text"] = chunk["text"][:400] + "..."
+    
+    # Truncar perfil si es muy grande
+    perfil_truncado = profile or {"difficulty_level": "inicial", "instruction": "Explicación clara y gradual; todavía no hay suficiente historial individual."}
+    if isinstance(perfil_truncado, dict):
+        for key, value in perfil_truncado.items():
+            if isinstance(value, str) and len(value) > 500:
+                perfil_truncado[key] = value[:500] + "..."
+            elif isinstance(value, list) and len(value) > 5:
+                perfil_truncado[key] = value[:5]
+    
     evidence = json.dumps({
         "material_validado": {
             "title": content.get("title"),
-            "summary": content.get("summary"),
-            "concepts": content.get("key_concepts", []),
-            "microlearning_units": content.get("microlearning_units", []),
-            "inquiry_questions": content.get("inquiry_questions", []),
+            "summary": content.get("summary", "")[:500],
+            "concepts": content.get("key_concepts", [])[:10],
+            "microlearning_units": content.get("microlearning_units", [])[:4],
+            "inquiry_questions": content.get("inquiry_questions", [])[:5],
         },
         "fragmentos_relevantes_del_tema": evidence_chunks,
         "seccion_solicitada": request.model_dump(),
-        "perfil_de_avance": profile or {"difficulty_level": "inicial", "instruction": "Explicación clara y gradual; todavía no hay suficiente historial individual."},
+        "perfil_de_avance": perfil_truncado,
         "formatos_alternativos": ["analogía", "paso_a_paso", "ejemplo", "preguntas"],
     }, ensure_ascii=False)
     async with semaphore:
-        generated = await llm.structured(settings.ollama_mistral_model, "mistral/explain_section.txt", evidence, PersonalizedLearningContent)
+        generated = await llm.structured(settings.lmstudio_mistral_model, "mistral/explain_section.txt", evidence, PersonalizedLearningContent)
     return {**generated.model_dump(), "title": request.title, "format": request.format, "profile_available": bool(profile), "content_id": content_id}
 
 
 # feedback -> solo fallidas microlearning + pizarra
-async def generate_remediation_failed_only(answers: list[dict], content: dict, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def generate_remediation_failed_only(answers: list[dict], content: dict, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
     incorrect = [a for a in answers if not a.get("correct", True)]
     if not incorrect:
         return {"remediation": [], "message": "¡Todas las respuestas son correctas!"}
@@ -97,7 +111,7 @@ async def update_student_profile(
     content_id: str,
     batch_number: int,
     repo: RAGRepository,
-    llm: OllamaClient,
+    llm: LMStudioClient,
     semaphore,
 ) -> None:
     attempts = await repo.profile_attempt_batch(student_id, content_id, batch_number)
@@ -128,7 +142,7 @@ async def update_student_profile(
     }, ensure_ascii=False)
     async with semaphore:
         analysis = await llm.structured(
-            settings.ollama_mistral_model,
+            settings.lmstudio_mistral_model,
             "mistral/evaluate_student.txt",
             evidence,
             StudentLearningAnalysis,
@@ -151,7 +165,7 @@ async def update_student_profile(
         "updated_at": repo.now(),
         "batch_number": batch_number,
         "last_batch_score": round(last_batch_average, 4),
-        "model": settings.ollama_mistral_model,
+        "model": settings.lmstudio_mistral_model,
     }
     await repo.save_student_profile(student_id, content_id, profile)
     profile_text = "\n".join([
@@ -180,7 +194,7 @@ async def update_student_profile(
     logger.info("Perfil pedagógico actualizado student_id=%s content_id=%s batch=%s", student_id, content_id, batch_number)
 
 
-async def create_personalized_content(student_id: str, content_id: str, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def create_personalized_content(student_id: str, content_id: str, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
     profile = await repo.get_student_profile(student_id, content_id)
     if not profile:
         raise LookupError("El perfil se crea al completar cuatro cuestionarios de este contenido")
@@ -213,7 +227,7 @@ async def create_personalized_content(student_id: str, content_id: str, repo: RA
     }, ensure_ascii=False)
     async with semaphore:
         generated = await llm.structured(
-            settings.ollama_mistral_model,
+            settings.lmstudio_mistral_model,
             "mistral/personalize_content.txt",
             evidence,
             PersonalizedLearningContent,

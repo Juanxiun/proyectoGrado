@@ -17,7 +17,11 @@ interface ResumenInteractivoProps {
 export function ResumenInteractivo({ formato, data, explicacion, explicacionLoading, onExplain, onStartActivity }: ResumenInteractivoProps) {
   const [indiceCarta, setIndiceCarta] = useState(0);
   const [cartasFinalizadas, setCartasFinalizadas] = useState(false);
-  const cartas = data.cards || [];
+  const cartas = data.cards?.length ? data.cards : (data.nodes || []).map((node: any) => ({
+    concept: node.label,
+    definition: node.detail,
+    key_points: (data.edges || []).filter((edge: any) => edge.source === node.id || edge.target === node.id).slice(0, 3).map((edge: any) => edge.label),
+  }));
 
   const renderCartas = () => {
     const carta = cartas[indiceCarta];
@@ -58,7 +62,9 @@ export function ResumenInteractivo({ formato, data, explicacion, explicacionLoad
   const recommendation = data.recommendation || '¿Qué concepto del tema te gustaría investigar y explicar con tus propias palabras?';
   return (
     <View className="gap-4">
-      {formato === 'CARTAS_EXPLICATIVAS' ? renderCartas() : (
+      {formato === 'CARTAS_EXPLICATIVAS' && cartas.length ? renderCartas() : formato === 'CARTAS_EXPLICATIVAS' ? (
+        <BentoCard className="p-4 bg-amber-50"><Text className="font-bold text-amber-900">No hay tarjetas disponibles</Text><Text className="text-sm text-amber-800 mt-1">Vuelve a generar el resumen para cargar los conceptos del material.</Text></BentoCard>
+      ) : (
         <EsquemaSkia
           nodes={data.nodes || []}
           edges={data.edges || []}

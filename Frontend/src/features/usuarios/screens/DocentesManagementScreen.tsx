@@ -75,6 +75,7 @@ export function DocentesManagementScreen() {
   const [docentesListTab, setDocentesListTab] = useState<'enabled' | 'disabled'>('enabled');
   const [materiasDisponibles, setMateriasDisponibles] = useState<Array<{ id: string; nombre: string; codigo: string }>>([]);
   const [materiasSeleccionadas, setMateriasSeleccionadas] = useState<string[]>([]);
+  const [materiasOriginales, setMateriasOriginales] = useState<string[]>([]);
   const [materiasConfiguradasOriginal, setMateriasConfiguradasOriginal] = useState(false);
 
   const refresh = () => {
@@ -106,6 +107,7 @@ export function DocentesManagementScreen() {
     ]);
     setDocentePhoto(undefined);
     setMateriasSeleccionadas([]);
+    setMateriasOriginales([]);
     setMateriasConfiguradasOriginal(false);
   };
 
@@ -167,6 +169,10 @@ export function DocentesManagementScreen() {
     setFieldErrors({});
     try {
       if (editingDocente) {
+        const materiasOrdenadas = [...new Set(materiasSeleccionadas)].sort();
+        const materiasOriginalesOrdenadas = [...new Set(materiasOriginales)].sort();
+        const materiasCambiaron = materiasOrdenadas.length !== materiasOriginalesOrdenadas.length ||
+          materiasOrdenadas.some((materiaId, index) => materiaId !== materiasOriginalesOrdenadas[index]);
         const updatePayload: UpdateUsuarioPayload = {
           nombre: form.nombre,
           apellidoPaterno: form.apellidoPaterno,
@@ -175,9 +181,7 @@ export function DocentesManagementScreen() {
           genero: form.genero,
           maestro: {
              especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad,
-             ...(materiasConfiguradasOriginal || materiasSeleccionadas.length > 0
-               ? { materias: materiasSeleccionadas }
-               : {}),
+             ...(materiasCambiaron ? { materias: materiasOrdenadas } : {}),
            },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
@@ -277,7 +281,9 @@ export function DocentesManagementScreen() {
     // posteriormente desde Construcción de horarios. Un docente legacy sin
     // catálogo explícito no debe perder ese catálogo al editar otros datos.
     setMateriasConfiguradasOriginal(u.materiasConfigurado === true || String(u.materiasConfigurado ?? '').toLowerCase() === 'true');
-    setMateriasSeleccionadas((u.materias ?? []).map((materia) => String(materia.id)));
+    const idsMateria = (u.materias ?? []).map((materia) => String(materia.id));
+    setMateriasSeleccionadas(idsMateria);
+    setMateriasOriginales(idsMateria);
 
     setShowModal(true);
   };

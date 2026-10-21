@@ -344,12 +344,18 @@ async function getPeriodoRow(id: string): Promise<PeriodoRow> {
   return result.rows[0];
 }
 
+// filtro -> priorizar id del maestro
 async function resolveMaestroFilterId(value: string): Promise<string | null> {
-  const result = await query<{ id: bigint }>(
-    `SELECT id FROM maestros WHERE id = $1 OR usuario_id = $1 LIMIT 1`,
+  const byId = await query<{ id: bigint }>(
+    `SELECT id FROM maestros WHERE id = $1 LIMIT 1`,
     [value],
   );
-  return result.rows.length ? toId(result.rows[0].id) : null;
+  if (byId.rows.length) return toId(byId.rows[0].id);
+  const byUsuario = await query<{ id: bigint }>(
+    `SELECT id FROM maestros WHERE usuario_id = $1 LIMIT 1`,
+    [value],
+  );
+  return byUsuario.rows.length ? toId(byUsuario.rows[0].id) : null;
 }
 
 async function assertEditable(id: string): Promise<PeriodoRow> {
@@ -1499,7 +1505,7 @@ export async function listarMallas(periodoId?: string): Promise<MallaCurricular[
 
 export async function listarHorarios(
   periodoId: string,
-  filters: { diaSemana?: string; cursoPeriodoId?: string; maestroId?: string; estudianteUsuarioId?: string } = {},
+  filters: { diaSemana?: string; cursoPeriodoId?: string; maestroId?: string; maestroUsuarioId?: string; estudianteUsuarioId?: string } = {},
 ): Promise<Horario[]> {
   const conditions = ["cp.periodo_id = $1", "h.estado = 'activo'"];
   const params: unknown[] = [periodoId];
@@ -1515,8 +1521,14 @@ export async function listarHorarios(
   if (filters.maestroId) {
     const maestroId = await resolveMaestroFilterId(filters.maestroId);
     if (!maestroId) return [];
-    conditions.push(`h.maestro_id = $${params.length + 1}`);
+    const position = params.length + 1;
+    conditions.push(`((ad.id IS NOT NULL AND ad.estado = 'activo' AND ad.maestro_id = $${position}) OR (h.asignacion_id IS NULL AND h.maestro_id = $${position}))`);
     params.push(maestroId);
+  }
+  if (filters.maestroUsuarioId) {
+    const position = params.length + 1;
+    conditions.push(`((ad.id IS NOT NULL AND ad.estado = 'activo' AND ma.usuario_id = $${position}) OR (h.asignacion_id IS NULL AND ma.usuario_id = $${position}))`);
+    params.push(filters.maestroUsuarioId);
   }
   if (filters.estudianteUsuarioId) {
     conditions.push(`EXISTS (
@@ -1532,7 +1544,7 @@ export async function listarHorarios(
   }
   const result = await query<HorarioRow>(
     `SELECT h.id, h.curso_periodo_id AS "cursoPeriodoId", h.materia_id AS "materiaId",
-       h.asignacion_id AS "asignacionId", h.maestro_id AS "maestroId", h.aula_id AS "aulaId",
+       h.asignacion_id AS "asignacionId", COALESCE(ad.maestro_id, h.maestro_id) AS "maestroId", h.aula_id AS "aulaId",
        h.turno_id AS "turnoId", h.dia_semana AS "diaSemana", h.hora_inicio AS "horaInicio",
        h.hora_fin AS "horaFin", h.estado, c.nivel AS "cursoNivel", c.grado AS "cursoGrado",
        c.paralelo AS "cursoParalelo", t.codigo AS "turnoCodigo", t.nombre AS "turnoNombre",
@@ -1544,7 +1556,8 @@ export async function listarHorarios(
      LEFT JOIN turnos t ON t.id = h.turno_id
      JOIN materias m ON m.id = h.materia_id AND m.activo = true
      JOIN aulas a ON a.id = h.aula_id
-     LEFT JOIN maestros ma ON ma.id = h.maestro_id
+     LEFT JOIN asignaciones_docentes ad ON ad.id = h.asignacion_id
+     LEFT JOIN maestros ma ON ma.id = COALESCE(ad.maestro_id, h.maestro_id)
      LEFT JOIN usuarios u ON u.id = ma.usuario_id
      WHERE ${conditions.join(" AND ")}
      ORDER BY h.dia_semana, h.hora_inicio, c.grado, c.paralelo`,

@@ -18,8 +18,11 @@ import { useResponsive } from '../../../utils/responsive';
 
 interface MateriaInscrita {
   asignacionId: string;
+  cursoPeriodoId: string;
   materiaId: string;
   materiaNombre: string;
+  nivel?: 'primaria' | 'secundaria';
+  grado?: string;
   docenteNombre?: string;
   cursoLabel?: string;
 }
@@ -47,32 +50,55 @@ export function EstudianteMateriasScreen() {
         if (!cpId) {
           const inscRes = await academicServicesApi.list('inscripciones', {
             estudianteId: user?.estudianteId,
-            limit: 5,
+            limit: 100,
           });
-          const activeInsc = (inscRes.data as any[]).find((i) => i.estado === 'activo') || inscRes.data[0];
+          const inscriptions = (inscRes.data as any[]).filter((i) => i.estado === 'activo');
+          const activeInsc = inscriptions.find((i) => i.cursoPeriodo?.periodo?.activo)
+            ?? inscriptions.sort((a, b) => Number(b.cursoPeriodo?.periodo?.anio ?? 0) - Number(a.cursoPeriodo?.periodo?.anio ?? 0))[0];
           if (activeInsc) {
             cpId = String(activeInsc.cursoPeriodoId || activeInsc.cursoPeriodo?.id);
           }
         }
 
+        if (!cpId) {
+          setMaterias([]);
+          return;
+        }
+
         // 2. Obtener materias asignadas a este curso
         const asigRes = await academicServicesApi.list('asignaciones', {
-          cursoPeriodoId: cpId || undefined,
+          cursoPeriodoId: cpId,
+          estado: 'activo',
           limit: 100,
         });
 
-        const list: MateriaInscrita[] = (asigRes.data as any[]).map((a) => {
+        const latestActive = new Map<string, any>();
+        for (const assignment of (asigRes.data as any[])
+          .filter((a) => a.estado === 'activo')
+          .sort((a, b) => Date.parse(b.fechaAsignacion ?? '') - Date.parse(a.fechaAsignacion ?? ''))) {
+          const coursePeriodId = String(assignment.cursoPeriodoId || assignment.cursoPeriodo?.id || cpId);
+          const subjectId = String(assignment.materiaId || assignment.materia?.id || '');
+          if (subjectId && !latestActive.has(`${coursePeriodId}:${subjectId}`)) {
+            latestActive.set(`${coursePeriodId}:${subjectId}`, assignment);
+          }
+        }
+
+        const list: MateriaInscrita[] = [...latestActive.values()].map((a) => {
           const doc = a.maestro
             ? `${a.maestro.nombre ?? ''} ${a.maestro.apellidoPaterno ?? ''}`.trim()
             : 'Docente';
           const curso = a.cursoPeriodo?.curso
             ? `${a.cursoPeriodo.curso.grado}° "${a.cursoPeriodo.curso.paralelo}"`
             : undefined;
+          const cursoNivel = String(a.cursoPeriodo?.curso?.nivel ?? '').toLowerCase();
 
           return {
             asignacionId: String(a.id),
+            cursoPeriodoId: String(a.cursoPeriodoId || a.cursoPeriodo?.id || cpId),
             materiaId: String(a.materiaId || a.materia?.id || ''),
             materiaNombre: a.materia?.nombre || a.materiaNombre || 'Materia',
+            nivel: cursoNivel.includes('primaria') ? 'primaria' : cursoNivel.includes('secundaria') ? 'secundaria' : undefined,
+            grado: a.cursoPeriodo?.curso?.grado ? String(a.cursoPeriodo.curso.grado) : undefined,
             docenteNombre: doc,
             cursoLabel: curso,
           };
@@ -87,7 +113,7 @@ export function EstudianteMateriasScreen() {
     }
 
     loadMateriasEstudiante();
-  }, [user?.id, user?.cursoPeriodoId]);
+  }, [user?.id, user?.estudianteId, user?.cursoPeriodoId]);
 
   return (
     <View className="flex-1 gap-4">
@@ -230,7 +256,7 @@ export function EstudianteMateriasScreen() {
                     activeTab === 'tareas' ? 'text-white' : 'text-gray-700'
                   }`}
                 >
-                  Deberes / Tareas
+                  Encargos y tareas
                 </Text>
               </TouchableOpacity>
             </View>
@@ -240,6 +266,8 @@ export function EstudianteMateriasScreen() {
           {activeTab === 'contenido' ? (
             <ContenidoEstudioSection
               asignacionId={selectedMateria.asignacionId}
+              nivel={selectedMateria.nivel}
+              grado={selectedMateria.grado}
               materiaId={selectedMateria.materiaId}
               materiaNombre={selectedMateria.materiaNombre}
             />

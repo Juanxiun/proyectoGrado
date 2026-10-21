@@ -6,13 +6,14 @@ import socket
 
 import httpx
 from app.config import settings
-from app.ollama import OllamaClient
+from app.lmstudio import LMStudioClient
+from app.lmstudio import StructuredOutputError
 from app.pipeline import process_content
 from app.RAG.repository import RAGRepository
 from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
-async def run_worker(repo: RAGRepository, llm: OllamaClient, semaphore: asyncio.Semaphore, stop: asyncio.Event, notify_redis: Redis) -> None:
+async def run_worker(repo: RAGRepository, llm: LMStudioClient, semaphore: asyncio.Semaphore, stop: asyncio.Event, notify_redis: Redis) -> None:
     consumer = f"{socket.gethostname()}-{id(asyncio.current_task())}"
     while not stop.is_set():
         try:
@@ -43,7 +44,7 @@ async def run_worker(repo: RAGRepository, llm: OllamaClient, semaphore: asyncio.
                         await repo.acknowledge(repo.content_stream, repo.content_group, message_id)
                     except Exception as exc:
                         logger.exception("Procesamiento LLM falló job_id=%s attempt=%s", content_id, attempts)
-                        if attempts >= settings.job_max_retries:
+                        if attempts >= settings.job_max_retries or isinstance(exc, StructuredOutputError):
                             await repo.update_job(content_id, status="FAILED", error=str(exc)[:1000])
                             await repo.mark_content_state(content_id, "failed")
                             await repo.acknowledge(repo.content_stream, repo.content_group, message_id)

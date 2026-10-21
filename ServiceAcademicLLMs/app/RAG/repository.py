@@ -43,7 +43,7 @@ class RAGRepository:
         self._redis = redis
         self._vector_dimension: int | None = None
         self._index_name: str | None = None
-        self._embedding_namespace = hashlib.sha256(settings.ollama_embedding_model.encode()).hexdigest()[:10]
+        self._embedding_namespace = hashlib.sha256(settings.lmstudio_embedding_model.encode()).hexdigest()[:10]
         self._vector_key_prefix = f"{self.knowledge_prefix}:vector:{self._embedding_namespace}:"
 
     @staticmethod
@@ -93,8 +93,8 @@ class RAGRepository:
         structure["records"] = counts
         return structure
 
-    # rag -> metadata base y version de marcos
-    async def initialize(self, prompt_documents: dict[str, str]) -> None:
+    # rag -> estructura educativa basada en materiales fuente
+    async def initialize(self) -> None:
         now = utcnow()
         meta_key = f"{self.prefix}:meta"
         migration_key = f"{self.prefix}:migration:knowledge-v3"
@@ -122,55 +122,51 @@ class RAGRepository:
                 pass
             await self._redis.unlink(*(f"{self.prefix}:branch:{branch}" for branch in ("knowledge", "subjects", "topics", "methodology")))
             await self._redis.set(migration_key, now)
+        methodology_migration = f"{self.prefix}:migration:remove-methodology-v1"
+        if not await self._redis.exists(methodology_migration):
+            cursor = 0
+            legacy_vectors = []
+            while True:
+                cursor, keys = await self._redis.scan(cursor=cursor, match=f"{self.knowledge_prefix}:vector:*", count=500)
+                for key in keys:
+                    if await self._redis.hget(key, "record_type") in {b"learning_framework", "learning_framework"}:
+                        legacy_vectors.append(key)
+                if cursor == 0:
+                    break
+            if legacy_vectors:
+                await self._redis.unlink(*legacy_vectors)
+            stale_keys = []
+            for pattern in (f"{self.prefix}:framework:*", f"{self.prefix}:branch:methodology*"):
+                cursor = 0
+                while True:
+                    cursor, keys = await self._redis.scan(cursor=cursor, match=pattern, count=500)
+                    stale_keys.extend(keys)
+                    if cursor == 0:
+                        break
+            for offset in range(0, len(stale_keys), 500):
+                await self._redis.unlink(*stale_keys[offset:offset + 500])
+            await self._redis.hdel(f"{self.prefix}:meta:prompts", "microlearning", "inquiry_based_learning")
+            await self._redis.set(methodology_migration, now)
         await self._redis.hset(meta_key, mapping={
-            "schema_version": "3",
+            "schema_version": "4",
             "vector_index_prefix": self.index_prefix,
             "student_profile_policy": "actualizar cada 4 cuestionarios completados",
             "profile_isolation": "student_id + content_id",
         })
         await self._redis.set(f"{self.prefix}:structure", json.dumps({
-            "name": "Shalom Academic Knowledge Base",
-            "version": "3",
-            "levels": ["grado", "curso", "materia", "tema", "resumen", "microlearning", "indagacion", "practica", "adaptacion_estudiante"],
-            "flow": ["grado", "curso", "materia", "tema", "resumen y microlearning", "practica", "adaptacion privada por estudiante"],
-            "sharing_scope": "El conocimiento academico se comparte entre paralelos del mismo grado; la adaptacion permanece aislada por estudiante y contenido.",
-            "privacy": "Los perfiles se consultan siempre con student_id y content_id; no contienen datos personales de identidad.",
+            "name": "Shalom Educational Content RAG",
+            "version": "4",
+            "levels": ["grado", "curso", "materia", "unidad", "material", "fragmento_fuente", "conceptos", "actividades", "progreso_estudiante"],
+            "flow": ["material docente", "fragmentos y referencias", "conceptos y objetivos", "microlearning e indagacion generados desde la evidencia", "actividades", "progreso privado por estudiante"],
+            "knowledge_policy": "El material indexado conserva su contenido fuente y procedencia; los marcos pedagogicos genericos no se indexan como conocimiento academico.",
+            "sharing_scope": "La evidencia docente se filtra por material, materia y grado; el progreso se aisla por estudiante y contenido.",
+            "privacy": "El progreso se consulta siempre con student_id y content_id; no almacena datos de identidad.",
         }, ensure_ascii=False))
         for branch, description in self.branches.items():
             await self._redis.hset(f"{self.prefix}:branch:{branch}", mapping={
                 "branch_id": branch, "description": description, "status": "active", "updated_at": now,
             })
         await self._redis.hsetnx(meta_key, "initialized_at", now)
-        for name, document in prompt_documents.items():
-            await self._redis.set(f"{self.prefix}:framework:{name}", document)
-            await self._redis.hset(f"{self.prefix}:meta:prompts", name, "v1")
-
-    # rag -> indexacion de marcos metodologicos
-    async def bootstrap_frameworks(self, prompt_documents: dict[str, str], embed) -> bool:
-        if not prompt_documents:
-            return True
-        try:
-            if not await self.vector_search_available():
-                return False
-            for name, document in prompt_documents.items():
-                digest = hashlib.sha256(document.encode("utf-8")).hexdigest()
-                marker = f"{self.prefix}:framework:indexed:{name}"
-                if await self._redis.get(marker) == digest.encode():
-                    continue
-                vector = await embed(document)
-                await self.save_vector(
-                    content_id="__metodologia__",
-                    chunk_id=name,
-                    text=document,
-                    embedding=vector,
-                    metadata={"record_type": "learning_framework", "source": "prompt_framework", "subject_id": "general", "branch": "methodology"},
-                )
-                await self._redis.set(marker, digest)
-            return True
-        except Exception:
-            # rag -> reintento del bootstrap vectorial
-            return False
-
     async def enqueue_content(self, content_id: str, job: dict[str, Any]) -> bool:
         script = """
         local state = redis.call('GET', KEYS[1])

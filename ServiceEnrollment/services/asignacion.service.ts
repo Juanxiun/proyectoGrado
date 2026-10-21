@@ -238,9 +238,11 @@ export async function listAsignaciones(
     params.push(parseEstado(filters.estado));
   }
   if (filters.viewerRole === "profesor" && filters.viewerUserId) {
+    conditions.push("ad.estado = 'activo'");
     conditions.push(`m.usuario_id = $${idx++}`);
     params.push(filters.viewerUserId);
   } else if (filters.viewerRole === "estudiante" && filters.viewerUserId) {
+    conditions.push("ad.estado = 'activo'");
     conditions.push(`EXISTS (
       SELECT 1 FROM inscripciones i
       JOIN estudiantes e ON e.id = i.estudiante_id

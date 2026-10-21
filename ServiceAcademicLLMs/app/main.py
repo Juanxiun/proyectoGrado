@@ -1,15 +1,13 @@
 import asyncio
-import hashlib
 import json
 import logging
 import math
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
 
 from app.config import settings
-from app.ollama import OllamaClient
+from app.lmstudio import LMStudioClient
 from app.pipeline import _resumen_conceptual
 from app.RAG.connection import create_redis_connection, create_notify_redis_connection
 from app.RAG.repository import RAGRepository
@@ -24,50 +22,13 @@ logging.basicConfig(level=settings.log_level.upper(), format="%(asctime)s %(leve
 logger = logging.getLogger(__name__)
 
 
-# rag -> indexa solo conceptos
-async def _indexar_contenido_conceptual(content_id: str, content: dict, rag: RAGRepository, llm: OllamaClient, semaphore) -> None:
-    texto = "\n".join([str(content.get("title") or ""), *[str(item) for item in content.get("key_concepts", [])]]).strip()
-    if not texto:
-        return
-    digest = hashlib.sha256(texto.encode("utf-8")).hexdigest()
-    index_key = f"{rag.prefix}:cache:concept-index:{content_id}"
-    try:
-        indexed = await rag.get_cache(index_key)
-        indexed_value = indexed.decode() if isinstance(indexed, bytes) else str(indexed or "")
-        if indexed_value == digest:
-            return
-        embedding_key = f"{rag.prefix}:cache:embedding:{settings.ollama_embedding_model}:concept:{digest}"
-        cached_vector = await rag.get_cache(embedding_key)
-        if cached_vector:
-            vector = json.loads(cached_vector)
-        else:
-            async with semaphore:
-                vector = await llm.embed(texto)
-            await rag.set_cache(embedding_key, json.dumps(vector), 30 * 24 * 60 * 60)
-        await rag.save_vector(
-            content_id, "document-concepts", texto, vector,
-            {"record_type": "theory_context", "branch": "knowledge", "grade": str(content.get("grade") or ""),
-             "subject_id": str(content.get("subject_id") or ""), "topic_id": str(content.get("topic_id") or ""),
-             "heading": str(content.get("title") or ""), "record_slot": f"document-concepts:{content_id}"},
-        )
-        await rag.set_cache(index_key, digest, 30 * 24 * 60 * 60)
-    except Exception as exc:
-        logger.warning("No se pudo indexar el contexto conceptual content_id=%s: %s", content_id, str(exc)[:300])
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     rag = RAGRepository(create_redis_connection())
     notify_redis = create_notify_redis_connection()
-    llm = OllamaClient()
+    llm = LMStudioClient()
     stop = asyncio.Event()
     semaphore = asyncio.Semaphore(max(1, settings.llm_max_concurrency))
-    prompts_path = Path(__file__).resolve().parent.parent / "prompts"
-    prompt_documents = {
-        "base_knowledge": (prompts_path / "rag/base_knowledge.txt").read_text(encoding="utf-8"),
-        "microlearning": (prompts_path / "microlearning.txt").read_text(encoding="utf-8"),
-        "inquiry_based_learning": (prompts_path / "inquiry_based_learning.txt").read_text(encoding="utf-8"),
-    }
     app.state.rag = rag
     app.state.notify_redis = notify_redis
     app.state.llm = llm
@@ -80,8 +41,11 @@ async def lifespan(app: FastAPI):
                 missing = await llm.missing_models()
                 if missing:
                     raise RuntimeError("Modelos/tags requeridos no instalados o mal configurados: " + ", ".join(missing))
-                app.state.llm_self_test = {"status": "skipped", "models": {"tags_present": True}}
-                logger.info("Modelos Ollama disponibles; se omite inferencia de arranque")
+                results = await llm.startup_self_test()
+                if not all(results.values()):
+                    raise RuntimeError("Falló la autoprueba de inferencia o embeddings en LM Studio")
+                app.state.llm_self_test = {"status": "passed", "models": results}
+                logger.info("Autoprueba de modelos LM Studio completada")
                 return
             except asyncio.CancelledError:
                 raise
@@ -94,13 +58,11 @@ async def lifespan(app: FastAPI):
                     pass
 
     async def bootstrap_rag() -> None:
-        framework_docs = {key: value for key, value in prompt_documents.items() if key != "base_knowledge"}
         while not stop.is_set():
             try:
-                await rag.initialize(prompt_documents)
-                if await rag.bootstrap_frameworks(framework_docs, llm.embed):
-                    logger.info("Esquema RAG y marcos pedagogicos inicializados")
-                    return
+                await rag.initialize()
+                logger.info("Estructura educativa RAG inicializada con contenido fuente")
+                return
             except Exception:
                 logger.warning("Redis RAG aun no disponible; se reintentara el bootstrap", exc_info=True)
             try:
@@ -142,7 +104,7 @@ async def health():
 async def ready(request: Request):
     redis_ok = False
     vector_search_ok = False
-    ollama_ok = False
+    lmstudio_ok = False
     try:
         redis_ok = await request.app.state.rag.ping()
     except Exception:
@@ -153,9 +115,9 @@ async def ready(request: Request):
         except Exception:
             logger.warning("Redis Search/Vector no disponible")
     try:
-        ollama_ok = await request.app.state.llm.ready()
+        lmstudio_ok = await request.app.state.llm.ready()
     except Exception:
-        logger.warning("Ollama no disponible o modelos configurados no instalados")
+        logger.warning("LM Studio no disponible o modelos configurados no instalados")
     rag_initialized = False
     try:
         rag_initialized = await request.app.state.rag.is_initialized()
@@ -166,9 +128,9 @@ async def ready(request: Request):
     try:
         missing_models = await request.app.state.llm.missing_models()
     except Exception:
-        missing_models = ["Ollama no responde a list()"]
-    body = {"status": "ready" if redis_ok and vector_search_ok and ollama_ok and self_test_ok and rag_initialized else "degraded", "dependencies": {"redis": redis_ok, "redis_vector_search": vector_search_ok, "ollama_models": ollama_ok, "ollama_models_missing": missing_models, "ollama_inference_test": self_test, "rag_initialized": rag_initialized}}
-    if not redis_ok or not vector_search_ok or not ollama_ok or not self_test_ok or not rag_initialized:
+        missing_models = ["LM Studio no responde a /api/v1/models"]
+    body = {"status": "ready" if redis_ok and vector_search_ok and lmstudio_ok and self_test_ok and rag_initialized else "degraded", "dependencies": {"redis": redis_ok, "redis_vector_search": vector_search_ok, "lmstudio_models": lmstudio_ok, "lmstudio_models_missing": missing_models, "lmstudio_inference_test": self_test, "rag_initialized": rag_initialized}}
+    if not redis_ok or not vector_search_ok or not lmstudio_ok or not self_test_ok or not rag_initialized:
         raise HTTPException(status_code=503, detail=body)
     return body
 
@@ -213,7 +175,6 @@ async def document_learning(document_id: str, request: Request, x_webhook_secret
         raise HTTPException(status_code=404, detail="El material todavía se está procesando")
     content = result["content"]
     content["summary"] = _resumen_conceptual(content.get("summary", ""), "", content.get("key_concepts", []))
-    await _indexar_contenido_conceptual(result["content_id"], content, request.app.state.rag, request.app.state.llm, request.app.state.semaphore)
     return {
         "content_id": result["content_id"],
         "title": content.get("title"),

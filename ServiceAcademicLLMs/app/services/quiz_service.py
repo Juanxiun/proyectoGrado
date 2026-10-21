@@ -3,9 +3,9 @@ import logging
 import uuid
 
 from app.config import settings
-from app.ollama import OllamaClient
+from app.lmstudio import LMStudioClient
 from app.RAG.repository import RAGRepository
-from app.schemas import ActivitySet, ContentEvaluation, SchemaOutput
+from app.schemas import ActivitySet, ContentEvaluation, SchemaOutput, GamifiedQuizOutput
 from app.services.activities import (
     activity_statement,
     fingerprint,
@@ -80,7 +80,7 @@ def _seleccion_diversa(disponibles: list[dict], cantidad: int, dificultad: str, 
 
 
 # activities -> emision de prueba con actividades gamificadas (Fase 3C: Gemma reestructura)
-async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar actividades")
@@ -161,7 +161,7 @@ def _seleccionar_actividades_gamificadas(
 
 
 # LLM -> fase 3c actividad gemma
-async def generate_gamified_quiz(content_id: str, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def generate_gamified_quiz(content_id: str, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar actividades gamificadas")
@@ -177,9 +177,9 @@ async def generate_gamified_quiz(content_id: str, repo: RAGRepository, llm: Olla
     }
     async with semaphore:
         restructured = await llm.structured(
-            settings.ollama_gemma_model,
+            settings.lmstudio_gemma_model,
             "gemma/restructure_quiz.txt",
             json.dumps(entrada, ensure_ascii=False),
-            dict,
+            GamifiedQuizOutput,
         )
-    return restructured
+    return restructured.model_dump()

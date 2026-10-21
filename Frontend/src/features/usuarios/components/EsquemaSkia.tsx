@@ -201,8 +201,9 @@ export function EsquemaSkia({ nodes, edges, relatedTopics, title, onNodePress }:
             const isSelected = edge.source === selectedNodeId || edge.target === selectedNodeId;
             const isConnected = connectedNodes.has(edge.source) && connectedNodes.has(edge.target);
 
-            const linePath = buildPathString(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y, NODE_RADIUS);
-            const arrowPath = buildArrowPathString(targetPos.x, targetPos.y, sourcePos.x, sourcePos.y, NODE_RADIUS);
+            const linePath = Skia.Path.MakeFromSVGString(buildPathString(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y, NODE_RADIUS));
+            const arrowPath = Skia.Path.MakeFromSVGString(buildArrowPathString(targetPos.x, targetPos.y, sourcePos.x, sourcePos.y, NODE_RADIUS));
+            if (!linePath || !arrowPath) return null;
 
             const midX = (sourcePos.x + targetPos.x) / 2;
             const midY = (sourcePos.y + targetPos.y) / 2;

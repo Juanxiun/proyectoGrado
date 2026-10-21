@@ -4,14 +4,14 @@ import logging
 import socket
 
 from app.config import settings
-from app.ollama import OllamaClient
+from app.lmstudio import LMStudioClient
 from app.RAG.repository import RAGRepository
 from app.services.student_learning import update_student_profile
 
 logger = logging.getLogger(__name__)
 
 
-async def run_profile_worker(repo: RAGRepository, llm: OllamaClient, semaphore, stop: asyncio.Event) -> None:
+async def run_profile_worker(repo: RAGRepository, llm: LMStudioClient, semaphore, stop: asyncio.Event) -> None:
     consumer = f"profile-{socket.gethostname()}-{id(asyncio.current_task())}"
     while not stop.is_set():
         try:

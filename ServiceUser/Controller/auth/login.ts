@@ -217,6 +217,7 @@ export async function login(ctx: Context): Promise<void> {
            JOIN periodos_academicos pa   ON pa.id = cp.periodo_id
            WHERE ma.usuario_id = $1
              AND pa.activo = TRUE
+             AND ad.estado = 'activo'
            ORDER BY c.nivel, c.grado, c.paralelo`,
           [user.id],
         );

@@ -5,16 +5,6 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 TextoBreve = Annotated[str, Field(max_length=180)]
 
 
-# LLM -> fase 1 extraccion gemma
-class Phase1Output(BaseModel):
-    title: str = Field(max_length=120)
-    start_limit: str = Field(max_length=200)
-    end_limit: str = Field(max_length=200)
-    preliminary_summary: str = Field(max_length=500)
-    inquiry_areas: list[str] = Field(default_factory=list, max_length=8)
-    friction_points: list[str] = Field(default_factory=list, max_length=8)
-
-
 class ContentCreatedEvent(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -47,7 +37,7 @@ class LearningUnit(BaseModel):
     examples_blackboard: list[str] = Field(default_factory=list, max_length=5)
 
 
-# llm -> analisis pedagogico de cada fragmento semantico
+# compatibilidad -> modelos de analisis usados por integraciones existentes
 class ChunkAnalysis(BaseModel):
     chunk_id: str = Field(max_length=100)
     category: Literal["teoria", "ejercicio"] = "teoria"
@@ -185,12 +175,12 @@ Activity = Annotated[
 # activities -> nuevo formato de reactivo unificado (Fase 2)
 class ActivitySeed(BaseModel):
     type: Literal["THEORETICAL", "PRACTICAL"]
-    question: str = Field(max_length=500)
-    answer: str = Field(max_length=500)
-    explanation: str = Field(max_length=500)
+    question: str = Field(max_length=120)
+    answer: str = Field(max_length=120)
+    explanation: str = Field(max_length=140)
     difficulty: str = Field(default="inicial", max_length=20)
-    learning_objective: str = Field(max_length=180)
-    source_chunk_ids: list[str] = Field(default_factory=list)
+    learning_objective: str = Field(max_length=80)
+    source_chunk_ids: list[str] = Field(default_factory=list, min_length=1, max_length=1)
 
 
 class RefinedContent(BaseModel):
@@ -202,8 +192,26 @@ class RefinedContent(BaseModel):
     inquiry_questions: list[str] = Field(max_length=8)
     common_mistakes: list[str] = Field(max_length=8)
     difficulty: str = Field(max_length=20)
-    activities: list[ActivitySeed] = Field(min_length=20, max_length=20)
+    activities: list[ActivitySeed] = Field(default_factory=list, max_length=20)
     examples_blackboard: list[str] = Field(default_factory=list, max_length=10)
+
+
+class ActivityBankOutput(BaseModel):
+    activities: list[ActivitySeed] = Field(min_length=20, max_length=20)
+
+
+class CompactActivity(BaseModel):
+    t: Literal["THEORETICAL", "PRACTICAL"]
+    q: str = Field(max_length=70)
+    a: str = Field(max_length=60)
+    e: str = Field(max_length=70)
+    d: Literal["inicial", "intermedia", "avanzada"]
+    o: str = Field(max_length=50)
+    c: int = Field(ge=1, le=6)
+
+
+class ActivityBatchOutput(BaseModel):
+    activities: list[CompactActivity] = Field(min_length=10, max_length=10)
 
 
 class ContentEvaluation(BaseModel):
@@ -317,10 +325,64 @@ class SchemaOutput(BaseModel):
         return self
 
 
+# LLM -> fase 3c actividad gamificada reestructurada
+class GamifiedActivityCompletarParrafo(BaseModel):
+    tipo: Literal["COMPLETAR_PARRAFO"]
+    titulo: str = Field(max_length=100)
+    pregunta_ids: list[str] = Field(min_length=1, max_length=4)
+    contenido: dict = Field(default_factory=dict)  # {"parrafo": "...", "huecos": [...], "word_bank": [...]}
+    dificultad: Literal["inicial", "intermedia", "avanzada"]
+    objetivo_aprendizaje: str = Field(max_length=200)
+    puntos_base: int = Field(ge=5, le=10)
+
+
+class GamifiedActivityResolverEjercicio(BaseModel):
+    tipo: Literal["RESOLVER_EJERCICIO"]
+    titulo: str = Field(max_length=100)
+    pregunta_ids: list[str] = Field(min_length=1, max_length=4)
+    contenido: dict = Field(default_factory=dict)  # {"enunciado": "...", "pasos": [...], "formula": "..."}
+    dificultad: Literal["inicial", "intermedia", "avanzada"]
+    objetivo_aprendizaje: str = Field(max_length=200)
+    puntos_base: int = Field(ge=5, le=10)
+
+
+class GamifiedActivityConectarPuntos(BaseModel):
+    tipo: Literal["CONECTAR_PUNTOS"]
+    titulo: str = Field(max_length=100)
+    pregunta_ids: list[str] = Field(min_length=1, max_length=4)
+    contenido: dict = Field(default_factory=dict)  # {"pares": [...], "instruccion": "..."}
+    dificultad: Literal["inicial", "intermedia", "avanzada"]
+    objetivo_aprendizaje: str = Field(max_length=200)
+    puntos_base: int = Field(ge=5, le=10)
+
+
+class GamifiedActivityAcomodarFormula(BaseModel):
+    tipo: Literal["ACOMODAR_FORMULA"]
+    titulo: str = Field(max_length=100)
+    pregunta_ids: list[str] = Field(min_length=1, max_length=4)
+    contenido: dict = Field(default_factory=dict)  # {"items": [...], "orden_correcto": [...], "instruccion": "..."}
+    dificultad: Literal["inicial", "intermedia", "avanzada"]
+    objetivo_aprendizaje: str = Field(max_length=200)
+    puntos_base: int = Field(ge=5, le=10)
+
+
+GamifiedActivity = Union[
+    GamifiedActivityCompletarParrafo,
+    GamifiedActivityResolverEjercicio,
+    GamifiedActivityConectarPuntos,
+    GamifiedActivityAcomodarFormula,
+]
+
+
+class GamifiedQuizOutput(BaseModel):
+    actividades: list[GamifiedActivity] = Field(min_length=5, max_length=6)
+
+
 class LearningSummaryRequest(BaseModel):
     formato: Literal[
         "auto",
         "ESQUEMA_GEMMA",
+        "CARTAS_EXPLICATIVAS",
     ] = "auto"
 
 

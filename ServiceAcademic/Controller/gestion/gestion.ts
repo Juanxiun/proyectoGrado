@@ -193,7 +193,8 @@ export async function listHorarios(ctx: Context): Promise<void> {
     respond(ctx, 200, await listarHorarios(id, {
       diaSemana: ctx.request.url.searchParams.get("dia") ?? undefined,
       cursoPeriodoId: claims.role === "estudiante" ? claims.cursoPeriodoId : requestedCourse,
-      maestroId: claims.role === "profesor" ? (claims.maestroId ?? claims.sub) : requestedTeacher,
+      maestroId: claims.role === "profesor" ? claims.maestroId : requestedTeacher,
+      maestroUsuarioId: claims.role === "profesor" && !claims.maestroId ? claims.sub : undefined,
       estudianteUsuarioId: claims.role === "estudiante" ? claims.sub : undefined,
     }));
   } catch (err) {
