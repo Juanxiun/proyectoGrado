@@ -285,8 +285,8 @@ export function ActividadGamificadaModal({
                 <View className="flex-row gap-3 w-full">
                   <BentoCard className="flex-1 p-3.5 bg-gray-50 items-center">
                     <Text className="text-xs text-gray-500 font-medium">Puntos Ganados</Text>
-                    <Text className="text-2xl font-black text-maroon mt-0.5">+{resultadoFinal.puntosGanados}</Text>
-                    <Text className="text-[10px] text-gray-400">Calidad + Rapidez</Text>
+                    <Text className="text-2xl font-black text-maroon mt-0.5">+{resultadoFinal.puntosGanados + (resultadoFinal.bonoDesafios ?? 0)}</Text>
+                    <Text className="text-[10px] text-gray-400">{resultadoFinal.bonoDesafios ? `Incluye bono diario +${resultadoFinal.bonoDesafios}` : 'Calidad + Rapidez'}</Text>
                   </BentoCard>
 
                   <BentoCard className="flex-1 p-3.5 bg-gray-50 items-center">

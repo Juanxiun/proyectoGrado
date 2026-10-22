@@ -43,7 +43,7 @@ class RAGRepository:
         self._redis = redis
         self._vector_dimension: int | None = None
         self._index_name: str | None = None
-        self._embedding_namespace = hashlib.sha256(settings.lmstudio_embedding_model.encode()).hexdigest()[:10]
+        self._embedding_namespace = hashlib.sha256(settings.ollama_embedding_model.encode()).hexdigest()[:10]
         self._vector_key_prefix = f"{self.knowledge_prefix}:vector:{self._embedding_namespace}:"
 
     @staticmethod
@@ -493,7 +493,8 @@ class RAGRepository:
         for answer in answers:
             activity = activities[answer["activity_id"]]
             correct = score_activity(activity, answer["response"])
-            evaluation.append({"activity_id": answer["activity_id"], "tipo": activity.get("tipo", ""), "correct": correct,
+            tipo_visible = activity.get("tipo") or ("CUESTIONARIO" if activity.get("type") in ("THEORETICAL", "PRACTICAL") else "")
+            evaluation.append({"activity_id": answer["activity_id"], "tipo": tipo_visible, "correct": correct,
                                "concept": activity.get("learning_objective", ""),
                                "difficulty": activity.get("difficulty", "inicial"),
                                "feedback": remediation(activity, correct)})
@@ -577,6 +578,16 @@ class RAGRepository:
     async def get_student_profile(self, student_id: str, content_id: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:student:{student_id}:content:{content_id}:profile")
         return json.loads(value) if value else None
+
+    async def get_student_learning_overview(self, student_id: str) -> dict[str, Any] | None:
+        value = await self._redis.get(f"{self.prefix}:student:{student_id}:learning-overview")
+        return json.loads(value) if value else None
+
+    async def save_student_learning_overview(self, student_id: str, profile: dict[str, Any]) -> None:
+        await self._redis.set(
+            f"{self.prefix}:student:{student_id}:learning-overview",
+            json.dumps(profile, ensure_ascii=False),
+        )
 
     async def save_student_profile(self, student_id: str, content_id: str, profile: dict[str, Any]) -> None:
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:profile"

@@ -174,3 +174,23 @@ export async function resolveFileUrl(
     return buildPublicUrl(key);
   }
 }
+
+// pdf -> leer los bytes del archivo desde MinIO
+export async function readStoredFile(storedUrl: string): Promise<Uint8Array> {
+  const key = getKeyFromUrl(storedUrl) ?? storedUrl;
+  if (!key) throw new HttpError(400, "El archivo no pertenece al almacenamiento interno");
+  await ensureBucket();
+  const flujo = await minioClient.getObject(BUCKET, key);
+  const partes: Uint8Array[] = [];
+  for await (const parte of flujo as AsyncIterable<Uint8Array>) {
+    partes.push(new Uint8Array(parte));
+  }
+  const total = partes.reduce((suma, parte) => suma + parte.byteLength, 0);
+  const salida = new Uint8Array(total);
+  let desplazamiento = 0;
+  for (const parte of partes) {
+    salida.set(parte, desplazamiento);
+    desplazamiento += parte.byteLength;
+  }
+  return salida;
+}

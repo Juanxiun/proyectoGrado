@@ -85,6 +85,9 @@ export interface TrofeoEstudiante {
   fechaObtencion: string;
   puntosOtorgados: number;
   metadata?: Record<string, unknown>;
+  trofeoNombre?: string;
+  trofeoCodigo?: string;
+  trofeoDescripcion?: string;
 }
 
 export interface RecompensaTienda {
@@ -150,6 +153,7 @@ export interface RespuestaGamificada {
   puntosGanados: number;
   puntosCalidad: number;
   puntosTiempo: number;
+  feedback?: string;
 }
 
 export interface RankingParalelo {

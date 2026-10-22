@@ -64,6 +64,9 @@ export interface TrofeoEstudiante {
   fechaObtencion: string;
   puntosOtorgados: number;
   metadata?: Record<string, unknown>;
+  trofeoNombre?: string;
+  trofeoCodigo?: string;
+  trofeoDescripcion?: string;
 }
 
 export interface RecompensaTienda {
@@ -115,10 +118,22 @@ export interface RankingParalelo {
 export interface ResumenGamificacion {
   racha: RachasDiarias | null;
   puntosIndividuales: number;
+  puntosHoy: number;
+  limiteDiario: number;
   puntosGlobales: number;
   insignias: InsigniaEstudiante[];
   trofeos: TrofeoEstudiante[];
   ranking: RankingEstudiante | null;
+  aprendizajeHoy: Array<{ titulo: string; materiaNombre: string; porcentajeAcierto: number; aciertos: number; total: number; fechaFin: string | null; feedback: string | null }>;
+  investigarSiguiente: string | null;
+  desafiosDiarios: DesafioDiarioGamificacion[];
+  bonoDesafiosOtorgado: boolean;
+}
+
+export interface DesafioDiarioGamificacion {
+  codigo: 'resumen' | 'actividad' | 'puntos' | 'cartas' | 'esquema';
+  nombre: string;
+  completado: boolean;
 }
 
 export interface InfoEstudianteGamificacion {
@@ -148,6 +163,7 @@ export interface RespuestaActividad {
   respuesta: string | string[];
   correcta: boolean;
   tiempoMs: number;
+  feedback?: string;
 }
 
 export interface CompletarActividadPayload {
@@ -178,11 +194,34 @@ export interface ResultadoActividad {
   puntosGanados: number;
   insigniasNuevas: InsigniaEstudiante[];
   trofeosNuevos: TrofeoEstudiante[];
+  bonoDesafios?: number;
+}
+
+export interface ProgresoEstudioPayload {
+  contentId: string;
+  titulo?: string;
+  materiaNombre?: string;
+  formato?: 'CARTAS_EXPLICATIVAS' | 'ESQUEMA_GEMMA';
+  completo?: boolean;
+  investigacion?: boolean;
+}
+
+export interface EvidenciaAprendizaje {
+  actividades: Array<{ titulo: string; tipo: string; porcentaje: number; duracionMs: number; fecha: string | null }>;
+  eventosEstudio: Array<{ tipo: string; tema: string; contentId: string; formato: string | null; fecha: string | null }>;
+  totalActividades: number;
+  totalInvestigaciones: number;
+  temasIndagados: string[];
+  resumenesCompletados: number;
 }
 
 export const gamificacionApi = {
   getResumen: async (): Promise<ResumenGamificacion> => {
     return apiRequest<ResumenGamificacion>('/gamificacion/resumen');
+  },
+
+  getEvidenciaAprendizaje: async (): Promise<EvidenciaAprendizaje> => {
+    return apiRequest<EvidenciaAprendizaje>('/gamificacion/aprendizaje/evidencia');
   },
 
   getInfoEstudiante: async (): Promise<InfoEstudianteGamificacion | null> => {
@@ -198,6 +237,13 @@ export const gamificacionApi = {
 
   completarActividad: async (payload: CompletarActividadPayload): Promise<ResultadoActividad> => {
     return apiRequest<ResultadoActividad>('/gamificacion/actividad', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  registrarProgresoEstudio: async (payload: ProgresoEstudioPayload): Promise<{ puntosGanados: number; bonoDesafios: number }> => {
+    return apiRequest<{ puntosGanados: number; bonoDesafios: number }>('/gamificacion/estudio', {
       method: 'POST',
       body: JSON.stringify(payload),
     });

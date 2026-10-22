@@ -251,6 +251,12 @@ class QuizCompletedEvent(BaseModel):
     elapsed_ms: int = Field(default=0, ge=0, le=3_600_000)
 
 
+class QuizQualityFeedback(BaseModel):
+    feedback: str = Field(max_length=320)
+    next_step: str = Field(max_length=240)
+    points: int = Field(ge=5, le=10)
+
+
 class QuizRequest(BaseModel):
     student_id: str = Field(min_length=1, max_length=100)
     content_id: str = Field(min_length=1, max_length=200)
@@ -265,6 +271,22 @@ class StudentLearningAnalysis(BaseModel):
     recommended_formats: list[Literal["FLASHCARD", "CONECTAR_FRASES", "SELECCION_MULTIPLE"]] = []
     difficulty_level: str
     next_steps: list[str]
+
+
+class StudentLearningOverview(BaseModel):
+    learning_rhythm: str = Field(max_length=320)
+    strengths: list[str] = Field(default_factory=list, max_length=6)
+    learning_orientation: Literal["teorico", "practico", "equilibrado", "evidencia_insuficiente"]
+    preferred_formats: list[Literal["graficos_esquemas", "cartas", "resumenes_directos", "ejercicios_practicos"]] = Field(default_factory=list, max_length=4)
+    investigated_topics_count: int = Field(ge=0)
+    deep_inquiry_topics: list[str] = Field(default_factory=list, max_length=10)
+    possible_ambitions: list[str] = Field(default_factory=list, max_length=5)
+    personalization_recommendation: str = Field(max_length=600)
+    confidence: Literal["baja", "media", "alta"] = "baja"
+
+
+class StudentLearningOverviewRequest(BaseModel):
+    evidence: dict = Field(default_factory=dict)
 
 
 class PersonalizedLearningContent(BaseModel):
@@ -383,6 +405,8 @@ class LearningSummaryRequest(BaseModel):
         "auto",
         "ESQUEMA_GEMMA",
         "CARTAS_EXPLICATIVAS",
+        "CONEXIONES",
+        "RESUMEN_PERSONALIZADO",
     ] = "auto"
 
 

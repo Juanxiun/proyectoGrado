@@ -4,17 +4,17 @@ import logging
 import math
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request, Response
 
 from app.config import settings
-from app.lmstudio import LMStudioClient
+from app.ollama_client import OllamaClient
 from app.pipeline import _resumen_conceptual
 from app.RAG.connection import create_redis_connection, create_notify_redis_connection
 from app.RAG.repository import RAGRepository
-from app.schemas import ContentCreatedEvent, ExplainSectionRequest, LearningSummaryRequest, MatchCheckRequest, QuizCompletedEvent, QuizRequest
+from app.schemas import ContentCreatedEvent, ExplainSectionRequest, LearningSummaryRequest, MatchCheckRequest, QuizCompletedEvent, QuizQualityFeedback, QuizRequest, StudentLearningOverviewRequest
 from app.services.learning_summaries import generate_learning_summary
 from app.services.quiz_service import issue_quiz
-from app.services.student_learning import create_personalized_content, explain_section
+from app.services.student_learning import create_personalized_content, evaluate_student_learning_overview, explain_section
 from app.profile_worker import run_profile_worker
 from app.worker import run_worker
 
@@ -22,11 +22,47 @@ logging.basicConfig(level=settings.log_level.upper(), format="%(asctime)s %(leve
 logger = logging.getLogger(__name__)
 
 
+async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, llm, semaphore) -> dict:
+    activities = {str(item.get("activity_id")): item for item in (quiz or {}).get("activities", [])}
+    responses = {answer.activity_id: answer.response[:300] for answer in event.answers}
+    evaluacion = []
+    for answer in resultado.get("answers", []):
+        activity = activities.get(str(answer.get("activity_id")), {})
+        evaluacion.append({
+            "question": activity.get("question", ""),
+            "student_response": responses.get(str(answer.get("activity_id")), ""),
+            "expected_response": activity.get("answer", activity.get("correct_answer", "")),
+            "correct": bool(answer.get("correct")),
+            "explanation": activity.get("explanation", ""),
+        })
+    context = json.dumps({
+        "subject_content": event.content_id,
+        "correct": resultado.get("correct", 0),
+        "total": resultado.get("total", len(evaluacion)),
+        "elapsed_ms": event.elapsed_ms,
+        "answers": evaluacion,
+    }, ensure_ascii=False)
+    fallback = {
+        "feedback": f"Respondiste correctamente {resultado.get('correct', 0)} de {resultado.get('total', len(evaluacion))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
+        "next_step": "Repite el reto para practicar los conceptos que te costaron.",
+        "points": max(5, min(10, 5 + round(5 * float(resultado.get("score", 0))))),
+        "model": "fallback",
+    }
+    try:
+        async with asyncio.timeout(45):
+            async with semaphore:
+                review = await llm.structured(settings.ollama_mistral_model, "mistral/quiz_feedback.txt", context, QuizQualityFeedback)
+        return {**review.model_dump(), "model": settings.ollama_mistral_model}
+    except Exception:
+        logger.exception("No se pudo generar retroalimentacion Mistral student_id=%s content_id=%s", event.student_id, event.content_id)
+        return fallback
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     rag = RAGRepository(create_redis_connection())
     notify_redis = create_notify_redis_connection()
-    llm = LMStudioClient()
+    llm = OllamaClient()
     stop = asyncio.Event()
     semaphore = asyncio.Semaphore(max(1, settings.llm_max_concurrency))
     app.state.rag = rag
@@ -40,12 +76,14 @@ async def lifespan(app: FastAPI):
             try:
                 missing = await llm.missing_models()
                 if missing:
-                    raise RuntimeError("Modelos/tags requeridos no instalados o mal configurados: " + ", ".join(missing))
+                    raise RuntimeError("Modelos/tags requeridos no descargados en Ollama: " + ", ".join(missing))
                 results = await llm.startup_self_test()
                 if not all(results.values()):
-                    raise RuntimeError("Falló la autoprueba de inferencia o embeddings en LM Studio")
+                    raise RuntimeError("Falló la autoprueba de inferencia o embeddings en Ollama")
                 app.state.llm_self_test = {"status": "passed", "models": results}
-                logger.info("Autoprueba de modelos LM Studio completada")
+                # ollama -> dejar los modelos cargados para evitar esperas por recarga
+                precargados = await llm.preload_models()
+                logger.info("Autoprueba de modelos Ollama completada (precarga=%s)", precargados)
                 return
             except asyncio.CancelledError:
                 raise
@@ -104,7 +142,7 @@ async def health():
 async def ready(request: Request):
     redis_ok = False
     vector_search_ok = False
-    lmstudio_ok = False
+    ollama_ok = False
     try:
         redis_ok = await request.app.state.rag.ping()
     except Exception:
@@ -115,9 +153,9 @@ async def ready(request: Request):
         except Exception:
             logger.warning("Redis Search/Vector no disponible")
     try:
-        lmstudio_ok = await request.app.state.llm.ready()
+        ollama_ok = await request.app.state.llm.ready()
     except Exception:
-        logger.warning("LM Studio no disponible o modelos configurados no instalados")
+        logger.warning("Ollama no disponible o modelos configurados no descargados")
     rag_initialized = False
     try:
         rag_initialized = await request.app.state.rag.is_initialized()
@@ -128,9 +166,9 @@ async def ready(request: Request):
     try:
         missing_models = await request.app.state.llm.missing_models()
     except Exception:
-        missing_models = ["LM Studio no responde a /api/v1/models"]
-    body = {"status": "ready" if redis_ok and vector_search_ok and lmstudio_ok and self_test_ok and rag_initialized else "degraded", "dependencies": {"redis": redis_ok, "redis_vector_search": vector_search_ok, "lmstudio_models": lmstudio_ok, "lmstudio_models_missing": missing_models, "lmstudio_inference_test": self_test, "rag_initialized": rag_initialized}}
-    if not redis_ok or not vector_search_ok or not lmstudio_ok or not self_test_ok or not rag_initialized:
+        missing_models = ["Ollama no responde a /api/tags"]
+    body = {"status": "ready" if redis_ok and vector_search_ok and ollama_ok and self_test_ok and rag_initialized else "degraded", "dependencies": {"redis": redis_ok, "redis_vector_search": vector_search_ok, "ollama_models": ollama_ok, "ollama_models_missing": missing_models, "ollama_inference_test": self_test, "rag_initialized": rag_initialized}}
+    if not redis_ok or not vector_search_ok or not ollama_ok or not self_test_ok or not rag_initialized:
         raise HTTPException(status_code=503, detail=body)
     return body
 
@@ -217,6 +255,7 @@ async def rag_search(q: str, request: Request, content_id: str | None = None, su
 async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_secret: str | None = Header(default=None)):
     require_internal_secret(x_webhook_secret)
     try:
+        quiz = await request.app.state.rag.get_quiz(event.student_id, event.content_id, event.attempt_id)
         result = await request.app.state.rag.record_quiz_attempt(
             event.student_id, event.content_id, event.attempt_id,
             [answer.model_dump() for answer in event.answers],
@@ -247,6 +286,9 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
                 )
             except Exception:
                 logger.exception("No se pudo indexar el hito de aprendizaje student_id=%s content_id=%s", event.student_id, event.content_id)
+        result["learning_feedback"] = await _feedback_reto(
+            event, result, quiz, request.app.state.llm, request.app.state.semaphore,
+        )
         return {"status": "recorded", **result}
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -260,11 +302,15 @@ async def create_student_quiz(student_id: str, content_id: str, body: QuizReques
     if body.student_id != student_id or body.content_id != content_id:
         raise HTTPException(status_code=400, detail="Los IDs del cuerpo deben coincidir con la ruta")
     try:
-        return await issue_quiz(student_id, content_id, body.activity_count, request.app.state.rag, request.app.state.llm, request.app.state.semaphore)
+        async with asyncio.timeout(12):
+            return await issue_quiz(student_id, content_id, body.activity_count, request.app.state.rag, request.app.state.llm, request.app.state.semaphore)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        logger.error("Timeout al emitir reto student_id=%s content_id=%s", student_id, content_id)
+        raise HTTPException(status_code=504, detail="La actividad tardó demasiado; intenta de nuevo") from exc
     except Exception as exc:
         logger.exception("No se pudo emitir el reto student_id=%s content_id=%s", student_id, content_id)
         raise HTTPException(status_code=503, detail="No se pudo preparar el reto; vuelve a intentarlo") from exc
@@ -314,6 +360,19 @@ async def get_student_profile(student_id: str, content_id: str, request: Request
     return profile
 
 
+@app.post("/students/{student_id}/learning-overview")
+async def student_learning_overview(student_id: str, body: StudentLearningOverviewRequest, request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    try:
+        return await evaluate_student_learning_overview(
+            student_id, body.evidence, request.app.state.rag,
+            request.app.state.llm, request.app.state.semaphore,
+        )
+    except Exception as exc:
+        logger.exception("No se pudo evaluar el perfil integral student_id=%s", student_id)
+        raise HTTPException(status_code=503, detail="No se pudo generar la evaluación de aprendizaje") from exc
+
+
 @app.post("/students/{student_id}/contents/{content_id}/personalized")
 async def personalized_content(student_id: str, content_id: str, request: Request, x_webhook_secret: str | None = Header(default=None)):
     require_internal_secret(x_webhook_secret)
@@ -339,3 +398,60 @@ async def explain_student_section(student_id: str, content_id: str, body: Explai
     except Exception as exc:
         logger.exception("No se pudo explicar la sección para el estudiante")
         raise HTTPException(status_code=503, detail="La explicación no está disponible") from exc
+
+
+# preview -> datos de paginas del PDF para lectura dentro de la app
+@app.post("/preview/pdf/info")
+async def pdf_preview_info(request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="El archivo PDF está vacío")
+    try:
+        import pymupdf as fitz
+        with fitz.open(stream=data, filetype="pdf") as pdf:
+            if pdf.page_count == 0:
+                raise ValueError("El PDF no contiene páginas")
+            rect = pdf.load_page(0).rect
+            return {"paginas": pdf.page_count, "ancho": round(rect.width, 2), "alto": round(rect.height, 2)}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("No se pudo leer el PDF para vista previa: %s", exc)
+        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido") from exc
+
+
+# preview -> una pagina del PDF como imagen JPEG (lectura en linea, sin descargas)
+@app.post("/preview/pdf/pagina/{numero}")
+async def pdf_preview_page(numero: int, request: Request, zoom: float = 1.6, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="El archivo PDF está vacío")
+    try:
+        import pymupdf as fitz
+        with fitz.open(stream=data, filetype="pdf") as pdf:
+            total = pdf.page_count
+            if total == 0:
+                raise ValueError("El PDF no contiene páginas")
+            indice = min(max(numero, 1), total) - 1
+            pagina = pdf.load_page(indice)
+            escala = min(max(zoom, 0.8), 3.0)
+            pix = pagina.get_pixmap(matrix=fitz.Matrix(escala, escala), alpha=False)
+            imagen = pix.tobytes("jpeg", jpg_quality=72)
+            return Response(
+                content=imagen,
+                media_type="image/jpeg",
+                headers={
+                    "X-Total-Pages": str(total),
+                    "X-Page-Number": str(indice + 1),
+                    "X-Page-Width": str(round(pagina.rect.width, 2)),
+                    "X-Page-Height": str(round(pagina.rect.height, 2)),
+                    "Cache-Control": "private, max-age=3600",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("No se pudo renderizar la pagina %s del PDF: %s", numero, exc)
+        raise HTTPException(status_code=400, detail="No se pudo generar la vista previa del PDF") from exc

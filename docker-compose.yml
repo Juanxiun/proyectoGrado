@@ -323,7 +323,7 @@ services:
       - shalom_net
     command: deno task dev
 
-  # Servicio LLM de baja prioridad; Redis RAG y LM Studio viven en el stack de infraestructura.
+  # Servicio LLM de baja prioridad; Redis RAG y Ollama viven en el host.
   service-llms:
     build:
       context: ./ServiceAcademicLLMs
@@ -335,11 +335,14 @@ services:
       - APP_ENV=${APP_ENV:-development}
       - LOG_LEVEL=${LLM_LOG_LEVEL:-INFO}
       - PORT=8890
-      - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-http://host.docker.internal:1234}
-      - LMSTUDIO_EMBEDDING_URL=${LMSTUDIO_EMBEDDING_URL:-}
-      - LMSTUDIO_GEMMA_MODEL=${LMSTUDIO_GEMMA_MODEL:-google/gemma-4-e4b}
-      - LMSTUDIO_MISTRAL_MODEL=${LMSTUDIO_MISTRAL_MODEL:-mistralai/mistral-7b-instruct-v0.3}
-      - LMSTUDIO_EMBEDDING_MODEL=${LMSTUDIO_EMBEDDING_MODEL:-text-embedding-nomic-embed-text-v1.5}
+      # Ollama -> modelos locales en el host (11434)
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - OLLAMA_GEMMA_MODEL=${OLLAMA_GEMMA_MODEL:-gemma4:e4b}
+      - OLLAMA_MISTRAL_MODEL=${OLLAMA_MISTRAL_MODEL:-mistral:7b}
+      - OLLAMA_EMBEDDING_MODEL=${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      - OLLAMA_NUM_CTX=${OLLAMA_NUM_CTX:-16384}
+      - OLLAMA_KEEP_ALIVE=${OLLAMA_KEEP_ALIVE:-30m}
+      - OLLAMA_DISABLE_THINKING=${OLLAMA_DISABLE_THINKING:-true}
       # Redis RAG (vectorial) -> contenedor redis_rag_server en host:6380 (mapeado a 6379 interno)
       - REDIS_HOST=host.docker.internal
       - REDIS_PORT=6380

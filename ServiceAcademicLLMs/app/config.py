@@ -7,12 +7,18 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     port: int = 8890
-    # LM Studio -> en Docker usa host.docker.internal, en local 127.0.0.1
-    lmstudio_base_url: str = "http://host.docker.internal:1234"
-    lmstudio_embedding_url: str | None = None
-    lmstudio_gemma_model: str = "mistral-7b-instruct-v0.3"
-    lmstudio_mistral_model: str = "mistral-7b-instruct-v0.3"
-    lmstudio_embedding_model: str = "nomic-embed-text-v2-moe"
+    # ollama -> en Docker usa host.docker.internal, en local 127.0.0.1
+    ollama_base_url: str = "http://host.docker.internal:11434"
+    # ollama -> modelos locales (mismos modelos que antes, con etiqueta de Ollama)
+    ollama_gemma_model: str = "gemma4:e4b"
+    ollama_mistral_model: str = "mistral:7b"
+    ollama_embedding_model: str = "nomic-embed-text"
+    # ollama -> contexto efectivo por solicitud
+    ollama_num_ctx: int = 16384
+    # ollama -> tiempo que el modelo permanece cargado en memoria
+    ollama_keep_alive: str = "30m"
+    # ollama -> desactivar razonamiento extendido en modelos que lo soportan
+    ollama_disable_thinking: bool = True
     # redis RAG (vectorial) -> contenedor redis_rag_server en puerto 6380
     redis_host: str = "redis_rag_server"
     redis_port: int = 6380
@@ -35,9 +41,9 @@ class Settings(BaseSettings):
     max_chunks_per_document: int = 6
     llm_acceptance_threshold: float = 0.85
     llm_max_refinement_iterations: int = 2
-    # LM Studio -> espera para generaciones largas
+    # ollama -> espera para generaciones largas
     llm_request_timeout: float = 1800.0
-    # LM Studio -> timeout de conexion
+    # ollama -> timeout de conexion
     llm_connect_timeout: float = 30.0
     llm_max_concurrency: int = 4
     worker_count: int = 2

@@ -15,6 +15,8 @@ import {
   getRanking,
   getInfoEstudianteGamificacion,
   upsertEstudianteGamificacion,
+  registrarProgresoEstudio,
+  getEvidenciaAprendizaje,
 } from "../services/gamification.service.ts";
 import { HttpError } from "../utils/errors.ts";
 
@@ -28,13 +30,20 @@ export async function getResumen(ctx: Context): Promise<void> {
   }
 }
 
+// controller -> evidencia de aprendizaje
+export async function getEvidenciaAprendizajeController(ctx: Context): Promise<void> {
+  try {
+    const claims = ctx.state.auth;
+    respond(ctx, 200, await getEvidenciaAprendizaje(claims.sub));
+  } catch (err) {
+    handleControllerError(ctx, err, "Error al obtener evidencia de aprendizaje");
+  }
+}
+
 export async function getInfoEstudiante(ctx: Context): Promise<void> {
   try {
     const claims = ctx.state.auth;
     const info = await getInfoEstudianteGamificacion(claims.sub);
-    if (!info) {
-      throw new HttpError(404, "Estudiante no encontrado en curso activo");
-    }
     respond(ctx, 200, info);
   } catch (err) {
     handleControllerError(ctx, err, "Error al obtener info estudiante");
@@ -65,6 +74,25 @@ export async function completarActividad(ctx: Context): Promise<void> {
     respond(ctx, 201, resultado);
   } catch (err) {
     handleControllerError(ctx, err, "Error al procesar actividad completada");
+  }
+}
+
+// controller -> registrar progreso
+export async function registrarProgresoEstudioController(ctx: Context): Promise<void> {
+  try {
+    const claims = ctx.state.auth;
+    const body = await ctx.request.body.json();
+    const resultado = await registrarProgresoEstudio(claims.sub, {
+      contentId: String(body.contentId ?? ""),
+      titulo: String(body.titulo ?? ""),
+      materiaNombre: String(body.materiaNombre ?? ""),
+      formato: body.formato,
+      completo: Boolean(body.completo),
+      investigacion: Boolean(body.investigacion),
+    });
+    respond(ctx, 201, resultado);
+  } catch (err) {
+    handleControllerError(ctx, err, "Error al registrar progreso de estudio");
   }
 }
 
@@ -152,9 +180,11 @@ export async function registrarPerfilEstudiante(ctx: Context): Promise<void> {
 
 export const routes = [
   { method: "GET", path: "/gamificacion/resumen", handler: getResumen, middleware: [requireEstudiante()] },
+  { method: "GET", path: "/gamificacion/aprendizaje/evidencia", handler: getEvidenciaAprendizajeController, middleware: [requireEstudiante()] },
   { method: "GET", path: "/gamificacion/info-estudiante", handler: getInfoEstudiante, middleware: [requireEstudiante()] },
   { method: "POST", path: "/gamificacion/perfil", handler: registrarPerfilEstudiante, middleware: [requireEstudiante()] },
   { method: "POST", path: "/gamificacion/actividad", handler: completarActividad, middleware: [requireEstudiante()] },
+  { method: "POST", path: "/gamificacion/estudio", handler: registrarProgresoEstudioController, middleware: [requireEstudiante()] },
   { method: "POST", path: "/gamificacion/racha/salvar", handler: salvarRacha, middleware: [requireEstudiante()] },
   { method: "POST", path: "/gamificacion/pista", handler: usarPista, middleware: [requireEstudiante()] },
   { method: "GET", path: "/gamificacion/tienda", handler: getTiendaController, middleware: [requireEstudiante()] },

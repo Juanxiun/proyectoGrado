@@ -99,9 +99,19 @@ CREATE TABLE IF NOT EXISTS "trofeos_estudiante" (
   "trofeo_id" BIGINT NOT NULL,
   "fecha_obtencion" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
   "puntos_otorgados" INT NOT NULL DEFAULT 0,
-  "metadata" JSONB DEFAULT '{}'::jsonb,
-  CONSTRAINT "uq_trofeo_estudiante" UNIQUE ("usuario_id", "trofeo_id")
+  "metadata" JSONB DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE "trofeos_estudiante" DROP CONSTRAINT IF EXISTS "uq_trofeo_estudiante";
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_trofeo_estudiante_periodo"
+  ON "trofeos_estudiante" ("usuario_id", "trofeo_id", (COALESCE("metadata"->>'fechaDia', 'unico')));
+
+ALTER TABLE "insignias_estudiante" DROP CONSTRAINT IF EXISTS "uq_insignia_estudiante";
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_insignia_estudiante_contexto"
+  ON "insignias_estudiante" ("usuario_id", "insignia_id", (COALESCE("metadata"->>'contentId', 'unico')));
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_bono_desafios_diarios"
+  ON "puntos_individuales" ("usuario_id", "fecha", ("metadata"->>'evento'))
+  WHERE "metadata"->>'evento' = 'bono_desafios_diarios';
 
 -- Catálogo de Tienda de Recompensas
 CREATE TABLE IF NOT EXISTS "tienda_recompensas" (
@@ -187,6 +197,10 @@ ON CONFLICT ("codigo") DO UPDATE SET
   "criterio" = EXCLUDED."criterio",
   "activa" = true;
 
+INSERT INTO "insignias" ("codigo", "nombre", "descripcion", "criterio", "activa") VALUES
+  ('logro_tema_completo', 'Dominio del tema', 'Completó las Cartas y el Esquema del mismo tema', '{"formatos": ["CARTAS_EXPLICATIVAS", "ESQUEMA_GEMMA"]}'::jsonb, true)
+ON CONFLICT ("codigo") DO UPDATE SET "nombre" = EXCLUDED."nombre", "descripcion" = EXCLUDED."descripcion", "criterio" = EXCLUDED."criterio", "activa" = true;
+
 -- Semillas iniciales: Trofeos
 INSERT INTO "trofeos" ("codigo", "nombre", "descripcion", "puntos", "criterio", "periodo", "activo") VALUES
   ('mejor_semana', 'Mejor de la Semana', 'Primer lugar en el ranking del paralelo', 500, '{"posicion": 1}'::jsonb, 'semanal', true),
@@ -200,11 +214,32 @@ ON CONFLICT ("codigo") DO UPDATE SET
   "periodo" = EXCLUDED."periodo",
   "activo" = true;
 
+INSERT INTO "trofeos" ("codigo", "nombre", "descripcion", "puntos", "criterio", "periodo", "activo") VALUES
+  ('speedrunner', 'Speedrunner', 'Actividad completada con rapidez, precisión y tiempo suficiente para demostrar el aprendizaje', 0, '{"aciertosMin": 1, "preguntasMin": 5, "tiempoMinimoPorPreguntaMs": 900}'::jsonb, 'semanal', true),
+  ('aprendiendo_mas', 'Aprendiendo Más', 'Realizó una investigación diaria basada en preguntas', 0, '{"investigacionDiaria": true}'::jsonb, 'semanal', true),
+  ('aprendiendo_sin_parar', 'Aprendiendo sin Parar', 'Completó las cartas y el mapa mental del mismo material en un día', 0, '{"formatos": ["CARTAS_EXPLICATIVAS", "ESQUEMA_GEMMA"]}'::jsonb, 'semanal', true)
+ON CONFLICT ("codigo") DO UPDATE SET
+  "nombre" = EXCLUDED."nombre",
+  "descripcion" = EXCLUDED."descripcion",
+  "criterio" = EXCLUDED."criterio",
+  "activo" = true;
+
 -- Semillas iniciales: Tienda de Recompensas
-INSERT INTO "tienda_recompensas" ("nombre", "descripcion", "costo_puntos_individuales", "tipo", "icono_url", "stock", "activa") VALUES
-  ('Salvar Racha', 'Permite salvar tu racha diaria si no alcanzaste el umbral de aciertos', 100, 'salvar_racha', NULL, NULL, true),
-  ('Pista para Examen', 'Desbloquea una pista clave durante una evaluación o repaso', 95, 'pista_examen', NULL, NULL, true),
-  ('Marco Dorado de Avatar', 'Cosmético exclusivo para destacar en el podio del ranking', 500, 'cosmetico', NULL, NULL, true)
-ON CONFLICT DO NOTHING;
+INSERT INTO "tienda_recompensas" ("nombre", "descripcion", "costo_puntos_individuales", "tipo", "icono_url", "stock", "activa")
+SELECT 'Puntos Dobles', 'Duplica los puntos de tu próxima actividad, dentro del límite de puntos diarios.', 50, 'otro', NULL, NULL, true
+WHERE NOT EXISTS (SELECT 1 FROM "tienda_recompensas" WHERE lower("nombre") = 'puntos dobles');
+
+UPDATE "tienda_recompensas" SET "nombre" = 'Recuperar Racha', "descripcion" = 'Recupera una racha perdida sin gastar puntos al usar esta compra.', "activa" = true
+WHERE lower("nombre") = 'salvar racha';
+INSERT INTO "tienda_recompensas" ("nombre", "descripcion", "costo_puntos_individuales", "tipo", "icono_url", "stock", "activa")
+SELECT 'Recuperar Racha', 'Recupera una racha perdida sin gastar puntos al usar esta compra.', 100, 'salvar_racha', NULL, NULL, true
+WHERE NOT EXISTS (SELECT 1 FROM "tienda_recompensas" WHERE lower("nombre") = 'recuperar racha');
+WITH duplicados AS (
+  SELECT id, ROW_NUMBER() OVER (PARTITION BY lower(trim(nombre)) ORDER BY id) AS numero
+  FROM tienda_recompensas WHERE lower(trim(nombre)) IN ('puntos dobles', 'recuperar racha')
+)
+UPDATE tienda_recompensas tr SET activa = (d.numero = 1)
+FROM duplicados d WHERE tr.id = d.id;
+UPDATE "tienda_recompensas" SET "activa" = false WHERE lower("nombre") NOT IN ('puntos dobles', 'recuperar racha');
 
 COMMIT;

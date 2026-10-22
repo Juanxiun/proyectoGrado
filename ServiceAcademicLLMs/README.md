@@ -2,7 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![LM Studio](https://img.shields.io/badge/LM%20Studio-modelos%20locales-00A3E0)
+![Ollama](https://img.shields.io/badge/Ollama-modelos%20locales-000000?logo=ollama&logoColor=white)
 ![Redis Stack](https://img.shields.io/badge/Redis%20Stack-vectorial-DC382D?logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
@@ -27,7 +27,7 @@ No usa JWT ni roles: la única autenticación es el header `X-Webhook-Secret` (c
 | Método | Ruta | Acceso |
 | --- | --- | --- |
 | GET | `/health` | público |
-| GET | `/ready` | público (503 si faltan Redis Stack/LM Studio/modelos) |
+| GET | `/ready` | público (503 si faltan Redis Stack/Ollama/modelos) |
 | GET | `/rag/structure` | `X-Webhook-Secret` |
 | GET | `/rag/search?q=&content_id=&subject_id=&limit=` | `X-Webhook-Secret` |
 | POST | `/webhooks/content-created` | `X-Webhook-Secret` (202 + idempotencia) |
@@ -37,12 +37,14 @@ No usa JWT ni roles: la única autenticación es el header `X-Webhook-Secret` (c
 | POST | `/contents/{content_id}/summaries` | `X-Webhook-Secret` |
 | GET | `/students/{student_id}/profiles/{content_id}` | `X-Webhook-Secret` |
 | POST | `/students/{student_id}/contents/{content_id}/personalized` | `X-Webhook-Secret` |
+| POST | `/preview/pdf/info` | `X-Webhook-Secret` (cuerpo PDF, devuelve páginas y tamaño) |
+| POST | `/preview/pdf/pagina/{numero}` | `X-Webhook-Secret` (cuerpo PDF, devuelve la página en JPEG) |
 
 Semántica de payloads y respuestas en "Contrato y endpoints" más abajo.
 
 ## Inicialización por consola
 
-Requisitos: Python 3.12 con el entorno virtual propio, Redis Stack (Search/vectorial) y LM Studio con los modelos instalados. Variables obligatorias: `LMSTUDIO_BASE_URL=http://127.0.0.1:1234`, `REDIS_HOST=127.0.0.1`, `LMSTUDIO_EMBEDDING_MODEL` (tag con soporte `/v1/embeddings`) y `WEBHOOK_SECRET`/`LLM_WEBHOOK_SECRET` no vacío.
+Requisitos: Python 3.12 con el entorno virtual propio, Redis Stack (Search/vectorial) y Ollama con los modelos descargados (`ollama pull gemma4:e4b mistral:7b nomic-embed-text`). Variables obligatorias: `OLLAMA_BASE_URL=http://127.0.0.1:11434`, `REDIS_HOST=127.0.0.1`, `OLLAMA_EMBEDDING_MODEL` (modelo con soporte de embeddings) y `WEBHOOK_SECRET`/`LLM_WEBHOOK_SECRET` no vacío.
 
 ```powershell
 cd ServiceAcademicLLMs
@@ -54,7 +56,7 @@ Detalle de variables en la sección "Configuración".
 
 ## Inicialización por Docker
 
-Desde la raíz del repositorio (requiere `LLM_WEBHOOK_SECRET` en el `.env` de la raíz; sin Redis Stack en host:6380 y LM Studio en host:1234, `/ready` queda en 503):
+Desde la raíz del repositorio (requiere `LLM_WEBHOOK_SECRET` en el `.env` de la raíz; sin Redis Stack en host:6380 y Ollama en host:11434, `/ready` queda en 503):
 
 ```powershell
 docker compose -p shalom_backend --env-file .env build service-llms
@@ -76,7 +78,7 @@ Contenedor `shalom_service_llms`, publica `127.0.0.1:8890` y **no tiene hot relo
 8. La generación personalizada combina guía docente aprobada, referencias RAG seleccionadas y perfil del alumno; el documento orienta el tema y los detalles del curso sin limitar cada explicación a coincidencias literales. El resultado se almacena por alumno/contenido y versión del perfil.
 9. `POST /contents/{content_id}/summaries` devuelve esquema `ESQUEMA_GEMMA` (nodos y aristas) con calidad garantizada por Gemma. Se almacena en caché por contenido y versión.
 
-Al arrancar, `serviceLLMs` crea la estructura educativa del RAG y elimina los vectores y claves heredados de la rama `methodology`. Un chequeo en segundo plano valida los modelos configurados y los embeddings; si Redis/LM Studio no están disponibles, se reintenta y `/ready` permanece en 503. El RAG se centra en fragmentos de materiales fuente, síntesis, actividades y progreso aislado por estudiante y contenido.
+Al arrancar, `serviceLLMs` crea la estructura educativa del RAG y elimina los vectores y claves heredados de la rama `methodology`. Un chequeo en segundo plano valida los modelos configurados y los embeddings; si Redis/Ollama no están disponibles, se reintenta y `/ready` permanece en 503. Al aprobar la autoprueba, los modelos se precargan con `keep_alive` para evitar esperas por recarga. El RAG se centra en fragmentos de materiales fuente, síntesis, actividades y progreso aislado por estudiante y contenido.
 
 ## Contrato y endpoints
 
@@ -103,28 +105,30 @@ El evento contiene los campos disponibles al crear un material: ID del material,
 
 | Variable | Uso |
 | --- | --- |
-| `LMSTUDIO_BASE_URL` | URL accesible desde los contenedores (por defecto `http://host.docker.internal:1234`). LM Studio debe estar abierto y aceptar conexiones desde Docker. |
-| `LMSTUDIO_EMBEDDING_URL` | URL del servidor OpenAI compatible con `/v1/embeddings`; por defecto usa `LMSTUDIO_BASE_URL`. |
-| `LMSTUDIO_GEMMA_MODEL`, `LMSTUDIO_MISTRAL_MODEL` | Tags exactos presentes en LM Studio. No se descargan modelos automáticamente. |
-| `LMSTUDIO_EMBEDDING_MODEL` | Tag ya instalado que soporte `/v1/embeddings`; necesario para RAG vectorial. |
+| `OLLAMA_BASE_URL` | URL accesible desde los contenedores (por defecto `http://host.docker.internal:11434`). Ollama debe escuchar en la interfaz de red del host (`OLLAMA_HOST=0.0.0.0`). |
+| `OLLAMA_NUM_CTX` | Contexto efectivo por solicitud (por defecto `16384`). |
+| `OLLAMA_GEMMA_MODEL`, `OLLAMA_MISTRAL_MODEL` | Tags descargados en Ollama. Gemma afina resúmenes y extrae información; Mistral genera la prueba y el contenido personalizado. No se descargan modelos automáticamente. |
+| `OLLAMA_EMBEDDING_MODEL` | Modelo ya descargado que soporte embeddings; necesario para RAG vectorial. |
+| `OLLAMA_KEEP_ALIVE` | Tiempo que el modelo permanece cargado en memoria (por defecto `30m`). |
+| `OLLAMA_DISABLE_THINKING` | Desactiva el razonamiento extendido para responder más rápido (por defecto `true`). |
 | `REDIS_RAG_HOST`, `REDIS_RAG_PORT`, `REDIS_RAG_USERNAME`, `REDIS_RAG_PASSWORD` | Redis Stack. Como vive en un compose separado, se usa el puerto publicado del host (`host.docker.internal:6380`), no el DNS `redis_rag` que no comparte red. |
 | `LLM_WEBHOOK_SECRET` | Secreto compartido entre `ServiceHomework` y este servicio. Configure un valor aleatorio antes de levantar Docker. |
 | `LLM_CHUNK_SIZE`, `LLM_CHUNK_MIN_CHARS`, `LLM_CHUNK_SEMANTIC_THRESHOLD`, `LLM_MAX_CHUNKS_PER_DOCUMENT` | Límites del chunking semántico: tamaño máximo por fragmento, tamaño mínimo antes de fusionar y umbral de cohesión léxica para detectar cambios de tema. |
 | `LLM_ACCEPTANCE_THRESHOLD`, `LLM_MAX_REFINEMENT_ITERATIONS` | Umbral de rúbrica (no probabilidad científica) e iteraciones. |
 | `LLM_REQUEST_TIMEOUT`, `LLM_MAX_CONCURRENCY`, `LLM_WORKER_COUNT`, `LLM_JOB_MAX_RETRIES` | Límites de ejecución y recuperación. |
 
-La infraestructura existente no declara LM Studio ni un modelo de embeddings instalado. Antes de habilitar procesamiento, instala manualmente los modelos elegidos en el host y configura sus tags y `REDIS_RAG_PASSWORD`. La URL/credencial Redis actual del compose externo debe coincidir con esos valores.
+La infraestructura existente no declara Ollama ni un modelo de embeddings descargado. Antes de habilitar procesamiento, descarga manualmente los modelos elegidos en el host (`ollama pull ...`) y configura sus tags y `REDIS_RAG_PASSWORD`. La URL/credencial Redis actual del compose externo debe coincidir con esos valores.
 
-El contexto y la descarga de capas a GPU se configuran en LM Studio en el host; las variables Docker del servicio no cambian esos valores. Para usar más GPU, revisa la memoria disponible y el consumo por modelo en LM Studio y carga el modelo con su opción GPU `max` si cabe; si no, deja una parte en CPU para evitar errores de memoria. No busques 100% de uso constante: la generación token a token, la memoria disponible y el tiempo de evaluación del prompt también limitan la utilización. La documentación de LM Studio describe el ajuste GPU y el contexto durante la carga del modelo.
+El contexto efectivo se controla con `OLLAMA_NUM_CTX` y la permanencia en memoria con `OLLAMA_KEEP_ALIVE`. Para usar más GPU, revisa la memoria disponible y el consumo por modelo con `ollama ps`; si el modelo no cabe completo en GPU, Ollama reparte capas en CPU automáticamente. No busques 100% de uso constante: la generación token a token, la memoria disponible y el tiempo de evaluación del prompt también limitan la utilización.
 
-Para usar LM Studio en Windows, comprueba que responde en `http://localhost:1234/api/v1/models` desde el host; dentro del contenedor se accede mediante `http://host.docker.internal:1234`. LM Studio debe escuchar en la interfaz de red del host (Settings → Network → "Listen on all interfaces") y el firewall debe permitir el puerto 1234 desde Docker. Después de cambiar la configuración de red, reinicia LM Studio. Si no escucha en la interfaz del host, `/ready` permanece en 503 aunque el contenedor esté activo. No se descargan modelos desde el servicio. Los prompts de `prompts/` se cargan al inicio y las guías versionadas modifican su embedding únicamente cuando cambia su texto.
+Para usar Ollama en Windows, comprueba que responde en `http://localhost:11434/api/tags` desde el host; dentro del contenedor se accede mediante `http://host.docker.internal:11434`. Ollama debe escuchar en la interfaz de red del host (`OLLAMA_HOST=0.0.0.0`) y el firewall debe permitir el puerto 11434 desde Docker. Después de cambiar la configuración de red, reinicia Ollama. Si no escucha en la interfaz del host, `/ready` permanece en 503 aunque el contenedor esté activo. No se descargan modelos desde el servicio. Los prompts de `prompts/` se cargan al inicio y las guías versionadas modifican su embedding únicamente cuando cambia su texto.
 
-La configuración Docker anterior aplica solo cuando `serviceLLMs` corre dentro de Docker. Si tanto `serviceLLMs` como LM Studio se ejecutan directamente en Windows, usa `LMSTUDIO_BASE_URL=http://127.0.0.1:1234` y `REDIS_HOST=127.0.0.1` (Redis Stack debe publicar su puerto RAG, por defecto 6380). Para arrancar el servicio localmente desde esta carpeta:
+La configuración Docker anterior aplica solo cuando `serviceLLMs` corre dentro de Docker. Si tanto `serviceLLMs` como Ollama se ejecutan directamente en Windows, usa `OLLAMA_BASE_URL=http://127.0.0.1:11434` y `REDIS_HOST=127.0.0.1` (Redis Stack debe publicar su puerto RAG, por defecto 6380). Para arrancar el servicio localmente desde esta carpeta:
 
 ```powershell
-$env:LMSTUDIO_BASE_URL = "http://127.0.0.1:1234"
+$env:OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 $env:REDIS_HOST = "127.0.0.1"
-$env:LMSTUDIO_EMBEDDING_MODEL = "text-embedding-nomic-embed-text-v1.5"
+$env:OLLAMA_EMBEDDING_MODEL = "nomic-embed-text"
 $env:WEBHOOK_SECRET = "<el mismo secreto que usará la prueba>"
 .\venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8890
 ```
@@ -146,12 +150,12 @@ Pruebas rápidas y simuladas (desde `ServiceAcademicLLMs/`, con el entorno virtu
 .\venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-La prueba `test_full_flow.py` simula Redis y LM Studio para validar rápidamente las transiciones. `test_live_integration.py` es una prueba aparte que no usa esos dobles: llama al endpoint real, comprueba LM Studio y Redis Stack, ejecuta el pipeline chunking semántico → análisis Mistral → refinamiento → evaluación → embeddings/Redis Vector Search, crea cuatro pruebas por HTTP, espera el perfil y solicita contenido personalizado. También comprueba que el material guardado registra los tags reales de los modelos, la valoración aprobada y el banco de actividades. Usa IDs aleatorios y elimina las claves y vectores creados al finalizar.
+La prueba `test_full_flow.py` simula Redis y Ollama para validar rápidamente las transiciones. `test_live_integration.py` es una prueba aparte que no usa esos dobles: llama al endpoint real, comprueba Ollama y Redis Stack, ejecuta el pipeline chunking semántico → análisis Mistral → refinamiento → evaluación → embeddings/Redis Vector Search, crea cuatro pruebas por HTTP, espera el perfil y solicita contenido personalizado. También comprueba que el material guardado registra los tags reales de los modelos, la valoración aprobada y el banco de actividades. Usa IDs aleatorios y elimina las claves y vectores creados al finalizar.
 
 Para ejecutar la integración real:
 
-1. Levanta Redis Stack con el módulo de búsqueda vectorial y LM Studio con `google/gemma-4-e4b`, `mistralai/mistral-7b-instruct-v0.3` y `text-embedding-nomic-embed-text-v1.5` ya instalados. Si ejecutas `serviceLLMs` localmente en Windows, arráncalo con Uvicorn según la sección anterior; si corre en Docker, inicia el contenedor y usa sus direcciones Docker. Configura `LMSTUDIO_EMBEDDING_MODEL` con el tag compatible con `/v1/embeddings`. Comprueba `http://localhost:8890/ready` y configura un secreto interno no vacío.
-2. Configura `LMSTUDIO_EMBEDDING_MODEL` con el mismo tag de embeddings que usa el servicio Python. En PowerShell, desde `ServiceAcademicLLMs/`, establece `LMSTUDIO_EMBEDDING_MODEL`, `LLM_INTEGRATION=1`, `LLM_INTEGRATION_BASE_URL=http://127.0.0.1:8890` y `LLM_INTEGRATION_WEBHOOK_SECRET` con el mismo secreto interno del servicio. El proceso Python de pruebas no carga automáticamente el `.env` de la raíz; exportar la variable evita que la prueba use un modelo distinto al servicio. `LLM_INTEGRATION_DOCUMENT_HOST` ahora usa `127.0.0.1` por defecto porque el servicio se ejecuta localmente. Si el servicio Python corre en Docker, establece esa variable como `host.docker.internal`.
+1. Levanta Redis Stack con el módulo de búsqueda vectorial y Ollama con `gemma4:e4b`, `mistral:7b` y `nomic-embed-text` ya descargados. Si ejecutas `serviceLLMs` localmente en Windows, arráncalo con Uvicorn según la sección anterior; si corre en Docker, inicia el contenedor y usa sus direcciones Docker. Configura `OLLAMA_EMBEDDING_MODEL` con el modelo de embeddings. Comprueba `http://localhost:8890/ready` y configura un secreto interno no vacío.
+2. Configura `OLLAMA_EMBEDDING_MODEL` con el mismo modelo de embeddings que usa el servicio Python. En PowerShell, desde `ServiceAcademicLLMs/`, establece `OLLAMA_EMBEDDING_MODEL`, `LLM_INTEGRATION=1`, `LLM_INTEGRATION_BASE_URL=http://127.0.0.1:8890` y `LLM_INTEGRATION_WEBHOOK_SECRET` con el mismo secreto interno del servicio. El proceso Python de pruebas no carga automáticamente el `.env` de la raíz; exportar la variable evita que la prueba use un modelo distinto al servicio. `LLM_INTEGRATION_DOCUMENT_HOST` ahora usa `127.0.0.1` por defecto porque el servicio se ejecuta localmente. Si el servicio Python corre en Docker, establece esa variable como `host.docker.internal`.
 3. Ejecuta solo la prueba real para distinguirla de las validaciones rápidas:
 
 ```powershell

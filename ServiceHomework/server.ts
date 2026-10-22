@@ -6,7 +6,7 @@ import { oakCors } from "@tajpouria/cors";
 
 import { requireAuth, ROLES_DOCENTES, ROLES_LECTURA } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
-import { completarReto, crearResumen, crearReto, explicarSeccion, getContenidoAprendizaje, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
+import { completarReto, crearResumen, crearReto, evaluarPerfilAprendizaje, explicarSeccion, getContenidoAprendizaje, infoPaginasPdf, paginaPdf, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
 import {
   createMaterial,
   deleteMaterial,
@@ -55,6 +55,9 @@ rt.post("/aprendizaje/materiales/:id/explicar-seccion", requireAuth(["estudiante
 rt.post("/aprendizaje/materiales/:id/reto", requireAuth(["estudiante"]), crearReto);
 rt.post("/aprendizaje/materiales/:id/reto/:quizId/completar", requireAuth(["estudiante"]), completarReto);
 rt.post("/aprendizaje/materiales/:id/reto/:quizId/comprobar-pareja", requireAuth(["estudiante"]), validarEmparejamiento);
+rt.post("/aprendizaje/perfil-aprendizaje", requireAuth(["estudiante"]), evaluarPerfilAprendizaje);
+rt.get("/aprendizaje/materiales/:id/vista-previa", requireAuth(["estudiante"]), infoPaginasPdf);
+rt.get("/aprendizaje/materiales/:id/pagina/:numero", requireAuth(["estudiante"]), paginaPdf);
 
 app.use(
   oakCors({

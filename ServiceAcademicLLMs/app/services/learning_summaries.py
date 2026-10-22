@@ -1,12 +1,12 @@
 import logging
 
-from app.lmstudio import LMStudioClient
+from app.ollama_client import OllamaClient
 from app.RAG.repository import RAGRepository
 
 logger = logging.getLogger(__name__)
 
 # summaries -> formato avanzado de resumen personalizado (ESQUEMA_GEMMA y CARTAS_EXPLICATIVAS)
-FORMATOS = {"ESQUEMA_GEMMA", "CARTAS_EXPLICATIVAS"}
+FORMATOS = {"ESQUEMA_GEMMA", "CARTAS_EXPLICATIVAS", "auto", "CONEXIONES", "RESUMEN_PERSONALIZADO"}
 
 # summaries -> seleccion de formato (solo ESQUEMA_GEMMA o CARTAS_EXPLICATIVAS)
 def elegir_formato(content: dict) -> str:
@@ -62,26 +62,17 @@ def _datos_por_formato(data: dict, formato: str, titulo: str) -> dict:
 
 # summaries -> construir esquema desde contenido aprobado
 def _esquema_desde_contenido(content: dict) -> dict:
-    unidades = content.get("microlearning_units", [])
     conceptos = content.get("key_concepts", [])
-    candidatos = []
     titulo = str(content.get("title") or "Tema principal").strip()
     resumen = str(content.get("summary") or "").strip()
-    candidatos.append({"id": "tema-principal", "label": titulo[:80], "kind": "concepto", "detail": resumen[:1200] or titulo})
-    for unidad in unidades[:8]:
-        label = str(unidad.get("title") or "").strip()
-        detail = str(unidad.get("explanation") or unidad.get("objective") or label).strip()
-        if label and label.casefold() != titulo.casefold():
-            candidatos.append({"id": f"unidad-{len(candidatos)}", "label": label[:80], "kind": "procedimiento", "detail": detail[:1200]})
+    candidatos = [{"id": "tema-principal", "label": titulo[:80], "kind": "concepto", "detail": resumen[:1200] or titulo}]
     for concepto in conceptos:
         label = str(concepto).strip()
         if label and all(label.casefold() != item["label"].casefold() for item in candidatos):
             candidatos.append({"id": f"concepto-{len(candidatos)}", "label": label[:80], "kind": "concepto", "detail": resumen[:1200] or label})
-        if len(candidatos) >= 12:
+        if len(candidatos) >= 9:
             break
-    if len(candidatos) == 1:
-        candidatos.extend({"id": f"idea-{i}", "label": f"Idea clave {i}", "kind": "concepto", "detail": resumen or titulo} for i in range(1, 5))
-    edges = [{"source": candidatos[index]["id"], "target": candidatos[index + 1]["id"], "label": "se relaciona"} for index in range(len(candidatos) - 1)]
+    edges = [{"source": candidatos[index]["id"], "target": candidatos[index + 1]["id"], "label": "se relaciona con"} for index in range(len(candidatos) - 1)]
     relacionados = [item["label"] for item in candidatos[1:7]]
     while len(relacionados) < 3:
         relacionados.append(titulo)
@@ -89,24 +80,26 @@ def _esquema_desde_contenido(content: dict) -> dict:
 
 
 # summaries -> generacion o recuperacion del resumen avanzado (ESQUEMA_GEMMA / CARTAS_EXPLICATIVAS)
-async def generate_learning_summary(content_id: str, formato: str, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
+async def generate_learning_summary(content_id: str, formato: str, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar resumenes")
-    if formato == "auto":
+    if formato == "auto" or formato == "CONEXIONES" or formato == "RESUMEN_PERSONALIZADO":
         formato = "ESQUEMA_GEMMA"
     if formato not in FORMATOS:
-        raise ValueError(f"Formato de resumen no admitido: {formato}")
+        formato = "ESQUEMA_GEMMA"
     cache = await repo.get_summary_cache(content_id, formato)
-    if cache:
-        datos_cache = _datos_por_formato(cache.get("data", {}) if isinstance(cache.get("data"), dict) else {}, formato, str(content.get("title") or "Resumen del tema"))
+    if cache and isinstance(cache, dict):
+        datos_cache_raw = cache.get("data", {}) if isinstance(cache.get("data"), dict) else {}
+        datos_cache = _datos_por_formato(datos_cache_raw, formato, str(content.get("title") or "Resumen del tema"))
         tarjetas_utiles = any(
             len(str(item.get("concept", "")).strip()) > 2 and len(str(item.get("definition", "")).strip()) > 25
             for item in datos_cache.get("cards", [])
         )
         if (formato == "CARTAS_EXPLICATIVAS" and tarjetas_utiles) or (formato == "ESQUEMA_GEMMA" and datos_cache.get("nodes")):
-            cache["data"] = _limpiar_salida(datos_cache)
-            return cache
+            resultado_cache = dict(cache)
+            resultado_cache["data"] = _limpiar_salida(datos_cache)
+            return resultado_cache
     schema = _esquema_desde_contenido(content)
     resultado = {
         "content_id": content_id,
@@ -118,15 +111,18 @@ async def generate_learning_summary(content_id: str, formato: str, repo: RAGRepo
         "quality_score": 1.0,
         "quality_evaluation": {"approved": True, "score": 1.0, "reason": "Construido desde contenido aprobado"},
         "source_chunk_ids": [],
-        "generated_at": repo.now(),
+        "generated_at": getattr(repo, "now", lambda: None)(),
     }
-    await repo.set_summary_cache(content_id, formato, resultado)
-    logger.info("Resumen avanzado generado content_id=%s formato=%s", content_id, formato)
+    try:
+        await repo.set_summary_cache(content_id, resultado["formato"], resultado)
+    except Exception:
+        pass
+    logger.info("Resumen avanzado generado content_id=%s formato=%s", content_id, resultado["formato"])
     return resultado
 
 
 # LLM -> fase 3b esquema gemma
-async def generate_schema(content_id: str, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
+async def generate_schema(content_id: str, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar esquema")

@@ -1,6 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Dimensions, PanResponder } from 'react-native';
-import { Canvas, Circle, Path, Text as SkiaText, Group, Skia } from '@shopify/react-native-skia';
+import React, { useState } from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { BentoCard } from '../../../displays/components/BentoCard';
 
 interface SchemaNode {
@@ -24,421 +23,126 @@ interface EsquemaSkiaProps {
   onNodePress?: (node: SchemaNode) => void;
 }
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CANVAS_WIDTH = SCREEN_WIDTH - 48;
-const CANVAS_HEIGHT = 420;
-const NODE_RADIUS = 36;
-
-const KIND_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  concepto: { bg: '#FEF3C7', border: '#F59E0B', text: '#92400E' },
-  procedimiento: { bg: '#DBEAFE', border: '#3B82F6', text: '#1E40AF' },
-  relacion: { bg: '#EDE9FE', border: '#8B5CF6', text: '#5B21B6' },
-};
-
-function buildPathString(sourceX: number, sourceY: number, targetX: number, targetY: number, radius: number): string {
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  if (distance === 0) return '';
-  const angle = Math.atan2(dy, dx);
-  const startX = sourceX + Math.cos(angle) * radius;
-  const startY = sourceY + Math.sin(angle) * radius;
-  const endX = targetX - Math.cos(angle) * radius;
-  const endY = targetY - Math.sin(angle) * radius;
-
-  return `M${startX},${startY} L${endX},${endY}`;
+// resumen -> texto seguro para renderizar dentro de <Text>
+function aTexto(valor: unknown, respaldo = ''): string {
+  if (typeof valor === 'string') return valor;
+  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
+  return respaldo;
 }
 
-function buildArrowPathString(targetX: number, targetY: number, sourceX: number, sourceY: number, radius: number): string {
-  const dx = targetX - sourceX;
-  const dy = targetY - sourceY;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-  if (distance === 0) return '';
-  const angle = Math.atan2(dy, dx);
-  const baseX = targetX - Math.cos(angle) * radius;
-  const baseY = targetY - Math.sin(angle) * radius;
-  const arrowSize = 12;
-  const arrowX1 = baseX - Math.cos(angle - Math.PI / 6) * arrowSize;
-  const arrowY1 = baseY - Math.sin(angle - Math.PI / 6) * arrowSize;
-  const arrowX2 = baseX - Math.cos(angle + Math.PI / 6) * arrowSize;
-  const arrowY2 = baseY - Math.sin(angle + Math.PI / 6) * arrowSize;
-  return `M${baseX},${baseY} L${arrowX1},${arrowY1} M${baseX},${baseY} L${arrowX2},${arrowY2}`;
+// resumen -> normalizar nodos del esquema
+function normalizarNodos(valor: unknown): SchemaNode[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.reduce<SchemaNode[]>((acc, item, index) => {
+    if (!item || typeof item !== 'object') return acc;
+    const nodo = item as Record<string, unknown>;
+    const label = aTexto(nodo.label ?? nodo.title ?? nodo.concept, '').trim();
+    if (!label) return acc;
+    acc.push({
+      id: aTexto(nodo.id, `nodo-${index}`),
+      label,
+      kind: (nodo.kind === 'procedimiento' || nodo.kind === 'relacion' ? nodo.kind : 'concepto') as SchemaNode['kind'],
+      detail: aTexto(nodo.detail ?? nodo.definition, ''),
+    });
+    return acc;
+  }, []);
 }
 
-export function EsquemaSkia({ nodes, edges, relatedTopics, title, onNodePress }: EsquemaSkiaProps) {
+// resumen -> normalizar conexiones del esquema
+function normalizarEdges(valor: unknown): SchemaEdge[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.reduce<SchemaEdge[]>((acc, item) => {
+    if (!item || typeof item !== 'object') return acc;
+    const edge = item as Record<string, unknown>;
+    const source = aTexto(edge.source, '');
+    const target = aTexto(edge.target, '');
+    if (!source || !target) return acc;
+    acc.push({ source, target, label: aTexto(edge.label, '') });
+    return acc;
+  }, []);
+}
+
+export function EsquemaSkia({ nodes: nodosEntrada, edges: edgesEntrada, title, onNodePress }: EsquemaSkiaProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [layout, setLayout] = useState<Map<string, { x: number; y: number }>>(new Map());
+  const nodes = normalizarNodos(nodosEntrada);
+  const edges = normalizarEdges(edgesEntrada);
+  const selectedNode = nodes.find((node) => node.id === selectedNodeId);
+  const connectedEdges = selectedNodeId
+    ? edges.filter((edge) => edge.source === selectedNodeId || edge.target === selectedNodeId)
+    : [];
 
-  const fontMgr = useMemo(() => Skia.FontMgr.System(), []);
-  const typeface = useMemo(() => fontMgr.matchFamilyStyle('Inter', { weight: 400 }), [fontMgr]);
-  const fontRegular = useMemo(() => Skia.Font(typeface, 11), [typeface]);
-  const fontBold = useMemo(() => { const f = Skia.Font(typeface, 11); f.setEmbolden(true); return f; }, [typeface]);
-  const fontSmall = useMemo(() => Skia.Font(typeface, 9), [typeface]);
-  const fontTitle = useMemo(() => { const f = Skia.Font(typeface, 14); f.setEmbolden(true); return f; }, [typeface]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (_, gestureState) => {
-        checkNodeHit(gestureState.moveX, gestureState.moveY);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        checkNodeHit(gestureState.moveX, gestureState.moveY);
-      },
-      onPanResponderRelease: () => {},
-      onPanResponderTerminate: () => {},
-    })
-  ).current;
-
-  const checkNodeHit = (x: number, y: number) => {
-    for (const [nodeId, pos] of layout.entries()) {
-      const dx = x - pos.x;
-      const dy = y - pos.y;
-      if (dx * dx + dy * dy <= NODE_RADIUS * NODE_RADIUS) {
-        setSelectedNodeId(nodeId);
-        const node = nodes.find(n => n.id === nodeId);
-        if (node && onNodePress) onNodePress(node);
-        return;
-      }
-    }
-    setSelectedNodeId(null);
-  };
-
-  const buildLayout = useMemo(() => {
-    if (!nodes.length) return new Map();
-    const adjacency = new Map<string, string[]>();
-    edges.forEach(e => {
-      if (!adjacency.has(e.source)) adjacency.set(e.source, []);
-      if (!adjacency.has(e.target)) adjacency.set(e.target, []);
-      adjacency.get(e.source)!.push(e.target);
-      adjacency.get(e.target)!.push(e.source);
-    });
-
-    const positions = new Map<string, { x: number; y: number }>();
-    const visited = new Set<string>();
-    const centerX = CANVAS_WIDTH / 2;
-    const centerY = CANVAS_HEIGHT / 2;
-
-    function dfs(nodeId: string, depth: number, angle: number, radius: number) {
-      if (visited.has(nodeId)) return;
-      visited.add(nodeId);
-
-      const x = centerX + Math.cos(angle) * radius;
-      const y = centerY + Math.sin(angle) * radius;
-      positions.set(nodeId, { x, y });
-
-      const neighbors = adjacency.get(nodeId) || [];
-      const childAngleStep = (Math.PI * 2) / Math.max(neighbors.length, 1);
-      neighbors.forEach((neighbor, i) => {
-        if (!visited.has(neighbor)) {
-          dfs(neighbor, depth + 1, angle + i * childAngleStep, radius + 100);
-        }
-      });
-    }
-
-    const rootId = nodes[0]?.id;
-    if (rootId) {
-      dfs(rootId, 0, -Math.PI / 2, 0);
-    }
-
-    nodes.forEach(n => {
-      if (!positions.has(n.id)) {
-        const angle = Math.random() * Math.PI * 2;
-        const radius = 140 + Math.random() * 60;
-        positions.set(n.id, {
-          x: centerX + Math.cos(angle) * radius,
-          y: centerY + Math.sin(angle) * radius,
-        });
+  const root = nodes[0];
+  const parentById = new Map<string, string>();
+  const depthById = new Map<string, number>();
+  const queue: string[] = root ? [root.id] : [];
+  if (root) depthById.set(root.id, 0);
+  while (queue.length) {
+    const currentId = queue.shift() as string;
+    const depth = depthById.get(currentId) ?? 0;
+    edges.forEach((edge) => {
+      const neighbor = edge.source === currentId ? edge.target : edge.target === currentId ? edge.source : null;
+      if (neighbor && !depthById.has(neighbor) && nodes.some((node) => node.id === neighbor)) {
+        depthById.set(neighbor, depth + 1);
+        parentById.set(neighbor, currentId);
+        queue.push(neighbor);
       }
     });
+  }
 
-    return positions;
-  }, [nodes, edges]);
-
-  useEffect(() => {
-    setLayout(buildLayout);
-  }, [buildLayout]);
-
-  const selectedNode = useMemo(() => nodes.find(n => n.id === selectedNodeId), [nodes, selectedNodeId]);
-
-  const connectedEdges = useMemo(() => {
-    if (!selectedNodeId) return edges;
-    return edges.filter(e => e.source === selectedNodeId || e.target === selectedNodeId);
-  }, [edges, selectedNodeId]);
-
-  const connectedNodes = useMemo(() => {
-    if (!selectedNodeId) return new Set<string>();
-    const connected = new Set<string>();
-    edges.forEach(e => {
-      if (e.source === selectedNodeId) connected.add(e.target);
-      if (e.target === selectedNodeId) connected.add(e.source);
-    });
-    return connected;
-  }, [edges, selectedNodeId]);
+  // resumen -> ordenar nodos por proximidad al tema central
+  const ordenados = [...nodes].sort(
+    (izquierda, derecha) =>
+      (depthById.get(izquierda.id) ?? Number.MAX_SAFE_INTEGER) - (depthById.get(derecha.id) ?? Number.MAX_SAFE_INTEGER),
+  );
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        <View style={styles.legend}>
-          {Object.entries(KIND_COLORS).map(([kind, colors]) => (
-            <View key={kind} style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: colors.border }]} />
-              <Text style={[styles.legendText, { color: colors.text }]}>{kind}</Text>
-            </View>
-          ))}
+    <View className="gap-3">
+      <Text className="text-lg font-extrabold text-gray-800">Mapa mental</Text>
+
+      {nodes.length ? (
+        <View className="items-center rounded-2xl border border-violet-100 bg-violet-50 px-4 py-5">
+          <TouchableOpacity onPress={() => { setSelectedNodeId(root?.id ?? null); if (root) onNodePress?.(root); }} activeOpacity={0.8} className="max-w-full rounded-2xl border-2 border-[#801F3F] bg-white px-5 py-3">
+            <Text className="text-center text-[10px] font-bold uppercase text-[#801F3F]">Tema principal</Text>
+            <Text className="mt-1 text-center text-base font-black text-gray-900">{aTexto(root?.label, aTexto(title, 'Tema principal'))}</Text>
+          </TouchableOpacity>
+          {ordenados.slice(1).map((node) => {
+            const parentId = parentById.get(node.id) ?? root?.id;
+            const relacion = edges.find((edge) => (edge.source === parentId && edge.target === node.id) || (edge.target === parentId && edge.source === node.id));
+            const isSelected = node.id === selectedNodeId;
+            return (
+              <React.Fragment key={node.id}>
+                <View className="h-5 w-0.5 bg-violet-300" />
+                <Text className="-mt-1 rounded-full bg-violet-100 px-3 py-1 text-[10px] font-bold text-violet-800">{aTexto(relacion?.label, 'se relaciona con')}</Text>
+                <View className="h-3 w-0.5 bg-violet-300" />
+                <TouchableOpacity onPress={() => { setSelectedNodeId(isSelected ? null : node.id); if (!isSelected) onNodePress?.(node); }} activeOpacity={0.8} className={`max-w-full rounded-full border px-5 py-2.5 ${isSelected ? 'border-[#801F3F] bg-rose-100' : 'border-amber-300 bg-amber-50'}`}>
+                  <Text className="text-center text-sm font-bold text-gray-900">{node.label}</Text>
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
         </View>
-      </View>
+      ) : (
+        <BentoCard className="p-4 bg-gray-50">
+          <Text className="text-sm text-gray-700">Este esquema todavía no tiene conceptos para mostrar.</Text>
+        </BentoCard>
+      )}
 
-      <Canvas style={styles.canvas}>
-        <Group>
+      {selectedNode && connectedEdges.length ? (
+        <BentoCard className="gap-2 p-4 bg-white">
+          <Text className="font-bold text-gray-900">Conexiones de {selectedNode.label}</Text>
           {connectedEdges.map((edge, index) => {
-            const sourcePos = layout.get(edge.source);
-            const targetPos = layout.get(edge.target);
-            if (!sourcePos || !targetPos) return null;
-
-            const isSelected = edge.source === selectedNodeId || edge.target === selectedNodeId;
-            const isConnected = connectedNodes.has(edge.source) && connectedNodes.has(edge.target);
-
-            const linePath = Skia.Path.MakeFromSVGString(buildPathString(sourcePos.x, sourcePos.y, targetPos.x, targetPos.y, NODE_RADIUS));
-            const arrowPath = Skia.Path.MakeFromSVGString(buildArrowPathString(targetPos.x, targetPos.y, sourcePos.x, sourcePos.y, NODE_RADIUS));
-            if (!linePath || !arrowPath) return null;
-
-            const midX = (sourcePos.x + targetPos.x) / 2;
-            const midY = (sourcePos.y + targetPos.y) / 2;
-
+            const otherId = edge.source === selectedNodeId ? edge.target : edge.source;
+            const otherNode = nodes.find((node) => node.id === otherId);
             return (
-              <Group key={`edge-${index}`}>
-                <Path
-                  path={linePath}
-                  color={isSelected ? '#8B5CF6' : isConnected ? '#3B82F6' : '#9CA3AF'}
-                  style="stroke"
-                  strokeWidth={isSelected ? 3 : 2}
-                />
-                <Path
-                  path={arrowPath}
-                  color={isSelected ? '#8B5CF6' : isConnected ? '#3B82F6' : '#9CA3AF'}
-                  style="stroke"
-                  strokeWidth={isSelected ? 3 : 2}
-                />
-                {edge.label && (
-                  <SkiaText
-                    text={edge.label}
-                    x={midX}
-                    y={midY - 8}
-                    font={fontSmall}
-                    color="#6B7280"
-                  />
-                )}
-              </Group>
-            );
-          })}
-        </Group>
-
-        <Group>
-          {Array.from(layout.entries()).map(([nodeId, pos]) => {
-            const node = nodes.find(n => n.id === nodeId);
-            if (!node) return null;
-
-            const isSelected = nodeId === selectedNodeId;
-            const isConnected = connectedNodes.has(nodeId);
-            const colors = KIND_COLORS[node.kind] || KIND_COLORS.concepto;
-
-            const displayLabel = node.label.length > 14 ? node.label.slice(0, 14) + '…' : node.label;
-
-            return (
-              <Group key={nodeId} transform={[{ translateX: pos.x }, { translateY: pos.y }]}>
-                <Circle
-                  cx={0}
-                  cy={0}
-                  r={isSelected ? NODE_RADIUS + 4 : NODE_RADIUS}
-                  color={isSelected ? '#8B5CF6' : isConnected ? '#3B82F6' : colors.border}
-                  style="stroke"
-                  strokeWidth={isSelected ? 4 : isConnected ? 3 : 2}
-                />
-                <Circle
-                  cx={0}
-                  cy={0}
-                  r={NODE_RADIUS - 4}
-                  color={colors.bg}
-                  style="fill"
-                />
-                <SkiaText
-                  text={displayLabel}
-                  x={0}
-                  y={4}
-                  font={fontBold}
-                  color={colors.text}
-                />
-                {isSelected && (
-                  <SkiaText
-                    text="▼"
-                    x={0}
-                    y={NODE_RADIUS + 14}
-                    font={fontSmall}
-                    color="#8B5CF6"
-                  />
-                )}
-              </Group>
-            );
-          })}
-        </Group>
-      </Canvas>
-
-      {selectedNode && (
-        <BentoCard className="mt-4 p-4 bg-white shadow-sm">
-          <View style={styles.nodeDetailHeader}>
-            <View style={[styles.kindBadge, { backgroundColor: KIND_COLORS[selectedNode.kind]?.bg, borderColor: KIND_COLORS[selectedNode.kind]?.border }]}>
-              <Text style={[styles.kindBadgeText, { color: KIND_COLORS[selectedNode.kind]?.text }]}>{selectedNode.kind.toUpperCase()}</Text>
-            </View>
-            <Text style={styles.nodeDetailTitle}>{selectedNode.label}</Text>
-          </View>
-          {selectedNode.detail && <Text style={styles.nodeDetailText}>{selectedNode.detail}</Text>}
-          {connectedEdges.length > 0 && (
-            <View style={styles.connectionsList}>
-              <Text style={styles.connectionsTitle}>Conexiones:</Text>
-              {connectedEdges.map((edge, index) => {
-                const otherId = edge.source === selectedNodeId ? edge.target : edge.source;
-                const otherNode = nodes.find(n => n.id === otherId);
-                return (
-                  <View key={index} style={styles.connectionRow}>
-                    <Text style={styles.arrowLabel}>{edge.label || '→'}</Text>
-                    <Text style={styles.connectedNodeName}>{otherNode?.label || otherId}</Text>
-                  </View>
-                );
-              })}
-            </View>
-          )}
-        </BentoCard>
-      )}
-
-      {relatedTopics.length > 0 && (
-        <BentoCard className="mt-4 p-4 bg-amber-50 border border-amber-200">
-          <Text style={styles.relatedTitle}>Este tema tiene relación con:</Text>
-          <View style={styles.relatedTags}>
-            {relatedTopics.map((topic, index) => (
-              <View key={index} style={styles.relatedTag}>
-                <Text style={styles.relatedTagText}>{topic}</Text>
+              <View key={`${edge.source}-${edge.target}-${index}`} className="flex-row items-center gap-2">
+                <Text className="text-sm text-violet-700">{aTexto(edge.label, '→')}</Text>
+                <Text className="flex-1 text-sm text-gray-800">{otherNode?.label || otherId}</Text>
               </View>
-            ))}
-          </View>
+            );
+          })}
         </BentoCard>
-      )}
+      ) : null}
+
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    gap: 12,
-  },
-  header: {
-    gap: 8,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1F2937',
-  },
-  legend: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  legendText: {
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  canvas: {
-    borderRadius: 16,
-    backgroundColor: '#FAFAFA',
-    width: CANVAS_WIDTH,
-    height: CANVAS_HEIGHT,
-  },
-  nodeDetailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 8,
-  },
-  kindBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  kindBadgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  nodeDetailTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1F2937',
-    flex: 1,
-  },
-  nodeDetailText: {
-    fontSize: 13,
-    color: '#4B5563',
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  connectionsList: {
-    gap: 4,
-  },
-  connectionsTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  connectionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 2,
-  },
-  arrowLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#8B5CF6',
-  },
-  connectedNodeName: {
-    fontSize: 12,
-    color: '#374151',
-  },
-  relatedTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#92400E',
-    marginBottom: 8,
-  },
-  relatedTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  relatedTag: {
-    backgroundColor: '#FEF3C7',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  relatedTagText: {
-    fontSize: 12,
-    color: '#92400E',
-    fontWeight: '500',
-  },
-});

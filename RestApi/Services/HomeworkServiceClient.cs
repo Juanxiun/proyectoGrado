@@ -57,7 +57,14 @@ public sealed class HomeworkServiceClient
                 incomingRequest.HttpContext.Connection.RemoteIpAddress.ToString());
         }
 
-        return await _http.SendAsync(message);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(incomingRequest.HttpContext.RequestAborted);
+        var routePath = path.Split('?', 2)[0];
+        if (routePath.EndsWith("/reto", StringComparison.OrdinalIgnoreCase))
+        {
+            timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        }
+
+        return await _http.SendAsync(message, timeout.Token);
     }
 
     private static void CopyHeaderIfPresent(HttpRequest src, HttpRequestMessage dest, string headerName)

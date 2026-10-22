@@ -67,13 +67,25 @@ def activity_id(content_id: str, index: int, statement: str) -> str:
 
 
 # activities -> copia sin respuestas ni metadatos internos (LEGACY: para UI con formatos de interaccion)
-def public_activity(activity: dict, semilla: str = "") -> dict:
+def public_activity(activity: dict, semilla: str = "", banco: list[dict] | None = None) -> dict:
     if _is_seed_format(activity):
-        # Formato nuevo: devolver campos basicos para UI simple (pregunta/respuesta)
+        tipo_practica = activity.get("type") == "PRACTICAL"
+        correcta = str(activity.get("answer", "")).strip()
+        opciones = []
+        for candidato in banco or []:
+            distractor = str(candidato.get("answer", "")).strip()
+            if distractor and _norm(distractor) != _norm(correcta) and all(_norm(distractor) != _norm(item) for item in opciones):
+                opciones.append(distractor)
+        opciones = opciones[:3] + ["Ninguna de las anteriores"] * max(0, 3 - len(opciones[:3]))
+        opciones.append(correcta)
+        random.Random(f"{semilla}:{activity.get('activity_id', '')}").shuffle(opciones)
         return {
             "activity_id": activity.get("activity_id", ""),
             "type": activity.get("type"),
+            "activity_mode": "practica" if tipo_practica else "concepto",
+            "tipo": "SELECCION_MULTIPLE",
             "question": activity.get("question", ""),
+            "options": opciones,
             "difficulty": activity.get("difficulty", "inicial"),
             "learning_objective": activity.get("learning_objective", ""),
         }

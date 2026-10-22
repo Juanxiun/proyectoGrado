@@ -1,6 +1,7 @@
 fastapi[standard]
 uvicorn
 httpx
+ollama
 redis[hiredis]
 pydantic-settings
 pymupdf

@@ -140,7 +140,7 @@ export function InAppDocumentViewerModal({
     }
 
     if (isPdf) {
-      return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType || 'application/pdf'} isPdf fileName={resolvedName} preferNativePdf={Platform.OS !== 'web'} />;
+      return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType || 'application/pdf'} isPdf fileName={resolvedName} preferNativePdf={true} />;
     }
 
     if (isOffice) return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType} fileName={resolvedName} />;

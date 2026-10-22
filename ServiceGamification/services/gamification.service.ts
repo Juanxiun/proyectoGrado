@@ -20,6 +20,23 @@ import {
 } from "../models/gamification.ts";
 import { gamificationConfig } from "../config/gamification.config.ts";
 
+// fecha -> dia local de gamificacion
+function fechaLocal(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/La_Paz",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+// fecha -> dia local anterior
+function diaAnterior(fecha: string): string {
+  const [year, month, day] = fecha.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day - 1));
+  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
+}
+
 // repo -> rachas diarias
 async function getRacha(usuarioId: string): Promise<RachasDiarias | null> {
   const res = await query<RachasDiarias>(
@@ -47,16 +64,25 @@ async function crearOActualizarRacha(
   puntosGastados = 0,
 ): Promise<RachasDiarias> {
   const porcentajeAcierto = totalPreguntas > 0 ? aciertos / totalPreguntas : 0;
-  const rachaAnterior = await getRacha(usuarioId);
-  let rachaActual = rachaAnterior?.rachaActual ?? 0;
-  let mejorRacha = rachaAnterior?.mejorRacha ?? 0;
-
-  if (completada && porcentajeAcierto >= gamificationConfig.racha.umbralAcierto) {
-    rachaActual = (rachaAnterior?.rachaActual ?? 0) + 1;
-    if (rachaActual > mejorRacha) mejorRacha = rachaActual;
-  } else if (!salvadaConPuntos) {
-    rachaActual = 0;
-  }
+  const [rachaDeHoy, rachaAnterior] = await Promise.all([
+    getRachaByFecha(usuarioId, fecha),
+    getRacha(usuarioId),
+  ]);
+  const mejorRacha = Math.max(rachaDeHoy?.mejorRacha ?? 0, rachaAnterior?.mejorRacha ?? 0);
+  const cumpleUmbral = completada && porcentajeAcierto > gamificationConfig.racha.umbralAcierto;
+  const yaCompletoHoy = Boolean(rachaDeHoy?.completada && !rachaDeHoy.salvadaConPuntos);
+  const rachaDeAyer = await getRachaByFecha(usuarioId, diaAnterior(fecha));
+  const rachaBase = rachaDeAyer?.completada ? rachaDeAyer.rachaActual : 0;
+  const completarHoy = cumpleUmbral || Boolean(rachaDeHoy?.completada) || salvadaConPuntos;
+  const aciertosDia = rachaDeHoy?.completada && !cumpleUmbral ? rachaDeHoy.aciertos : aciertos;
+  const totalDia = rachaDeHoy?.completada && !cumpleUmbral ? rachaDeHoy.totalPreguntas : totalPreguntas;
+  const porcentajeDia = rachaDeHoy?.completada && !cumpleUmbral
+    ? Math.max(rachaDeHoy.porcentajeAcierto, porcentajeAcierto)
+    : porcentajeAcierto;
+  const rachaActual = cumpleUmbral
+    ? (yaCompletoHoy ? rachaDeHoy!.rachaActual : rachaBase + 1)
+    : salvadaConPuntos ? (rachaDeHoy?.rachaActual ?? rachaBase) : (rachaDeHoy?.rachaActual ?? rachaBase);
+  const mejorRachaActualizada = Math.max(mejorRacha, rachaActual);
 
   try {
     const res = await query<RachasDiarias>(
@@ -76,12 +102,12 @@ async function crearOActualizarRacha(
       [
         usuarioId,
         fecha,
-        completada,
-        aciertos,
-        totalPreguntas,
-        porcentajeAcierto,
+        completarHoy,
+        aciertosDia,
+        totalDia,
+        porcentajeDia,
         rachaActual,
-        mejorRacha,
+        mejorRachaActualizada,
         salvadaConPuntos,
         puntosGastados,
       ],
@@ -184,7 +210,7 @@ async function otorgarInsignia(usuarioId: string, insigniaId: string, metadata?:
     const res = await query<InsigniaEstudiante>(
       `INSERT INTO insignias_estudiante (usuario_id, insignia_id, metadata)
        VALUES ($1, $2, $3)
-       ON CONFLICT (usuario_id, insignia_id) DO NOTHING
+       ON CONFLICT DO NOTHING
        RETURNING *`,
       [usuarioId, insigniaId, JSON.stringify(metadata ?? {})],
     );
@@ -209,7 +235,11 @@ async function getTrofeosActivos(): Promise<Trofeo[]> {
 
 async function getTrofeosEstudiante(usuarioId: string): Promise<TrofeoEstudiante[]> {
   const res = await query<TrofeoEstudiante>(
-    `SELECT * FROM trofeos_estudiante WHERE usuario_id = $1`,
+    `SELECT te.id, te.usuario_id AS "usuarioId", te.trofeo_id AS "trofeoId",
+            te.fecha_obtencion AS "fechaObtencion", te.puntos_otorgados AS "puntosOtorgados",
+            te.metadata, t.nombre AS "trofeoNombre", t.codigo AS "trofeoCodigo", t.descripcion AS "trofeoDescripcion"
+     FROM trofeos_estudiante te JOIN trofeos t ON t.id = te.trofeo_id WHERE te.usuario_id = $1
+     ORDER BY te.fecha_obtencion DESC`,
     [usuarioId],
   );
   return res.rows;
@@ -220,12 +250,12 @@ async function otorgarTrofeo(
   trofeoId: string,
   puntosOtorgados: number,
   metadata?: Record<string, unknown>,
-): Promise<TrofeoEstudiante> {
+): Promise<TrofeoEstudiante | null> {
   try {
     const res = await query<TrofeoEstudiante>(
       `INSERT INTO trofeos_estudiante (usuario_id, trofeo_id, puntos_otorgados, metadata)
        VALUES ($1, $2, $3, $4)
-       ON CONFLICT (usuario_id, trofeo_id) DO NOTHING
+       ON CONFLICT DO NOTHING
        RETURNING *`,
       [usuarioId, trofeoId, puntosOtorgados, JSON.stringify(metadata ?? {})],
     );
@@ -237,15 +267,26 @@ async function otorgarTrofeo(
         fecha: new Date().toISOString(),
       });
     }
-    return res.rows[0] ?? { usuarioId, trofeoId, fechaObtencion: new Date().toISOString(), puntosOtorgados } as TrofeoEstudiante;
+    return res.rows[0] ?? null;
   } catch (err) {
     throw mapDbError(err, "Error al otorgar trofeo");
   }
 }
 
+// service -> trofeo diario
+async function otorgarTrofeoDiario(usuarioId: string, codigo: string, metadata: Record<string, unknown> = {}): Promise<TrofeoEstudiante[]> {
+  const trofeoRes = await query<Trofeo>(`SELECT * FROM trofeos WHERE codigo = $1 AND activo = true LIMIT 1`, [codigo]);
+  const trofeo = trofeoRes.rows[0];
+  if (!trofeo) return [];
+  const otorgado = await otorgarTrofeo(usuarioId, trofeo.id, trofeo.puntos, { ...metadata, fechaDia: fechaLocal() });
+  return otorgado ? [otorgado] : [];
+}
+
 // repo -> tienda recompensas
 async function getRecompensasActivas(): Promise<RecompensaTienda[]> {
-  const res = await query<RecompensaTienda>(`SELECT * FROM tienda_recompensas WHERE activa = true AND (stock IS NULL OR stock > 0)`);
+  const res = await query<RecompensaTienda>(`SELECT id, nombre, descripcion,
+      costo_puntos_individuales AS "costoPuntosIndividuales", tipo, icono_url AS "iconoUrl", stock, activa
+    FROM tienda_recompensas WHERE activa = true AND lower(nombre) IN ('puntos dobles', 'recuperar racha') AND (stock IS NULL OR stock > 0) ORDER BY id`);
   return res.rows;
 }
 
@@ -253,24 +294,31 @@ async function comprarRecompensa(
   usuarioId: string,
   recompensaId: string,
 ): Promise<CompraEstudiante> {
-  const recompensaRes = await query<RecompensaTienda>(`SELECT * FROM tienda_recompensas WHERE id = $1`, [recompensaId]);
+  const recompensaRes = await query<RecompensaTienda>(`SELECT id, nombre, descripcion,
+      costo_puntos_individuales AS "costoPuntosIndividuales", tipo, icono_url AS "iconoUrl", stock, activa
+    FROM tienda_recompensas WHERE id = $1`, [recompensaId]);
   const recompensa = recompensaRes.rows[0];
   if (!recompensa) throw new HttpError(404, "Recompensa no encontrada");
   if (!recompensa.activa) throw new HttpError(400, "Recompensa no disponible");
+  if (!["puntos dobles", "recuperar racha"].includes(recompensa.nombre.trim().toLocaleLowerCase("es"))) throw new HttpError(400, "Recompensa no disponible en la tienda");
 
-  await gastarPuntosIndividuales(usuarioId, new Date().toISOString().split("T")[0], recompensa.costoPuntosIndividuales, "canje_tienda", `Compra: ${recompensa.nombre}`);
-
-  try {
-    const res = await query<CompraEstudiante>(
-      `INSERT INTO compras_estudiante (usuario_id, recompensa_id, puntos_gastados)
-       VALUES ($1, $2, $3)
-       RETURNING *`,
+  return await sTransaction(async (tx) => {
+    await tx.queryObject(`SELECT pg_advisory_xact_lock($1::bigint)`, [usuarioId]);
+    const balance = await tx.queryObject<{ total: string }>(
+      `SELECT COALESCE(SUM(puntos), 0) AS total FROM puntos_individuales WHERE usuario_id = $1`,
+      [usuarioId],
+    );
+    if (Number(balance.rows[0]?.total ?? 0) < recompensa.costoPuntosIndividuales) throw new HttpError(400, "Puntos insuficientes");
+    await tx.queryObject(
+      `INSERT INTO puntos_individuales (usuario_id, fecha, tipo, puntos, descripcion, metadata) VALUES ($1,$2,'canje_tienda',$3,$4,$5)`,
+      [usuarioId, fechaLocal(), -recompensa.costoPuntosIndividuales, `Compra: ${recompensa.nombre}`, JSON.stringify({ recompensaId })],
+    );
+    const res = await tx.queryObject<CompraEstudiante>(
+      `INSERT INTO compras_estudiante (usuario_id, recompensa_id, puntos_gastados) VALUES ($1,$2,$3) RETURNING *`,
       [usuarioId, recompensaId, recompensa.costoPuntosIndividuales],
     );
     return res.rows[0];
-  } catch (err) {
-    throw mapDbError(err, "Error al comprar recompensa");
-  }
+  });
 }
 
 // repo -> actividades gamificadas
@@ -334,6 +382,7 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
     calidad_promedio: number;
     tiempo_promedio_ms: number;
     puntos_individuales: number;
+    puntos_semana: number;
     puntos_globales: number;
     insignias_count: number;
     trofeos_count: number;
@@ -351,6 +400,7 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
       COALESCE(ap.calidad_promedio, 0) AS calidad_promedio,
       COALESCE(ap.tiempo_promedio_ms, 0) AS tiempo_promedio_ms,
       COALESCE(pi.total_puntos, 0) AS puntos_individuales,
+      COALESCE(pi.puntos_semana, 0) AS puntos_semana,
       COALESCE(pg.total_puntos, 0) AS puntos_globales,
       COALESCE(ie.count, 0) AS insignias_count,
       COALESCE(te.count, 0) AS trofeos_count
@@ -370,7 +420,10 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
       GROUP BY usuario_id
     ) ap ON ap.usuario_id = eg.usuario_id
     LEFT JOIN (
-      SELECT usuario_id, SUM(puntos) AS total_puntos FROM puntos_individuales GROUP BY usuario_id
+      SELECT usuario_id,
+             SUM(puntos) AS total_puntos,
+             SUM(CASE WHEN fecha >= date_trunc('week', $2::date)::date AND fecha <= $2 THEN GREATEST(puntos, 0) ELSE 0 END) AS puntos_semana
+      FROM puntos_individuales GROUP BY usuario_id
     ) pi ON pi.usuario_id = eg.usuario_id
     LEFT JOIN (
       SELECT curso_periodo_id, paralelo, SUM(puntos_ganados) AS total_puntos
@@ -385,11 +438,11 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
     ) te ON te.usuario_id = eg.usuario_id
     WHERE eg.curso_periodo_id = $1 AND eg.estado = 'activo'
     ORDER BY
-      rd.racha_actual DESC,
+      pi.puntos_semana DESC,
       ap.promedio_rendimiento DESC,
       ap.calidad_promedio DESC,
       ap.tiempo_promedio_ms ASC
-  `, [cursoPeriodoId]);
+  `, [cursoPeriodoId, fechaLocal()]);
 
   const paralelos = ["A", "B"] as const;
   return paralelos.map((paralelo, idx) => {
@@ -406,7 +459,7 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
         promedioRendimiento: Number(r.promedio_rendimiento.toFixed(2)),
         calidadPromedio: Number(r.calidad_promedio.toFixed(2)),
         tiempoPromedioMs: r.tiempo_promedio_ms,
-        puntosIndividuales: r.puntos_individuales,
+        puntosIndividuales: r.puntos_semana,
         puntosGlobales: r.puntos_globales,
         insigniasCount: r.insignias_count,
         trofeosCount: r.trofeos_count,
@@ -417,6 +470,45 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
 }
 
 // service -> logica principal
+// desafio -> calcular estado diario persistente
+async function actualizarDesafiosDiarios(usuarioId: string, fecha = fechaLocal()): Promise<{
+  desafios: Array<{ codigo: string; nombre: string; completado: boolean }>;
+  bonoOtorgado: boolean;
+  bonoNuevo: boolean;
+}> {
+  const [actividad, resumen, puntos] = await Promise.all([
+    query<{ total: string }>(`SELECT COUNT(*) AS total FROM actividades_gamificadas WHERE usuario_id = $1 AND completada = true AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2`, [usuarioId, fecha]),
+    query<{ formatos: string[]; total: string }>(`SELECT COALESCE(ARRAY_AGG(DISTINCT metadata->>'formato') FILTER (WHERE metadata->>'evento' = 'resumen_completado'), ARRAY[]::text[]) AS formatos, COUNT(*) FILTER (WHERE metadata->>'evento' = 'resumen_completado') AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2`, [usuarioId, fecha]),
+    query<{ total: string }>(`SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND COALESCE(metadata->>'evento', '') <> 'bono_desafios_diarios'`, [usuarioId, fecha]),
+  ]);
+  const formatos = resumen.rows[0]?.formatos ?? [];
+  const hayActividad = Number(actividad.rows[0]?.total ?? 0) > 0;
+  const hayResumen = Number(resumen.rows[0]?.total ?? 0) > 0;
+  const puntosBase = Number(puntos.rows[0]?.total ?? 0);
+  const desafios = [
+    { codigo: "resumen", nombre: "Complete un resumen de un tema.", completado: hayResumen },
+    { codigo: "actividad", nombre: "Realice una actividad.", completado: hayActividad },
+    { codigo: "puntos", nombre: `Consiga ${gamificationConfig.puntosDiarios.maximo} puntos en el día.`, completado: puntosBase >= gamificationConfig.puntosDiarios.maximo },
+    { codigo: "cartas", nombre: "Complete el resumen en Cartas.", completado: formatos.includes("CARTAS_EXPLICATIVAS") },
+    { codigo: "esquema", nombre: "Complete el resumen en Esquema.", completado: formatos.includes("ESQUEMA_GEMMA") },
+  ];
+  let bonoOtorgado = false;
+  let bonoNuevo = false;
+  if (desafios.every((desafio) => desafio.completado)) {
+    const result = await query<{ id: string }>(
+      `INSERT INTO puntos_individuales (usuario_id, fecha, tipo, puntos, descripcion, metadata)
+       SELECT $1, $2, 'ajuste_manual', $4, 'Bono por completar desafíos diarios', $3::jsonb
+       WHERE NOT EXISTS (SELECT 1 FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' = 'bono_desafios_diarios')
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [usuarioId, fecha, JSON.stringify({ evento: "bono_desafios_diarios" }), gamificationConfig.puntosDiarios.bonoDesafios],
+    );
+    bonoNuevo = result.rowCount > 0;
+    bonoOtorgado = bonoNuevo || Number((await query<{ total: string }>(`SELECT COUNT(*) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' = 'bono_desafios_diarios'`, [usuarioId, fecha])).rows[0]?.total ?? 0) > 0;
+  }
+  return { desafios, bonoOtorgado, bonoNuevo };
+}
+
 export async function procesarActividadCompletada(input: {
   usuarioId: string;
   estudianteId: string;
@@ -440,23 +532,46 @@ export async function procesarActividadCompletada(input: {
   puntuacion: number; // Nueva puntuación 2-10
   insigniasNuevas: InsigniaEstudiante[];
   trofeosNuevos: TrofeoEstudiante[];
+  bonoDesafios: number;
 }> {
-  const fecha = new Date().toISOString().split("T")[0];
-  const { aciertos, total, porcentajeAcierto, puntosGanados, puntosCalidad, puntosTiempo } = calcularPuntos(
+  const fecha = fechaLocal();
+  const { aciertos, total, porcentajeAcierto, puntosGanados: puntosCalculados, puntosCalidad, puntosTiempo } = calcularPuntos(
     input.respuestas,
     input.preguntas,
     input.tiempoTotalMs,
   );
 
-  const completada = aciertos === total;
-  const rachaCompletada = completada && porcentajeAcierto >= gamificationConfig.racha.umbralAcierto;
+  const completada = input.respuestas.length === input.preguntas.length && total > 0;
+  const rachaCompletada = completada;
   
   // Nueva puntuación 2-10 para gamificación
   const mediaTiempoOtros = input.mediaTiempoOtrosMs ?? 0;
   const puntuacion = calcularPuntuacion(aciertos, total, input.tiempoTotalMs, mediaTiempoOtros);
 
   // transaccion -> procesar actividad completada
-  return await sTransaction(async (_tx) => {
+  const resultado = await sTransaction(async (_tx) => {
+    await _tx.queryObject(`SELECT pg_advisory_xact_lock($1::bigint)`, [input.usuarioId]);
+    const puntosHoyRes = await query<{ total: string }>(
+      `SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2`,
+      [input.usuarioId, fecha],
+    );
+    const puntosHoy = Number(puntosHoyRes.rows[0]?.total ?? 0);
+    const actividadesPrevias = await query<{ total: string }>(`SELECT COUNT(*) AS total FROM actividades_gamificadas WHERE usuario_id = $1 AND completada = true AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2`, [input.usuarioId, fecha]);
+    const dobleDisponible = await query<{ id: string }>(
+      `UPDATE compras_estudiante ce SET usada = true, fecha_uso = NOW()
+       WHERE ce.id = (
+         SELECT ce2.id FROM compras_estudiante ce2
+         JOIN tienda_recompensas tr ON tr.id = ce2.recompensa_id
+         WHERE ce2.usuario_id = $1 AND ce2.usada = false AND lower(tr.nombre) = 'puntos dobles'
+         ORDER BY ce2.fecha_compra LIMIT 1
+       ) AND $2 = true RETURNING ce.id`,
+      [input.usuarioId, completada],
+    );
+    const puntosBaseActividad = completada ? Math.min(10, Math.max(5, puntosCalculados)) : 0;
+    const puntosConBonificacion = puntosBaseActividad * (dobleDisponible.rowCount > 0 ? 2 : 1);
+    const primeraActividadDelDia = completada && Number(actividadesPrevias.rows[0]?.total ?? 0) === 0;
+    const puntosConRacha = puntosConBonificacion + (primeraActividadDelDia ? 5 : 0);
+    const puntosGanados = Math.max(0, Math.min(puntosConRacha, gamificationConfig.puntosDiarios.maximo - puntosHoy));
     await upsertEstudianteGamificacion({
       usuarioId: input.usuarioId,
       estudianteId: input.estudianteId,
@@ -500,7 +615,7 @@ export async function procesarActividadCompletada(input: {
     }
 
     if (rachaCompletada) {
-      const puntosGlobales = Math.floor(Math.random() * 3) + 3;
+      const puntosGlobales = gamificationConfig.puntosGlobales.minPorDia;
       await agregarPuntosGlobales(input.cursoPeriodoId, input.paralelo, fecha, puntosGlobales, `Racha completada: ${actividad.titulo}`);
     }
 
@@ -526,8 +641,14 @@ export async function procesarActividadCompletada(input: {
 
     const trofeosNuevos = await evaluarTrofeos(input.usuarioId, input.cursoPeriodoId, input.paralelo);
 
+    const esSpeedrunner = total >= 5 && aciertos === total && input.tiempoTotalMs >= total * 900 &&
+      input.tiempoTotalMs <= 30000 && input.respuestas.every((respuesta) => respuesta.tiempoMs >= 900);
+    if (esSpeedrunner) trofeosNuevos.push(...await otorgarTrofeoDiario(input.usuarioId, "speedrunner", { actividadId: actividad.id }));
+
     return { actividad, racha, puntosGanados, puntuacion, insigniasNuevas, trofeosNuevos };
   });
+  const estadoDiario = await actualizarDesafiosDiarios(input.usuarioId, fecha);
+  return { ...resultado, bonoDesafios: estadoDiario.bonoNuevo ? gamificationConfig.puntosDiarios.bonoDesafios : 0 };
 }
 
 function calcularPuntos(
@@ -664,7 +785,13 @@ async function evaluarInsignias(
 
     switch (insignia.codigo) {
       case "speedrun":
-        if (contexto.tiempoTotalMs < 30000 && contexto.aciertos === contexto.total) cumple = true;
+        if (
+          contexto.total >= 5 &&
+          contexto.tiempoTotalMs >= contexto.total * 900 &&
+          contexto.tiempoTotalMs <= 30000 &&
+          contexto.aciertos === contexto.total &&
+          contexto.actividad.respuestas.every((respuesta) => respuesta.tiempoMs >= 900)
+        ) cumple = true;
         break;
       case "nuevo_aprendizaje":
         const actMateria = await query<{ count: string }>(
@@ -746,18 +873,29 @@ async function evaluarTrofeos(
 
 // service -> racha
 export async function salvarRachaConPuntos(usuarioId: string): Promise<RachasDiarias> {
-  const fecha = new Date().toISOString().split("T")[0];
+  const fecha = fechaLocal();
   const racha = await getRachaByFecha(usuarioId, fecha);
   if (!racha || racha.completada) {
     throw new HttpError(400, "No hay racha para salvar o ya completada");
   }
-  const costo = gamificationConfig.racha.costoSalvarRacha;
-  await gastarPuntosIndividuales(usuarioId, fecha, costo, "salvar_racha", "Salvar racha diaria");
+  const salvadorComprado = await query<{ id: string }>(
+    `UPDATE compras_estudiante ce SET usada = true, fecha_uso = NOW()
+     WHERE ce.id = (
+       SELECT ce2.id FROM compras_estudiante ce2
+       JOIN tienda_recompensas tr ON tr.id = ce2.recompensa_id
+       WHERE ce2.usuario_id = $1 AND ce2.usada = false AND tr.tipo = 'salvar_racha'
+       ORDER BY ce2.fecha_compra LIMIT 1
+     )
+     RETURNING ce.id`,
+    [usuarioId],
+  );
+  const costo = salvadorComprado.rowCount > 0 ? 0 : gamificationConfig.racha.costoSalvarRacha;
+  if (costo > 0) await gastarPuntosIndividuales(usuarioId, fecha, costo, "salvar_racha", "Salvar racha diaria");
   return await crearOActualizarRacha(usuarioId, fecha, true, 0, 0, true, costo);
 }
 
 export async function usarPistaExamen(usuarioId: string): Promise<void> {
-  const fecha = new Date().toISOString().split("T")[0];
+  const fecha = fechaLocal();
   const costo = gamificationConfig.pistas.costo;
   await gastarPuntosIndividuales(usuarioId, fecha, costo, "pista_examen", "Pista en examen");
 }
@@ -766,32 +904,200 @@ export async function usarPistaExamen(usuarioId: string): Promise<void> {
 export async function getResumenEstudiante(usuarioId: string): Promise<{
   racha: RachasDiarias | null;
   puntosIndividuales: number;
+  puntosHoy: number;
+  limiteDiario: number;
   puntosGlobales: number;
   insignias: InsigniaEstudiante[];
   trofeos: TrofeoEstudiante[];
   ranking: RankingEstudiante | null;
+  aprendizajeHoy: Array<{ titulo: string; materiaNombre: string; porcentajeAcierto: number; aciertos: number; total: number; fechaFin: string | null; feedback: string | null }>;
+  investigarSiguiente: string | null;
+  desafiosDiarios: Array<{ codigo: string; nombre: string; completado: boolean }>;
+  bonoDesafiosOtorgado: boolean;
 }> {
   const infoEst = await getInfoEstudianteGamificacion(usuarioId);
-  const [racha, totalIndividuales, totalGlobales, insignias, trofeos] = await Promise.all([
-    getRacha(usuarioId),
+  const fecha = fechaLocal();
+  const estadoDiario = await actualizarDesafiosDiarios(usuarioId, fecha);
+  const [ultimaRachaRes, totalIndividuales, totalGlobales, insignias, trofeos, puntosHoyRes, actividadesHoyRes] = await Promise.all([
+    query<RachasDiarias>(`SELECT id, usuario_id AS "usuarioId", fecha, completada, aciertos,
+      total_preguntas AS "totalPreguntas", porcentaje_acierto AS "porcentajeAcierto",
+      racha_actual AS "rachaActual", mejor_racha AS "mejorRacha",
+      salvada_con_puntos AS "salvadaConPuntos", puntos_gastados AS "puntosGastados",
+      creada_en AS "creadaEn", actualizada_en AS "actualizadaEn"
+      FROM rachas_diarias WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 1`, [usuarioId]),
     getTotalPuntosIndividuales(usuarioId),
     infoEst ? getPuntosGlobalesParalelo(infoEst.cursoPeriodoId, infoEst.paralelo) : Promise.resolve(0),
     getInsigniasEstudiante(usuarioId),
     getTrofeosEstudiante(usuarioId),
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2`,
+      [usuarioId, fecha],
+    ),
+    query<{ titulo: string; materia_nombre: string; porcentaje_acierto: number; aciertos: number; total: number; fecha_fin: string | null; feedback: string | null }>(
+      `SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin, feedback FROM (
+         SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin AS fecha_fin, respuestas->0->>'feedback' AS feedback, fecha_inicio AS orden
+         FROM actividades_gamificadas
+         WHERE usuario_id = $1 AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2
+         UNION ALL
+         SELECT CASE WHEN metadata->>'evento' = 'investigacion' THEN 'Investigación diaria: ' || COALESCE(metadata->>'titulo', 'tema') ELSE COALESCE(metadata->>'titulo', 'Resumen ' || COALESCE(metadata->>'formato', 'estudiado')) END,
+                COALESCE(metadata->>'materiaNombre', 'Estudio personal'), 1.0, 1, 1, creada_en, NULL::text, creada_en
+         FROM puntos_individuales
+         WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' IN ('resumen_completado', 'investigacion')
+       ) aprendizaje ORDER BY orden DESC LIMIT 10`,
+      [usuarioId, fecha],
+    ),
   ]);
+  const ultimaRacha = ultimaRachaRes.rows[0] ?? null;
+  const racha = ultimaRacha && ultimaRacha.fecha === fecha
+    ? ultimaRacha
+    : ultimaRacha
+    ? { ...ultimaRacha, fecha, completada: false, aciertos: 0, totalPreguntas: 0, porcentajeAcierto: 0, rachaActual: 0 }
+    : null;
 
   return {
     racha,
     puntosIndividuales: totalIndividuales,
+    puntosHoy: Number(puntosHoyRes.rows[0]?.total ?? 0),
+    limiteDiario: gamificationConfig.puntosDiarios.maximo + gamificationConfig.puntosDiarios.bonoDesafios,
     puntosGlobales: totalGlobales,
     insignias,
     trofeos,
     ranking: null,
+    aprendizajeHoy: actividadesHoyRes.rows.map((item) => ({
+      titulo: item.titulo,
+      materiaNombre: item.materia_nombre,
+      porcentajeAcierto: Number(item.porcentaje_acierto),
+      aciertos: item.aciertos,
+      total: item.total,
+      fechaFin: item.fecha_fin ? asDateTimeString(item.fecha_fin) : null,
+      feedback: item.feedback,
+    })),
+    investigarSiguiente: actividadesHoyRes.rows[0]?.materia_nombre
+      ? `Investiga un ejemplo práctico nuevo de ${actividadesHoyRes.rows[0].materia_nombre} y relaciónalo con lo que estudiaste.`
+      : null,
+    desafiosDiarios: estadoDiario.desafios,
+    bonoDesafiosOtorgado: estadoDiario.bonoOtorgado,
+  };
+}
+
+// service -> evidencia de aprendizaje
+export async function getEvidenciaAprendizaje(usuarioId: string): Promise<Record<string, unknown>> {
+  const [actividades, eventos, temas, conteos] = await Promise.all([
+    query<{ titulo: string; tipo: string; porcentaje_acierto: number; tiempo_total_ms: number; puntos_ganados: number; fecha_inicio: string }>(
+      `SELECT titulo, tipo, porcentaje_acierto, tiempo_total_ms, puntos_ganados, fecha_inicio
+       FROM actividades_gamificadas WHERE usuario_id = $1 ORDER BY fecha_inicio DESC LIMIT 120`,
+      [usuarioId],
+    ),
+    query<{ evento: string; content_id: string; titulo: string; formato: string | null; fecha: string }>(
+      `SELECT metadata->>'evento' AS evento, metadata->>'contentId' AS content_id,
+              COALESCE(metadata->>'titulo', '') AS titulo, metadata->>'formato' AS formato,
+              creada_en AS fecha
+       FROM puntos_individuales WHERE usuario_id = $1
+         AND metadata->>'evento' IN ('resumen_completado', 'investigacion')
+       ORDER BY creada_en DESC LIMIT 300`,
+      [usuarioId],
+    ),
+    query<{ tema: string }>(
+      `SELECT DISTINCT metadata->>'titulo' AS tema FROM puntos_individuales
+       WHERE usuario_id = $1 AND metadata->>'evento' = 'investigacion'
+         AND NULLIF(BTRIM(metadata->>'titulo'), '') IS NOT NULL ORDER BY tema`,
+      [usuarioId],
+    ),
+    query<{ total_investigaciones: string; resumenes_completados: string }>(
+      `SELECT COUNT(*) FILTER (WHERE metadata->>'evento' = 'investigacion') AS total_investigaciones,
+              COUNT(*) FILTER (WHERE metadata->>'evento' = 'resumen_completado') AS resumenes_completados
+       FROM puntos_individuales WHERE usuario_id = $1
+         AND metadata->>'evento' IN ('resumen_completado', 'investigacion')`,
+      [usuarioId],
+    ),
+  ]);
+  return {
+    actividades: actividades.rows.map((item) => ({
+      titulo: item.titulo,
+      tipo: item.tipo,
+      porcentaje: Number(item.porcentaje_acierto),
+      duracionMs: item.tiempo_total_ms,
+      fecha: asDateTimeString(item.fecha_inicio),
+    })),
+    eventosEstudio: eventos.rows.map((item) => ({
+      tipo: item.evento,
+      tema: item.titulo,
+      contentId: item.content_id,
+      formato: item.formato,
+      fecha: asDateTimeString(item.fecha),
+    })),
+    totalActividades: actividades.rows.length,
+    totalInvestigaciones: Number(conteos.rows[0]?.total_investigaciones ?? 0),
+    temasIndagados: temas.rows.map((item) => item.tema),
+    temasIndagadosCount: temas.rows.length,
+    resumenesCompletados: Number(conteos.rows[0]?.resumenes_completados ?? 0),
   };
 }
 
 export async function getTienda(): Promise<RecompensaTienda[]> {
   return getRecompensasActivas();
+}
+
+// service -> progreso de estudio diario
+export async function registrarProgresoEstudio(usuarioId: string, input: {
+  contentId: string;
+  titulo?: string;
+  materiaNombre?: string;
+  formato?: "CARTAS_EXPLICATIVAS" | "ESQUEMA_GEMMA";
+  completo?: boolean;
+  investigacion?: boolean;
+}): Promise<{ puntosGanados: number; trofeosNuevos: TrofeoEstudiante[]; insigniasNuevas: InsigniaEstudiante[]; desafiosDiarios: Array<{ codigo: string; nombre: string; completado: boolean }>; bonoDesafios: number }> {
+  if (!input.contentId || (!input.investigacion && !input.formato)) throw new HttpError(400, "Se requiere material y tipo de progreso");
+  if (!input.investigacion && !input.completo) throw new HttpError(400, "El resumen debe completarse para registrar el logro");
+  const fecha = fechaLocal();
+  const metadata = {
+    evento: input.investigacion ? "investigacion" : "resumen_completado",
+    contentId: input.contentId,
+    titulo: input.titulo ?? "",
+    materiaNombre: input.materiaNombre ?? "",
+    formato: input.formato ?? null,
+  };
+  const txResult = await sTransaction(async (tx) => {
+    await tx.queryObject(`SELECT pg_advisory_xact_lock($1::bigint)`, [usuarioId]);
+    const duplicate = await tx.queryObject<{ id: string }>(
+      `SELECT id FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' = $3
+       AND metadata->>'contentId' = $4 AND COALESCE(metadata->>'formato','') = $5 LIMIT 1`,
+      [usuarioId, fecha, metadata.evento, input.contentId, input.formato ?? ""],
+    );
+    if (duplicate.rowCount) return { puntosGanados: 0, registrado: false };
+    const puntosRes = await tx.queryObject<{ total: string }>(
+      `SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2`,
+      [usuarioId, fecha],
+    );
+    const otorgados = input.investigacion ? 0 : Math.min(gamificationConfig.puntosIndividuales.leerResumen, Math.max(0, gamificationConfig.puntosDiarios.maximo - Number(puntosRes.rows[0]?.total ?? 0)));
+    await tx.queryObject(
+      `INSERT INTO puntos_individuales (usuario_id, fecha, tipo, puntos, descripcion, metadata) VALUES ($1,$2,'leer_resumen',$3,$4,$5)`,
+      [usuarioId, fecha, otorgados, input.investigacion ? "Investigación diaria" : "Resumen estudiado", JSON.stringify(metadata)],
+    );
+    return { puntosGanados: otorgados, registrado: true };
+  });
+  if (!txResult.registrado) {
+    const estadoDiario = await actualizarDesafiosDiarios(usuarioId, fecha);
+    return { puntosGanados: 0, trofeosNuevos: [], insigniasNuevas: [], desafiosDiarios: estadoDiario.desafios, bonoDesafios: estadoDiario.bonoNuevo ? gamificationConfig.puntosDiarios.bonoDesafios : 0 };
+  }
+  let trofeosNuevos: TrofeoEstudiante[] = [];
+  let insigniasNuevas: InsigniaEstudiante[] = [];
+  if (input.investigacion) {
+    trofeosNuevos = await otorgarTrofeoDiario(usuarioId, "aprendiendo_mas", { contentId: input.contentId });
+  } else if (input.completo && input.formato) {
+    const formatos = await query<{ formatos: string[] }>(
+      `SELECT ARRAY_AGG(DISTINCT metadata->>'formato') AS formatos FROM puntos_individuales
+       WHERE usuario_id = $1 AND metadata->>'evento' = 'resumen_completado' AND metadata->>'contentId' = $2`,
+      [usuarioId, input.contentId],
+    );
+    if (["CARTAS_EXPLICATIVAS", "ESQUEMA_GEMMA"].every((formato) => formatos.rows[0]?.formatos?.includes(formato))) {
+      trofeosNuevos = await otorgarTrofeoDiario(usuarioId, "aprendiendo_sin_parar", { contentId: input.contentId });
+      const insignia = await query<{ id: string }>(`SELECT id FROM insignias WHERE codigo = 'logro_tema_completo' AND activa = true LIMIT 1`);
+      if (insignia.rows[0]) insigniasNuevas = [await otorgarInsignia(usuarioId, insignia.rows[0].id, { contentId: input.contentId, titulo: input.titulo ?? "" })];
+    }
+  }
+  const estadoDiario = await actualizarDesafiosDiarios(usuarioId, fecha);
+  return { puntosGanados: txResult.puntosGanados, trofeosNuevos, insigniasNuevas, desafiosDiarios: estadoDiario.desafios, bonoDesafios: estadoDiario.bonoNuevo ? gamificationConfig.puntosDiarios.bonoDesafios : 0 };
 }
 
 export async function canjearRecompensa(usuarioId: string, recompensaId: string): Promise<CompraEstudiante> {
@@ -851,7 +1157,6 @@ export async function upsertEstudianteGamificacion(data: {
        curso_periodo_id = EXCLUDED.curso_periodo_id,
        paralelo = EXCLUDED.paralelo,
        nombre = CASE WHEN EXCLUDED.nombre <> '' THEN EXCLUDED.nombre ELSE estudiantes_gamificacion.nombre END,
-       apellido_paterno = CASE WHEN EXCLUDED.apellido_paterno <> '' THEN EXCLUDED.apellido_paterno ELSE estudiantes_gamificacion.apellido_paterno END,
        avatar_url = COALESCE(EXCLUDED.avatar_url, estudiantes_gamificacion.avatar_url),
        estado = 'activo',
        fecha_actualizacion = NOW()`,

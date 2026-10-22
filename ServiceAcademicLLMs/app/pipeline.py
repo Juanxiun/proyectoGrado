@@ -12,7 +12,7 @@ from redis.asyncio import Redis
 from app.config import settings
 from app.chunking import CATEGORIA_EJERCICIOS, SemanticChunk, split_chunks
 from app.documents import extract_text
-from app.lmstudio import LMStudioClient
+from app.ollama_client import OllamaClient
 from app.RAG.repository import RAGRepository
 from app.schemas import ActivityBatchOutput, ContentCreatedEvent, ContentEvaluation, RefinedContent
 from app.services.activities import normalize_activity
@@ -35,9 +35,9 @@ def _resumen_conceptual(texto: str, nombre_archivo: str, conceptos: list[str]) -
         salida = ". ".join(conceptos[:3])
     return salida[:500].rstrip(" ,;:-")
 
-# retry -> configuracion para llamadas a LM Studio
-LMSTUDIO_MAX_RETRIES = 3
-LMSTUDIO_RETRY_BASE_DELAY = 5.0
+# retry -> configuracion para Ollama
+OLLAMA_MAX_RETRIES = 3
+OLLAMA_RETRY_BASE_DELAY = 5.0
 
 
 def _metadata(event: ContentCreatedEvent) -> dict[str, str]:
@@ -83,31 +83,31 @@ def _chunk_metadata(event: ContentCreatedEvent, chunk: SemanticChunk) -> dict[st
     }
 
 
-# LM Studio -> reintentos exponenciales para llamadas caidas
-async def _lmstudio_with_retry(coro_factory, max_retries: int = LMSTUDIO_MAX_RETRIES) -> Any:
+# ollama -> reintentos exponenciales para llamadas caidas
+async def _ollama_with_retry(coro_factory, max_retries: int = OLLAMA_MAX_RETRIES) -> Any:
     last_exc = None
     for attempt in range(max_retries):
         try:
             return await coro_factory()
-        except (httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
+        except (ConnectionError, httpx.TimeoutException, httpx.ConnectError, httpx.ReadTimeout, httpx.RemoteProtocolError) as exc:
             last_exc = exc
             if attempt < max_retries - 1:
-                delay = LMSTUDIO_RETRY_BASE_DELAY * (2 ** attempt)
-                logger.warning(f"LM Studio request falló (intento {attempt + 1}/{max_retries}), reintentando en {delay}s: {exc}")
+                delay = OLLAMA_RETRY_BASE_DELAY * (2 ** attempt)
+                logger.warning(f"Ollama request falló (intento {attempt + 1}/{max_retries}), reintentando en {delay}s: {exc}")
                 await asyncio.sleep(delay)
             else:
-                logger.error(f"LM Studio request falló tras {max_retries} intentos: {exc}")
+                logger.error(f"Ollama request falló tras {max_retries} intentos: {exc}")
                 raise
         except Exception as exc:
-            # LM Studio -> errores no de red no se reintentan
-            logger.error(f"Error en LM Studio no recuperable: {exc}")
+            # retry -> errores no de red no se reintentan
+            logger.error(f"Error de Ollama no recuperable: {exc}")
             raise
     raise last_exc
 
 
 # contenido -> sintesis pedagogica Gemma basada en fragmentos fuente
 async def _generate_learning_content(
-    llm: LMStudioClient,
+    llm: OllamaClient,
     reference_chunks: list[tuple[int, SemanticChunk]],
     event: ContentCreatedEvent,
     semaphore: asyncio.Semaphore
@@ -128,14 +128,14 @@ async def _generate_learning_content(
                    for index, chunk in reference_chunks],
     }, ensure_ascii=False)
     async with semaphore:
-        result = await _lmstudio_with_retry(lambda: llm.structured(
-            settings.lmstudio_gemma_model, "gemma/learning_content.txt", compact, RefinedContent))
+        result = await _ollama_with_retry(lambda: llm.structured(
+            settings.ollama_gemma_model, "gemma/learning_content.txt", compact, RefinedContent))
     logger.info(f"Contenido educativo (Gemma) completado en {time.perf_counter() - started:.2f}s")
     return result
 
 
 async def _generate_activity_batch(
-    llm: LMStudioClient,
+    llm: OllamaClient,
     reference_chunks: list[tuple[int, SemanticChunk]],
     event: ContentCreatedEvent,
     activity_type: str,
@@ -155,8 +155,8 @@ async def _generate_activity_batch(
         "evidencia_original": source,
     }, ensure_ascii=False)
     async with semaphore:
-        result = await _lmstudio_with_retry(lambda: llm.structured(
-            settings.lmstudio_gemma_model,
+        result = await _ollama_with_retry(lambda: llm.structured(
+            settings.ollama_gemma_model,
             "gemma/activity_generation.txt",
             context,
             ActivityBatchOutput,
@@ -182,7 +182,7 @@ async def _generate_activity_batch(
 
 
 async def _generate_activity_bank(
-    llm: LMStudioClient,
+    llm: OllamaClient,
     reference_chunks: list[tuple[int, SemanticChunk]],
     event: ContentCreatedEvent,
     semaphore: asyncio.Semaphore,
@@ -201,7 +201,7 @@ async def _generate_activity_bank(
 
 
 
-async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGRepository, llm: LMStudioClient, http: httpx.AsyncClient, semaphore: asyncio.Semaphore, notify_redis: Redis) -> None:
+async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGRepository, llm: OllamaClient, http: httpx.AsyncClient, semaphore: asyncio.Semaphore, notify_redis: Redis) -> None:
     event = ContentCreatedEvent.model_validate(raw_event)
     async with http.stream("GET", str(event.document_url), follow_redirects=True) as response:
         response.raise_for_status()
@@ -238,7 +238,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         digest = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
         vector_digest = hashlib.sha256(vector_text.encode("utf-8")).hexdigest()
         chunk_id = f"{index:04d}-{digest[:20]}"
-        cache_key = f"{repo.prefix}:cache:embedding:{settings.lmstudio_embedding_model}:concept:{vector_digest}"
+        cache_key = f"{repo.prefix}:cache:embedding:{settings.ollama_embedding_model}:concept:{vector_digest}"
         cached = await repo.get_cache(cache_key)
         if cached:
             vector_by_chunk[chunk_id] = json.loads(cached)
@@ -250,7 +250,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
             return
         started = time.perf_counter()
         async with semaphore:
-            vectors = await _lmstudio_with_retry(lambda: llm.embed_many([
+            vectors = await _ollama_with_retry(lambda: llm.embed_many([
                 "\n".join(part for part in (event.title, chunk.heading, chunk.text) if part)
                 for _, chunk, _, _ in embedding_entries
             ]))
@@ -318,7 +318,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     # summary + minicontextos -> embeddings (con retry y checkpoint)
     summary_text = "\n".join([refined.title, refined.summary, *refined.key_concepts])
     summary_digest = hashlib.sha256(summary_text.encode("utf-8")).hexdigest()
-    summary_cache_key = f"{repo.prefix}:cache:embedding:{settings.lmstudio_embedding_model}:{summary_digest}"
+    summary_cache_key = f"{repo.prefix}:cache:embedding:{settings.ollama_embedding_model}:{summary_digest}"
     cached_summary_vector = await repo.get_cache(summary_cache_key)
     if cached_summary_vector:
         summary_vector = json.loads(cached_summary_vector)
@@ -326,7 +326,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         async with semaphore:
             async def _embed_summary():
                 return await llm.embed(summary_text)
-            summary_vector = await _lmstudio_with_retry(_embed_summary)
+            summary_vector = await _ollama_with_retry(_embed_summary)
         await repo.set_cache(summary_cache_key, json.dumps(summary_vector), 30 * 24 * 60 * 60)
     # rag -> guardando resumen general del tema vectorizado
     await repo.save_vector(content_id, "validated-summary", summary_text, summary_vector, {**_metadata(event), "record_type": "validated_summary", "record_slot": "validated-summary", "branch": "topics"})
@@ -387,7 +387,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         "course": event.course,
         "parallel": event.parallel,
         "created_at": event.timestamp,
-        "model_versions": {"gemma": settings.lmstudio_gemma_model, "mistral": settings.lmstudio_mistral_model, "embedding": settings.lmstudio_embedding_model},
+        "model_versions": {"gemma": settings.ollama_gemma_model, "mistral": settings.ollama_mistral_model, "embedding": settings.ollama_embedding_model},
         "quality_score": evaluation.score,
         "quality_evaluation": evaluation.model_dump(),
         "activities": generated_activities,

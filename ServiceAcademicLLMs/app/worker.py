@@ -6,14 +6,14 @@ import socket
 
 import httpx
 from app.config import settings
-from app.lmstudio import LMStudioClient
-from app.lmstudio import StructuredOutputError
+from app.ollama_client import OllamaClient
+from app.ollama_client import StructuredOutputError
 from app.pipeline import process_content
 from app.RAG.repository import RAGRepository
 from redis.asyncio import Redis
 
 logger = logging.getLogger(__name__)
-async def run_worker(repo: RAGRepository, llm: LMStudioClient, semaphore: asyncio.Semaphore, stop: asyncio.Event, notify_redis: Redis) -> None:
+async def run_worker(repo: RAGRepository, llm: OllamaClient, semaphore: asyncio.Semaphore, stop: asyncio.Event, notify_redis: Redis) -> None:
     consumer = f"{socket.gethostname()}-{id(asyncio.current_task())}"
     while not stop.is_set():
         try:

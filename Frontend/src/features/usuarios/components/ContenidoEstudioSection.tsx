@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { academicServicesApi, type TemaMalla } from '../../../api/academicServices.api';
 import { ApiClientError } from '../../../api/client';
@@ -10,6 +10,7 @@ import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { connectUsersWebSocket } from '../../../api/users.websocket';
 import { DocumentWebView } from './DocumentWebView';
+import { PdfPaginasViewer } from './PdfPaginasViewer';
 import { ResumenInteractivo } from './ResumenInteractivo';
 import { EjemploCanvas } from './EjemploCanvas';
 import { SigueAprendiendo } from './SigueAprendiendo';
@@ -39,7 +40,14 @@ interface ContenidoEstudioSectionProps {
 
 const FORMATOS: Array<{ id: FormatoResumen; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
   { id: 'CARTAS_EXPLICATIVAS', label: 'Cartas', detail: 'Ideas clave en tarjetas', icon: 'albums-outline' },
-  { id: 'ESQUEMA_GEMMA', label: 'Esquema', detail: 'Diagrama interactivo con Skia', icon: 'share-social-outline' },
+  { id: 'ESQUEMA_GEMMA', label: 'Esquema', detail: 'Diagrama interactivo', icon: 'share-social-outline' },
+];
+
+const MENSAJES_CARGA_RETO = [
+  'Empezando con la actividad',
+  'Validando preguntas',
+  'Viendo tu conocimiento actual',
+  'Preparando retos a tu medida',
 ];
 
 interface ZonaActividad {
@@ -66,12 +74,14 @@ function PiezaArrastrable({ texto, destino, alSoltar }: { texto: string; destino
 }
 
 function LectorArchivo({ material }: { material: MaterialItem }) {
-  const extension = (material.nombreArchivo || '').split('.').pop()?.toLowerCase();
+  const nombreArchivo = material.nombreArchivo || material.archivoUrl.split('?')[0].split('/').pop() || '';
+  const extension = nombreArchivo.split('.').pop()?.toLowerCase();
   const esImagen = material.tipoMime?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '');
-  const esPdf = material.tipoMime === 'application/pdf' || extension === 'pdf';
+  const esPdf = material.tipoMime?.toLowerCase() === 'application/pdf' || extension === 'pdf';
   const url = normalizarUrlMovil(material.archivoUrl);
-  const usarPdfNativo = Platform.OS !== 'web' && esPdf;
-  return <DocumentWebView uri={url} title={material.titulo} mimeType={material.tipoMime} isPdf={esPdf} preferNativePdf={usarPdfNativo} fileName={material.nombreArchivo}/>;
+  // material -> PDF se lee por paginas dentro de la app, sin descargar el archivo
+  if (esPdf && !esImagen) return <PdfPaginasViewer materialId={material.id} titulo={material.titulo}/>;
+  return <DocumentWebView uri={url} title={material.titulo} mimeType={material.tipoMime} isPdf={esPdf} preferNativePdf={Platform.OS !== 'web'} fileName={nombreArchivo}/>;
 }
 
 function normalizarUrlMovil(rawUrl: string): string {
@@ -101,6 +111,11 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const [pantallaResumen, setPantallaResumen] = useState(false);
   const [reto, setReto] = useState<RetoAprendizaje | null>(null);
   const [retoLoading, setRetoLoading] = useState(false);
+  const [mensajeCargaReto, setMensajeCargaReto] = useState(0);
+  const mensajeOpacity = useRef(new Animated.Value(1)).current;
+  const mensajeOffset = useRef(new Animated.Value(0)).current;
+  const cargaMovimiento = useRef(new Animated.Value(0)).current;
+  const cargaPulso = useRef(new Animated.Value(0)).current;
   const [respuestas, setRespuestas] = useState<Record<string, string>>({});
   const [opcionSeleccionada, setOpcionSeleccionada] = useState<string | null>(null);
   const [parejaSeleccionada, setParejaSeleccionada] = useState<string | null>(null);
@@ -108,13 +123,65 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const [resultadoParejas, setResultadoParejas] = useState<Record<string, { correct: boolean; expected?: string; explanation?: string }>>({});
   const [textoLibre, setTextoLibre] = useState('');
   const [posicion, setPosicion] = useState(0);
-  const [resultadoReto, setResultadoReto] = useState<{ puntos: number; correctas: number; total: number; answers: ResultadoReto['answers'] } | null>(null);
+  const [resultadoReto, setResultadoReto] = useState<{ puntos: number; correctas: number; total: number; answers: ResultadoReto['answers']; feedback?: ResultadoReto['learning_feedback'] } | null>(null);
+  const [retoSubmitting, setRetoSubmitting] = useState(false);
   const [explicacion, setExplicacion] = useState<ExplicacionSeccion | null>(null);
   const [seccionExplicada, setSeccionExplicada] = useState<string | null>(null);
   const [explicacionLoading, setExplicacionLoading] = useState<string | null>(null);
   const inicioRetoRef = useRef(0);
   const zonaActividadRef = useRef<ZonaActividad>({ x: 0, y: 0, width: 0, height: 0 });
   const zonaVisualRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    if (!retoLoading) {
+      setMensajeCargaReto(0);
+      mensajeOpacity.setValue(1);
+      mensajeOffset.setValue(0);
+      return;
+    }
+
+    let activo = true;
+    let temporizador: ReturnType<typeof setTimeout>;
+    const movimiento = Animated.loop(Animated.timing(cargaMovimiento, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: true,
+    }));
+    const pulso = Animated.loop(Animated.sequence([
+      Animated.timing(cargaPulso, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(cargaPulso, { toValue: 0, duration: 650, useNativeDriver: true }),
+    ]));
+    movimiento.start();
+    pulso.start();
+
+    const cambiarMensaje = () => {
+      Animated.parallel([
+        Animated.timing(mensajeOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(mensajeOffset, { toValue: -8, duration: 220, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (!activo || !finished) return;
+        setMensajeCargaReto((actual) => (actual + 1) % MENSAJES_CARGA_RETO.length);
+        mensajeOffset.setValue(8);
+        Animated.parallel([
+          Animated.timing(mensajeOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(mensajeOffset, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ]).start();
+        temporizador = setTimeout(cambiarMensaje, 1900);
+      });
+    };
+    temporizador = setTimeout(cambiarMensaje, 1900);
+
+    return () => {
+      activo = false;
+      clearTimeout(temporizador);
+      movimiento.stop();
+      pulso.stop();
+      mensajeOpacity.stopAnimation();
+      mensajeOffset.stopAnimation();
+      cargaMovimiento.setValue(0);
+      cargaPulso.setValue(0);
+    };
+  }, [retoLoading, cargaMovimiento, cargaPulso, mensajeOpacity, mensajeOffset]);
 
   const fetchMateriales = async () => {
     try {
@@ -166,7 +233,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     setPantallaResumen(false);
     setReto(null);
     setResultadoReto(null);
-    inicioRetoRef.current = Date.now();
     setPosicion(0);
     if (material.tipoMaterial === 'actividad') {
       setContenidoLoading(false);
@@ -226,6 +292,9 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     try {
       setExplicacion(await aprendizajeApi.explicarSeccion(tema.id, { ...section, format }));
       setSeccionExplicada(section.title);
+      if (format === 'preguntas') {
+        await gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: section.title, materiaNombre, investigacion: true });
+      }
     } catch {
       Alert.alert('No se pudo generar la explicación', 'Comprueba tu conexión e inténtalo de nuevo.');
     } finally {
@@ -243,6 +312,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     setResultadoReto(null);
     try {
       setReto(await aprendizajeApi.reto(tema.id, 6));
+      inicioRetoRef.current = Date.now();
     } catch (error) {
       const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
       Alert.alert('No se pudo preparar el reto', detalle);
@@ -292,11 +362,15 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
 
   const avanzarReto = async () => {
     if (!actividadActual || !reto) return;
+    const respuestaActualPregunta = actividadActual.tipo === 'CUESTIONARIO' ? textoLibre.trim() : '';
     if (actividadActual.tipo === 'CONECTAR_FRASES') {
       const answer = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
       setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: answer }));
     }
     if (posicion + 1 < totalActividades) {
+      if (actividadActual.tipo === 'CUESTIONARIO') {
+        setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: respuestaActualPregunta }));
+      }
       setPosicion((previous) => previous + 1);
       setOpcionSeleccionada(null);
       setTextoLibre('');
@@ -310,12 +384,17 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     if (actividadActual.tipo === 'CONECTAR_FRASES') {
       respuestasFinales[actividadActual.activity_id] = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
     }
-    if (actividadActual.tipo === 'CUESTIONARIO') respuestasFinales[actividadActual.activity_id] = textoLibre || respuestasFinales[actividadActual.activity_id];
+    if (actividadActual.tipo === 'CUESTIONARIO') respuestasFinales[actividadActual.activity_id] = respuestaActualPregunta || respuestasFinales[actividadActual.activity_id];
     if (actividadActual.tipo === 'FLASHCARD' && !respuestasFinales[actividadActual.activity_id]) respuestasFinales[actividadActual.activity_id] = 'recordado';
     const answers = reto.activities.map((activity) => ({ activity_id: activity.activity_id, response: respuestasFinales[activity.activity_id] || '' }));
+    if (answers.some((answer) => !answer.response.trim())) {
+      Alert.alert('Falta una respuesta', 'Completa todas las actividades antes de enviar el reto.');
+      return;
+    }
+    setRetoSubmitting(true);
     try {
       const resultado = await aprendizajeApi.completarReto(tema!.id, reto.quiz_id, answers, Date.now() - inicioRetoRef.current);
-      let puntos = Math.round((resultado.score || 0) * 10) * totalActividades;
+      const puntos = resultado.learning_feedback?.points ?? Math.max(5, Math.min(10, 5 + Math.round((resultado.score || 0) * 5)));
       try {
         const preguntas: PreguntaActividad[] = reto.activities.map((activity, index) => ({
           id: activity.activity_id,
@@ -331,7 +410,8 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           preguntaId: answer.activity_id,
           respuesta: answers[index]?.response ?? '',
           correcta: answer.correct,
-          tiempoMs: 30000,
+          tiempoMs: Math.round((Date.now() - inicioRetoRef.current) / Math.max(1, totalActividades)),
+          feedback: resultado.learning_feedback?.feedback,
         }));
         const reward = await gamificacionApi.completarActividad({
           estudianteId: user?.estudianteId || user?.id || '',
@@ -343,19 +423,22 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           titulo: `Reto: ${contenido?.title || tema?.titulo || materiaNombre}`,
           preguntas,
           respuestas: respuestasGamificacion,
-          tiempoTotalMs: totalActividades * 30000,
-          fechaInicio: new Date(Date.now() - totalActividades * 30000).toISOString(),
+          tiempoTotalMs: Date.now() - inicioRetoRef.current,
+          fechaInicio: new Date(inicioRetoRef.current).toISOString(),
           fechaFin: new Date().toISOString(),
         });
-        puntos = reward.puntosGanados;
+        void reward;
       } catch (error) {
         console.error('No se pudo registrar puntos de gamificacion:', error);
       }
-      setResultadoReto({ puntos, correctas: resultado.correct, total: resultado.total, answers: resultado.answers });
+      setResultadoReto({ puntos, correctas: resultado.correct, total: resultado.total, answers: resultado.answers, feedback: resultado.learning_feedback });
       return;
     } catch (error) {
       console.error('No se pudo registrar el resultado del reto:', error);
-      Alert.alert('No se pudo guardar el resultado', 'Intenta enviar tus respuestas otra vez.');
+      const detalle = error instanceof ApiClientError ? error.message : 'Intenta enviar tus respuestas otra vez.';
+      Alert.alert('No se pudo guardar el resultado', detalle);
+    } finally {
+      setRetoSubmitting(false);
     }
   };
 
@@ -369,7 +452,8 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     return <View className="gap-3"><TextInput value={textoLibre} onChangeText={setTextoLibre} multiline placeholder={activity.question?.includes('_____') ? 'Completa el espacio en blanco' : 'Escribe tu respuesta'} className="min-h-28 bg-gray-50 rounded-2xl p-4 text-sm text-gray-900"/><TouchableOpacity onPress={() => choose(textoLibre)} className="bg-sky-50 p-3 rounded-xl"><Text className="text-sky-900 font-bold">{activity.question?.includes('_____') ? 'Comprobar respuesta' : 'Guardar respuesta'}</Text></TouchableOpacity></View>;
   };
 
-  if (tema) return <View className="flex-1 gap-3">
+  if (tema) return <>
+    <View className="flex-1 gap-3">
     <View className="flex-row items-center gap-3"><TouchableOpacity onPress={() => pantallaResumen ? setPantallaResumen(false) : setTema(null)} className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"><Ionicons name="arrow-back" size={20} color="#374151" /></TouchableOpacity><View className="flex-1"><Text className="text-lg font-black text-gray-900" numberOfLines={1}>{contenido?.title || tema.titulo}</Text><Text className="text-xs text-gray-500">{materiaNombre} · {pantallaResumen ? 'Resumen' : reto ? 'Prueba' : 'Lectura'}</Text></View></View>
     {tema.tipoMaterial === 'actividad' ? <BentoCard className="p-4 bg-amber-50"><Text className="font-bold text-amber-900">Actividad del docente</Text><Text className="text-xs text-amber-800 mt-1">Abre el archivo para revisar las instrucciones y completar la actividad.</Text></BentoCard> : contenidoLoading ? <View className="py-5 items-center"><ActivityIndicator color="#801529"/><Text className="text-xs text-gray-500 mt-2">Cargando contenido generado por IA...</Text></View> : !contenido ? <BentoCard className="p-4 bg-amber-50"><Text className="font-bold text-amber-900">{contenidoError ? 'No pudimos cargar el contenido de IA' : 'El análisis del material sigue en proceso'}</Text><Text className="text-xs text-amber-800 mt-1">{contenidoError ? (contenidoErrorDetalle || 'Revisa el estado y vuelve a intentarlo.') : 'Puedes leer el archivo mientras se prepara el resumen y las actividades.'}</Text><TouchableOpacity onPress={() => void actualizarContenido()} className="mt-3 self-start rounded-xl bg-white border border-amber-200 px-4 py-2"><Text className="text-xs font-bold text-amber-900">Actualizar contenido</Text></TouchableOpacity></BentoCard> : null}
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
@@ -395,11 +479,71 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
         <BentoCard className="p-3 bg-slate-50"><Text className="text-xs font-bold text-gray-600 mb-2">LECTURA DEL MATERIAL</Text><LectorArchivo material={tema}/></BentoCard>
         {tema.tipoMaterial !== 'actividad' && <TouchableOpacity disabled={retoLoading} onPress={() => void iniciarReto()} className="bg-maroon rounded-2xl p-4 flex-row items-center justify-center gap-2"><Ionicons name="flash" size={19} color="#FFD700"/><Text className="text-white font-black">{retoLoading ? 'Preparando actividades...' : 'Practicar con actividades IA'}</Text></TouchableOpacity>}
       </>}
-      {pantallaResumen && resumen && !reto && <><View className="flex-row items-center justify-between"><Text className="text-xl font-black text-gray-900">{(resumen.data as any).title || 'Tu resumen'}</Text><StatusBadge label={resumen.formato.replaceAll('_', ' ')} variant="brand"/></View><ResumenInteractivo key={`${resumen.content_id}-${resumen.formato}`} formato={resumen.formato} data={resumen.data} explicacion={explicacion && seccionExplicada ? explicacion : null} explicacionLoading={Boolean(explicacionLoading)} onExplain={(section) => void explicarMejor(section, 'paso_a_paso')} onStartActivity={() => void iniciarReto()}/>{retoLoading && <View className="items-center py-4"><ActivityIndicator color="#801529"/><Text className="text-xs text-gray-500 mt-2">Preparando la actividad...</Text></View>}</>}
-      {reto && !resultadoReto && actividadActual && <View className="gap-4"><View className="flex-row items-center justify-between"><StatusBadge label={`RETO ${posicion + 1} / ${totalActividades}`} variant="brand"/><Text className="text-xs font-bold text-amber-700">⭐ Gana puntos al terminar</Text></View><BentoCard className="p-4 bg-indigo-50"><Text className="text-xs font-bold text-indigo-700">{actividadActual.tipo.replaceAll('_', ' ')}</Text></BentoCard>{actividadActual.question ? <EjemploCanvas etiqueta="Enunciado de práctica" ejemplos={[actividadActual.question]}/> : <BentoCard className="p-4 bg-indigo-50"><Text className="text-lg font-black text-gray-900">{activityPrompt(actividadActual)}</Text></BentoCard>}{renderReto(actividadActual)}<TouchableOpacity disabled={!puedeContinuar} onPress={() => void avanzarReto()} className="bg-maroon disabled:opacity-40 rounded-2xl p-4"><Text className="text-center text-white font-black">{posicion + 1 === totalActividades ? 'Terminar y ver mis puntos' : 'Continuar'}</Text></TouchableOpacity></View>}
-      {resultadoReto && <View className="gap-3"><BentoCard className="p-6 items-center bg-amber-50"><Ionicons name="trophy" size={48} color="#D97706"/><Text className="text-2xl font-black text-gray-900 mt-3">Reto completado</Text><Text className="text-base text-gray-700 mt-2">{resultadoReto.correctas} de {resultadoReto.total} correctas</Text><Text className="text-3xl font-black text-maroon mt-2">+{resultadoReto.puntos} puntos</Text></BentoCard>{resultadoReto.answers.map((answer, index) => { const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id); const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'CUESTIONARIO' }); const feedback = answer.feedback; const duda = !answer.correct; return <BentoCard key={answer.activity_id} className={`p-4 ${duda ? 'bg-rose-50' : 'bg-emerald-50'}`}><Text className="text-xs font-bold">{duda ? 'A REFORZAR' : 'DOMINADO'} · {answer.tipo.replaceAll('_', ' ')}</Text><Text className="text-sm font-bold text-gray-900 mt-1">{index + 1}. {titulo}</Text>{feedback?.correct_answer ? <Text className="text-sm text-gray-800 mt-2">Respuesta: {feedback.correct_answer}</Text> : null}<Text className="text-sm text-gray-700 mt-2">{feedback?.explanation || feedback?.where_failed || answer.concept}</Text>{duda ? <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => void explicarMejor({ title: answer.concept || titulo, explanation: feedback?.explanation || answer.concept || titulo, example: feedback?.correct_answer }, 'paso_a_paso')} className="mt-3 self-start rounded-xl bg-white border border-rose-200 px-3 py-2"><Text className="text-xs font-bold text-rose-900">{explicacionLoading === `${answer.concept || titulo}-paso_a_paso` ? 'Explicando...' : 'Explicar esta duda'}</Text></TouchableOpacity> : null}{seccionExplicada === (answer.concept || titulo) && explicacion ? <View className="mt-3 gap-3 rounded-xl bg-white p-3"><Text className="font-bold text-gray-900">{explicacion.title}</Text><Text className="text-sm leading-6 text-gray-700">{explicacion.explanation}</Text><EjemploCanvas ejemplos={explicacion.examples || []}/></View> : null}</BentoCard>; })}<TouchableOpacity onPress={() => setTema(null)} className="bg-maroon rounded-xl px-6 py-3"><Text className="text-center text-white font-bold">Volver a temas</Text></TouchableOpacity></View>}
+      {pantallaResumen && resumen && !reto && <><View className="flex-row items-center justify-between"><Text className="text-xl font-black text-gray-900">{(resumen.data as any)?.title || (resumen as any)?.title || 'Tu resumen'}</Text><StatusBadge label={(resumen.formato || 'ESQUEMA_GEMMA').replaceAll('_', ' ')} variant="brand"/></View><ResumenInteractivo key={`${resumen.content_id}-${resumen.formato}`} formato={(resumen.formato === 'CARTAS_EXPLICATIVAS' ? 'CARTAS_EXPLICATIVAS' : 'ESQUEMA_GEMMA') as FormatoResumen} data={(resumen.data || resumen) as any} explicacion={explicacion && seccionExplicada ? explicacion : null} explicacionLoading={Boolean(explicacionLoading)} onExplain={(section) => void explicarMejor(section, 'paso_a_paso')} onCompleteStudy={(formato) => { void gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: (resumen.data as any)?.title || tema.titulo, materiaNombre, formato, completo: true }).then((resultado) => { if (resultado.bonoDesafios > 0) Alert.alert('¡Desafíos completados!', `Ganaste ${resultado.bonoDesafios} puntos de bono.`); }).catch(() => Alert.alert('No se registró el logro', 'Comprueba tu conexión e inténtalo de nuevo.')); }} onAlternateSummary={(formato) => void generarResumen(formato)} onStartActivity={() => void iniciarReto()}/></>}
+      {reto && !resultadoReto && actividadActual && <View className="gap-4"><View className="flex-row items-center justify-between"><StatusBadge label={`RETO ${posicion + 1} / ${totalActividades}`} variant="brand"/><Text className="text-xs font-bold text-amber-700">⭐ Gana puntos al terminar</Text></View><BentoCard className="p-4 bg-indigo-50"><Text className="text-xs font-bold text-indigo-700">{actividadActual.activity_mode === 'practica' ? 'EJERCICIO PRÁCTICO · MARCA LA SOLUCIÓN' : actividadActual.tipo === 'SELECCION_MULTIPLE' ? 'SELECCIÓN MÚLTIPLE · RELACIONA CONCEPTO Y RESPUESTA' : actividadActual.tipo.replaceAll('_', ' ')}</Text>{actividadActual.learning_objective ? <Text className="mt-1 text-xs text-indigo-900">Concepto: {actividadActual.learning_objective}</Text> : null}</BentoCard>{actividadActual.question ? <EjemploCanvas etiqueta={actividadActual.activity_mode === 'practica' ? 'Resuelve y marca la opción correcta' : 'Elige la respuesta que corresponde al concepto'} ejemplos={[actividadActual.question]}/> : <BentoCard className="p-4 bg-indigo-50"><Text className="text-lg font-black text-gray-900">{activityPrompt(actividadActual)}</Text></BentoCard>}{renderReto(actividadActual)}<TouchableOpacity disabled={!puedeContinuar || retoSubmitting} onPress={() => void avanzarReto()} className="bg-maroon disabled:opacity-40 rounded-2xl p-4"><Text className="text-center text-white font-black">{retoSubmitting ? 'Mistral analiza tu respuesta y el tiempo…' : posicion + 1 === totalActividades ? 'Terminar y ver mis puntos' : 'Continuar'}</Text></TouchableOpacity>{retoSubmitting ? <View className="items-center gap-2"><ActivityIndicator color="#801529"/><Text className="text-center text-xs text-gray-600">Estamos preparando tu retroalimentación para que puedas mejorar.</Text></View> : null}</View>}
+      {resultadoReto && <View className="gap-3"><BentoCard className="p-6 items-center bg-amber-50"><Ionicons name="trophy" size={48} color="#D97706"/><Text className="text-2xl font-black text-gray-900 mt-3">Reto completado</Text><Text className="text-base text-gray-700 mt-2">{resultadoReto.correctas} de {resultadoReto.total} correctas</Text><Text className="text-3xl font-black text-maroon mt-2">{resultadoReto.puntos} puntos del módulo</Text></BentoCard>{resultadoReto.feedback ? <BentoCard className="gap-2 border border-violet-200 bg-violet-50 p-4"><Text className="font-bold text-violet-950">{resultadoReto.feedback.model === 'fallback' ? 'Retroalimentación del reto' : 'Retroalimentación de Mistral 7B'}</Text><Text className="text-sm leading-6 text-violet-900">{resultadoReto.feedback.feedback}</Text><Text className="text-sm font-semibold text-violet-950">Siguiente paso: {resultadoReto.feedback.next_step}</Text></BentoCard> : null}{resultadoReto.answers.map((answer, index) => { const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id); const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'CUESTIONARIO' }); const feedback = answer.feedback; const duda = !answer.correct; return <BentoCard key={answer.activity_id} className={`p-4 ${duda ? 'bg-rose-50' : 'bg-emerald-50'}`}><Text className="text-xs font-bold">{duda ? 'A REFORZAR' : 'DOMINADO'} · {answer.tipo.replaceAll('_', ' ')}</Text><Text className="text-sm font-bold text-gray-900 mt-1">{index + 1}. {titulo}</Text>{feedback?.correct_answer ? <Text className="text-sm text-gray-800 mt-2">Respuesta: {feedback.correct_answer}</Text> : null}<Text className="text-sm text-gray-700 mt-2">{feedback?.explanation || feedback?.where_failed || answer.concept}</Text>{duda ? <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => void explicarMejor({ title: answer.concept || titulo, explanation: feedback?.explanation || answer.concept || titulo, example: feedback?.correct_answer }, 'paso_a_paso')} className="mt-3 self-start rounded-xl bg-white border border-rose-200 px-3 py-2"><Text className="text-xs font-bold text-rose-900">{explicacionLoading === `${answer.concept || titulo}-paso_a_paso` ? 'Explicando...' : 'Explicar esta duda'}</Text></TouchableOpacity> : null}{seccionExplicada === (answer.concept || titulo) && explicacion ? <View className="mt-3 gap-3 rounded-xl bg-white p-3"><Text className="font-bold text-gray-900">{explicacion.title}</Text><Text className="text-sm leading-6 text-gray-700">{explicacion.explanation}</Text><EjemploCanvas ejemplos={explicacion.examples || []}/></View> : null}</BentoCard>; })}<TouchableOpacity disabled={retoLoading} onPress={() => void iniciarReto()} className="rounded-xl bg-[#801F3F] px-6 py-3"><Text className="text-center font-bold text-white">Repetir reto para mejorar</Text></TouchableOpacity><TouchableOpacity onPress={() => setTema(null)} className="bg-maroon rounded-xl px-6 py-3"><Text className="text-center text-white font-bold">Volver a temas</Text></TouchableOpacity></View>}
     </ScrollView>
-  </View>;
+    </View>
+    <Modal visible={retoLoading} animationType="fade" presentationStyle="fullScreen" statusBarTranslucent onRequestClose={() => undefined}>
+      <View className="flex-1 items-center justify-center bg-[#F8F7F6] px-7">
+        <View className="mb-8 h-40 w-64 items-center justify-center">
+          <Animated.View
+            style={{
+              position: 'absolute',
+              left: 22,
+              top: 18,
+              transform: [
+                { translateY: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [5, -7] }) },
+                { rotate: '-12deg' },
+              ],
+            }}
+            className="h-16 w-16 items-center justify-center rounded-2xl bg-sky-100 shadow-sm"
+          >
+            <Ionicons name="book" size={30} color="#2563EB" />
+          </Animated.View>
+          <Animated.View
+            style={{
+              transform: [
+                { scale: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) },
+                { rotate: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '5deg'] }) },
+              ],
+            }}
+            className="z-10 h-24 w-24 items-center justify-center rounded-[28px] bg-[#801F3F] shadow-lg"
+          >
+            <Ionicons name="flash" size={46} color="#FFD700" />
+          </Animated.View>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              right: 20,
+              bottom: 14,
+              transform: [
+                { translateY: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [-5, 7] }) },
+                { rotate: '10deg' },
+              ],
+            }}
+            className="h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 shadow-sm"
+          >
+            <Ionicons name="bulb" size={30} color="#D97706" />
+          </Animated.View>
+        </View>
+        <Text className="text-center text-xl font-black text-gray-900">Tu reto está tomando forma</Text>
+        <Animated.Text
+          key={MENSAJES_CARGA_RETO[mensajeCargaReto]}
+          style={{ opacity: mensajeOpacity, transform: [{ translateY: mensajeOffset }] }}
+          className="mt-3 min-h-12 text-center text-base font-semibold text-[#801F3F]"
+        >
+          {MENSAJES_CARGA_RETO[mensajeCargaReto]}
+        </Animated.Text>
+        <View className="mt-6 h-2 w-64 overflow-hidden rounded-full bg-rose-100">
+          <Animated.View
+            style={{ transform: [{ translateX: cargaMovimiento.interpolate({ inputRange: [0, 1], outputRange: [-90, 260] }) }] }}
+            className="h-full w-24 rounded-full bg-[#801F3F]"
+          />
+        </View>
+      </View>
+    </Modal>
+  </>;
 
   // Helper: agrupar materiales por temaId
   const materialesPorTema = materiales.reduce((acc, mat) => {

@@ -60,8 +60,10 @@ rt.get("/health", (ctx: Context) => {
     timestamp: new Date().toISOString(),
     version: "1.0.0",
     features: [
-      "Racha diaria con umbral 90%",
+      "Racha diaria con más del 80% de aciertos",
       "Puntos individuales y globales",
+      "Límite de 20 puntos base y bono de 10 por desafíos",
+      "Informe de aprendizaje con ServiceAcademicLLMs",
       "Insignias y trofeos automaticos",
       "Tienda de recompensas",
       "Ranking por paralelos A y B",

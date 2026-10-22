@@ -2,10 +2,11 @@ import json
 import logging
 import uuid
 
+from pydantic import BaseModel, Field
+
 from app.config import settings
-from app.lmstudio import LMStudioClient
+from app.ollama_client import OllamaClient, StructuredOutputError
 from app.RAG.repository import RAGRepository
-from app.schemas import ActivitySet, ContentEvaluation, SchemaOutput, GamifiedQuizOutput
 from app.services.activities import (
     activity_statement,
     fingerprint,
@@ -15,6 +16,11 @@ from app.services.activities import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# LLM -> plan de reactivos elegido por Mistral sobre el banco validado
+class PlanPrueba(BaseModel):
+    seleccion: list[int] = Field(min_length=3, max_length=8)
 
 # activities -> tipos admitidos para mezclar una prueba (LEGACY: formatos de interaccion UI)
 TIPOS_ACTIVIDAD = (
@@ -80,41 +86,38 @@ def _seleccion_diversa(disponibles: list[dict], cantidad: int, dificultad: str, 
 
 
 # activities -> emision de prueba con actividades gamificadas (Fase 3C: Gemma reestructura)
-async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
+async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar actividades")
     profile = await repo.get_student_profile(student_id, content_id)
     difficulty = profile.get("difficulty_level", "inicial") if profile else "inicial"
     
-    # Obtener quiz gamificado reestructurado por Gemma (cacheado por contenido)
-    cache_key = f"gamified_quiz:{content_id}"
-    cached = await repo.get_cache(cache_key)
-    if cached:
-        gamified = json.loads(cached)
-    else:
-        gamified = await generate_gamified_quiz(content_id, repo, llm, semaphore)
-        await repo.set_cache(cache_key, json.dumps(gamified, ensure_ascii=False), 86400)
-    
-    # Seleccionar actividades del quiz gamificado según dificultad y historial del estudiante
     used_ids, used_statements = await repo.student_used_questions(student_id, content_id)
     used_fingerprints = {fingerprint(statement) for statement in used_statements}
-    
-    # Convertir actividades gamificadas a formato interno
-    selected = _seleccionar_actividades_gamificadas(
-        gamified.get("actividades", []),
+    bank = await repo.get_activity_bank(content_id)
+    if not bank:
+        bank = content.get("activities", []) if isinstance(content.get("activities"), list) else []
+    disponibles = _disponibles(bank, used_ids, used_fingerprints)
+    if len(disponibles) < min(activity_count, 4):
+        logger.warning(
+            "Banco insuficiente content_id=%s solicitadas=%s disponibles=%s; se reutilizan reactivos",
+            content_id, activity_count, len(disponibles),
+        )
+        disponibles = _disponibles(bank, set(), set())
+    if not disponibles:
+        raise ValueError("El material no tiene reactivos validados para iniciar la práctica")
+
+    # activities -> emitir rapido reactivos validados con seleccion diversa
+    selected = _seleccion_diversa(
+        disponibles,
         activity_count,
         difficulty,
-        used_fingerprints,
         profile.get("recommended_formats", []) if profile else [],
     )
-    
+
     if len(selected) < 5:
-        logger.error(
-            "Actividades gamificadas insuficientes content_id=%s solicitadas=%s disponibles=%s",
-            content_id, activity_count, len(selected),
-        )
-        raise ValueError("El material no tiene suficientes actividades gamificadas únicas para iniciar la práctica")
+        raise ValueError("El material todavía no tiene cinco actividades validadas para iniciar la práctica")
     
     quiz_id = str(uuid.uuid4())
     issued = []
@@ -131,55 +134,80 @@ async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo
         "content_id": content_id,
         "difficulty": difficulty,
         "activity_count": len(issued),
-        "activities": [public_activity(actividad, semilla=quiz_id) for actividad in issued],
+        "activities": [public_activity(actividad, semilla=quiz_id, banco=bank) for actividad in issued],
     }
 
 
-def _seleccionar_actividades_gamificadas(
-    actividades_gamificadas: list[dict],
+# LLM -> seleccion y orden de reactivos validados mediante Mistral
+async def _seleccionar_con_mistral(
+    disponibles: list[dict],
     cantidad: int,
     dificultad: str,
-    used_fingerprints: set[str],
     formatos_recomendados: list[str],
+    llm: OllamaClient | None,
+    semaphore,
 ) -> list[dict]:
-    # Filtrar por dificultad objetivo y huellas no usadas
-    disponibles = []
-    for act in actividades_gamificadas:
-        fp = fingerprint(act.get("contenido", {}).get("parrafo", "") or act.get("contenido", {}).get("enunciado", "") or str(act))
-        if fp in used_fingerprints:
+    limite = min(len(disponibles), 24)
+    candidatos = disponibles[:limite]
+    respaldo = _seleccion_diversa(list(candidatos), cantidad, dificultad, formatos_recomendados)
+
+    if llm is None or semaphore is None:
+        return respaldo
+
+    # LLM -> indice corto por reactivo para reducir tokens del prompt
+    catalogo = [
+        {
+            "indice": posicion,
+            "tipo": _get_activity_type(actividad),
+            "nivel": str(actividad.get("difficulty") or "inicial"),
+            "pregunta": str(actividad.get("question") or "")[:180],
+        }
+        for posicion, actividad in enumerate(candidatos, 1)
+    ]
+    contexto = json.dumps(
+        {
+            "cantidad": min(cantidad, limite),
+            "dificultad_objetivo": dificultad,
+            "formatos_recomendados": formatos_recomendados,
+            "reactivos": catalogo,
+        },
+        ensure_ascii=False,
+    )
+    try:
+        async with semaphore:
+            plan = await llm.structured(
+                settings.ollama_mistral_model,
+                "mistral/quiz_selection.txt",
+                contexto,
+                PlanPrueba,
+            )
+    except StructuredOutputError as exc:
+        logger.warning("Mistral no pudo planificar la prueba, se usa seleccion determinista: %s", str(exc)[:300])
+        return respaldo
+    except Exception as exc:
+        logger.warning("Fallo al consultar Mistral para la prueba, se usa seleccion determinista: %s", str(exc)[:300])
+        return respaldo
+
+    elegidas: list[dict] = []
+    vistos: set[str] = set()
+    for indice in plan.seleccion:
+        if not 1 <= indice <= len(candidatos):
             continue
-        act["fingerprint"] = fp
-        act["difficulty"] = act.get("dificultad", "inicial")
-        disponibles.append(act)
-    
-    # Ordenar por preferencia de dificultad y formato
-    orden_dificultad = {"inicial": 0, "intermedia": 1, "avanzada": 2}
-    objetivo = orden_dificultad.get(dificultad, 0)
-    disponibles.sort(key=lambda a: abs(orden_dificultad.get(a.get("difficulty", "inicial"), 0) - objetivo))
-    
-    return disponibles[:cantidad]
+        actividad = candidatos[indice - 1]
+        clave = str(actividad.get("activity_id") or actividad.get("fingerprint") or indice)
+        if clave in vistos:
+            continue
+        vistos.add(clave)
+        elegidas.append(actividad)
+        if len(elegidas) == cantidad:
+            break
 
-
-# LLM -> fase 3c actividad gemma
-async def generate_gamified_quiz(content_id: str, repo: RAGRepository, llm: LMStudioClient, semaphore) -> dict:
-    content = await repo.get_validated_content(content_id)
-    if not content:
-        raise LookupError("El material aun no tiene contenido validado para generar actividades gamificadas")
-    activities_bank = await repo.get_activity_bank(content_id)
-    if len(activities_bank) < 20:
-        raise ValueError("Se requieren al menos 20 reactivos validados (10 teóricos + 10 prácticos) para reestructurar")
-    entrada = {
-        "titulo": content.get("title"),
-        "resumen": content.get("summary"),
-        "objetivos": content.get("learning_objectives", []),
-        "conceptos": content.get("key_concepts", []),
-        "actividades_banco": activities_bank[:20],
-    }
-    async with semaphore:
-        restructured = await llm.structured(
-            settings.lmstudio_gemma_model,
-            "gemma/restructure_quiz.txt",
-            json.dumps(entrada, ensure_ascii=False),
-            GamifiedQuizOutput,
-        )
-    return restructured.model_dump()
+    # LLM -> completar con seleccion determinista si faltan reactivos
+    for actividad in respaldo:
+        if len(elegidas) >= cantidad:
+            break
+        clave = str(actividad.get("activity_id") or actividad.get("fingerprint") or "")
+        if clave and clave not in vistos:
+            vistos.add(clave)
+            elegidas.append(actividad)
+    return elegidas[:cantidad]
