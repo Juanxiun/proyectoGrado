@@ -217,62 +217,62 @@ export interface EvidenciaAprendizaje {
 
 export const gamificacionApi = {
   getResumen: async (): Promise<ResumenGamificacion> => {
-    return apiRequest<ResumenGamificacion>('/gamificacion/resumen');
+    return apiRequest<ResumenGamificacion>('/api/gamificacion/resumen');
   },
 
   getEvidenciaAprendizaje: async (): Promise<EvidenciaAprendizaje> => {
-    return apiRequest<EvidenciaAprendizaje>('/gamificacion/aprendizaje/evidencia');
+    return apiRequest<EvidenciaAprendizaje>('/api/gamificacion/aprendizaje/evidencia');
   },
 
   getInfoEstudiante: async (): Promise<InfoEstudianteGamificacion | null> => {
-    return apiRequest<InfoEstudianteGamificacion | null>('/gamificacion/info-estudiante');
+    return apiRequest<InfoEstudianteGamificacion | null>('/api/gamificacion/info-estudiante');
   },
 
   registrarPerfil: async (payload: Partial<InfoEstudianteGamificacion>): Promise<{ message: string }> => {
-    return apiRequest<{ message: string }>('/gamificacion/perfil', {
+    return apiRequest<{ message: string }>('/api/gamificacion/perfil', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
   completarActividad: async (payload: CompletarActividadPayload): Promise<ResultadoActividad> => {
-    return apiRequest<ResultadoActividad>('/gamificacion/actividad', {
+    return apiRequest<ResultadoActividad>('/api/gamificacion/actividad', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
   registrarProgresoEstudio: async (payload: ProgresoEstudioPayload): Promise<{ puntosGanados: number; bonoDesafios: number }> => {
-    return apiRequest<{ puntosGanados: number; bonoDesafios: number }>('/gamificacion/estudio', {
+    return apiRequest<{ puntosGanados: number; bonoDesafios: number }>('/api/gamificacion/estudio', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   },
 
   salvarRacha: async (): Promise<RachasDiarias> => {
-    return apiRequest<RachasDiarias>('/gamificacion/racha/salvar', {
+    return apiRequest<RachasDiarias>('/api/gamificacion/racha/salvar', {
       method: 'POST',
     });
   },
 
   usarPista: async (): Promise<{ message: string }> => {
-    return apiRequest<{ message: string }>('/gamificacion/pista', {
+    return apiRequest<{ message: string }>('/api/gamificacion/pista', {
       method: 'POST',
     });
   },
 
   getTienda: async (): Promise<RecompensaTienda[]> => {
-    return apiRequest<RecompensaTienda[]>('/gamificacion/tienda');
+    return apiRequest<RecompensaTienda[]>('/api/gamificacion/tienda');
   },
 
   canjearRecompensa: async (recompensaId: string): Promise<CompraEstudiante> => {
-    return apiRequest<CompraEstudiante>('/gamificacion/tienda/canjear', {
+    return apiRequest<CompraEstudiante>('/api/gamificacion/tienda/canjear', {
       method: 'POST',
       body: JSON.stringify({ recompensaId }),
     });
   },
 
   getRanking: async (cursoPeriodoId: string): Promise<RankingParalelo[]> => {
-    return apiRequest<RankingParalelo[]>(`/gamificacion/ranking?cursoPeriodoId=${encodeURIComponent(cursoPeriodoId)}`);
+    return apiRequest<RankingParalelo[]>(`/api/gamificacion/ranking?cursoPeriodoId=${encodeURIComponent(cursoPeriodoId)}`);
   },
 };

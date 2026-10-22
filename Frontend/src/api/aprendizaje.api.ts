@@ -104,7 +104,7 @@ export interface ResultadoReto {
   score: number;
   correct: number;
   total: number;
-  learning_feedback?: { feedback: string; next_step: string; points: number; model?: string };
+  learning_feedback?: { feedback: string; next_step: string; points: number; model?: string; pending?: boolean };
   answers: Array<{
     activity_id: string;
     tipo: string;
@@ -137,6 +137,14 @@ export interface PerfilAprendizajeEstudiante {
   model: string;
 }
 
+export interface RetroalimentacionReto {
+  feedback: string;
+  next_step: string;
+  points: number;
+  model?: string;
+  pending?: boolean;
+}
+
 export const aprendizajeApi = {
   contenido: (materialId: string) => solicitarConReintento(() => apiRequest<ContenidoAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}`, { signal: AbortSignal.timeout(30000) }), 3, true),
   resumen: (materialId: string, formato: FormatoResumen) => solicitarConReintento(() => apiRequest<ResumenAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/resumen`, { method: 'POST', body: { formato }, signal: AbortSignal.timeout(300000) }), 0),
@@ -146,5 +154,6 @@ export const aprendizajeApi = {
   vistaPreviaPdf: (materialId: string) => apiRequest<VistaPreviaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/vista-previa`, { signal: AbortSignal.timeout(90000) }),
   paginaPdf: (materialId: string, numero: number) => apiRequest<PaginaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/pagina/${numero}`, { signal: AbortSignal.timeout(120000) }),
   completarReto: (materialId: string, quizId: string, answers: Array<{ activity_id: string; response: string }>, elapsedMs = 0) => apiRequest<ResultadoReto>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/completar`, { method: 'POST', body: { answers, elapsed_ms: elapsedMs }, signal: AbortSignal.timeout(90000) }),
+  retroalimentacionReto: (materialId: string, quizId: string) => apiRequest<RetroalimentacionReto>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/feedback`, { method: 'GET', signal: AbortSignal.timeout(15000) }),
   evaluarPerfilAprendizaje: (evidence: unknown) => apiRequest<PerfilAprendizajeEstudiante>('/api/aprendizaje/perfil-aprendizaje', { method: 'POST', body: { evidence }, signal: AbortSignal.timeout(90000) }),
 };

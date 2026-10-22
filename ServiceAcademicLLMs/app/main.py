@@ -49,8 +49,9 @@ async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict 
         "model": "fallback",
     }
     try:
-        async with asyncio.timeout(45):
-            async with semaphore:
+        # semaphore -> esperar turno fuera del presupuesto de generacion
+        async with semaphore:
+            async with asyncio.timeout(settings.llm_feedback_timeout):
                 review = await llm.structured(settings.ollama_mistral_model, "mistral/quiz_feedback.txt", context, QuizQualityFeedback)
         return {**review.model_dump(), "model": settings.ollama_mistral_model}
     except Exception:
@@ -70,6 +71,8 @@ async def lifespan(app: FastAPI):
     app.state.llm = llm
     app.state.semaphore = semaphore
     app.state.llm_self_test = {"status": "pending", "models": {}}
+    # tareas -> referencias a los trabajos en segundo plano (feedback del reto)
+    app.state.background_tasks = set()
 
     async def test_llms_on_start() -> None:
         while not stop.is_set():
@@ -286,14 +289,42 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
                 )
             except Exception:
                 logger.exception("No se pudo indexar el hito de aprendizaje student_id=%s content_id=%s", event.student_id, event.content_id)
-        result["learning_feedback"] = await _feedback_reto(
-            event, result, quiz, request.app.state.llm, request.app.state.semaphore,
-        )
+        # feedback -> en segundo plano para no bloquear la entrega del resultado
+        feedback_pendiente = {
+            "feedback": f"Respondiste correctamente {result.get('correct', 0)} de {result.get('total', len(result.get('answers', [])))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
+            "next_step": "Repite el reto para practicar los conceptos que te costaron.",
+            "points": max(5, min(10, 5 + round(5 * float(result.get("score", 0))))),
+            "model": "fallback",
+            "pending": True,
+        }
+        result["learning_feedback"] = feedback_pendiente
+        tarea = asyncio.create_task(_generar_feedback_en_segundo_plano(
+            event, result, quiz, request.app.state.llm, request.app.state.semaphore, request.app.state.rag,
+        ))
+        request.app.state.background_tasks.add(tarea)
+        tarea.add_done_callback(request.app.state.background_tasks.discard)
         return {"status": "recorded", **result}
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _generar_feedback_en_segundo_plano(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, llm, semaphore, rag) -> None:
+    try:
+        feedback = await _feedback_reto(event, resultado, quiz, llm, semaphore)
+        await rag.set_quiz_feedback(event.student_id, event.content_id, event.attempt_id, feedback)
+    except Exception:
+        logger.exception("No se pudo publicar la retroalimentacion del reto student_id=%s content_id=%s", event.student_id, event.content_id)
+
+
+@app.get("/students/{student_id}/contents/{content_id}/attempts/{attempt_id}/feedback")
+async def get_student_quiz_feedback(student_id: str, content_id: str, attempt_id: str, request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    feedback = await request.app.state.rag.get_quiz_feedback(student_id, content_id, attempt_id)
+    if feedback is None:
+        raise HTTPException(status_code=404, detail="La retroalimentacion aun no esta lista")
+    return feedback
 
 
 @app.post("/students/{student_id}/contents/{content_id}/quizzes")

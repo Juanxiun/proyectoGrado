@@ -2,7 +2,7 @@
 export const gamificationConfig = {
   // racha diaria
   racha: {
-    umbralAcierto: 0.8,
+    umbralAcierto: 0.5,
     costoSalvarRacha: 100, // puntos individuales
   },
 

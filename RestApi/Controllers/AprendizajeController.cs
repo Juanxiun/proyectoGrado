@@ -32,6 +32,10 @@ public sealed class AprendizajeController : ControllerBase
     public Task<IActionResult> CompleteChallenge(long id, string quizId)
         => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/aprendizaje/materiales/{id}/reto/{Uri.EscapeDataString(quizId)}/completar", Request));
 
+    [HttpGet("materiales/{id:long}/reto/{quizId}/feedback")]
+    public Task<IActionResult> ChallengeFeedback(long id, string quizId)
+        => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/aprendizaje/materiales/{id}/reto/{Uri.EscapeDataString(quizId)}/feedback", Request));
+
     [HttpPost("materiales/{id:long}/reto/{quizId}/comprobar-pareja")]
     public Task<IActionResult> CheckMatch(long id, string quizId)
         => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/aprendizaje/materiales/{id}/reto/{Uri.EscapeDataString(quizId)}/comprobar-pareja", Request));

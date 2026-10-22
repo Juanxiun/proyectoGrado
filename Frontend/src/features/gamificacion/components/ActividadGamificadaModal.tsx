@@ -305,10 +305,12 @@ export function ActividadGamificadaModal({
                   <View className="w-full bg-red-50 border border-red-200 p-4 rounded-2xl gap-2">
                     <View className="flex-row items-center gap-2">
                       <Ionicons name="alert-circle" size={18} color="#DC2626" />
-                      <Text className="text-xs font-bold text-red-800">Tu racha está en riesgo (Menos del 90%)</Text>
+                      <Text className="text-xs font-bold text-red-800">
+                        Tu racha está en riesgo ({Math.round((resultadoFinal.racha?.porcentajeAcierto ?? 0) * 100)}% de aciertos · meta 50%)
+                      </Text>
                     </View>
                     <Text className="text-xs text-red-700">
-                      Puedes salvar tu racha consecutiva usando 100 puntos individuales acumulados.
+                      Necesitas 50% o más de aciertos en una actividad para activar la racha. Puedes salvar tu racha consecutiva usando 100 puntos individuales acumulados.
                     </Text>
                     <TouchableOpacity
                       onPress={handleSalvarRacha}

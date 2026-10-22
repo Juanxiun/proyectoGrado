@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     llm_max_refinement_iterations: int = 2
     # ollama -> espera para generaciones largas
     llm_request_timeout: float = 1800.0
+    # ollama -> presupuesto de generacion para la retroalimentacion del reto
+    llm_feedback_timeout: float = 180.0
     # ollama -> timeout de conexion
     llm_connect_timeout: float = 30.0
     llm_max_concurrency: int = 4

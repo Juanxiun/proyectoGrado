@@ -83,6 +83,22 @@ export async function explicarSeccion(ctx: Context): Promise<void> {
   return responder(ctx, llamarServicioLlm(`/students/${encodeURIComponent(claims(ctx).sub)}/contents/${encodeURIComponent(contentId)}/explain-section`, "POST", body));
 }
 
+export async function obtenerRetroalimentacionReto(ctx: Context): Promise<void> {
+  const contenido = await llamarServicioLlm(`/documents/${encodeURIComponent(routeParam(ctx, "id") ?? "")}/learning`, "GET", undefined, 8_000);
+  if (contenido.status !== 200) {
+    respond(ctx, contenido.status, contenido.data);
+    return;
+  }
+  const contentId = String((contenido.data as Record<string, unknown>).content_id);
+  const attemptId = routeParam(ctx, "quizId") ?? "";
+  return responder(ctx, llamarServicioLlm(
+    `/students/${encodeURIComponent(claims(ctx).sub)}/contents/${encodeURIComponent(contentId)}/attempts/${encodeURIComponent(attemptId)}/feedback`,
+    "GET",
+    undefined,
+    10_000,
+  ));
+}
+
 export async function crearReto(ctx: Context): Promise<void> {
   try {
     const contenido = await llamarServicioLlm(`/documents/${encodeURIComponent(routeParam(ctx, "id") ?? "")}/learning`, "GET", undefined, 8_000);

@@ -60,7 +60,7 @@ rt.get("/health", (ctx: Context) => {
     timestamp: new Date().toISOString(),
     version: "1.0.0",
     features: [
-      "Racha diaria con más del 80% de aciertos",
+      "Racha diaria con 50% o más de aciertos",
       "Puntos individuales y globales",
       "Límite de 20 puntos base y bono de 10 por desafíos",
       "Informe de aprendizaje con ServiceAcademicLLMs",

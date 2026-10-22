@@ -382,6 +382,17 @@ class RAGRepository:
     async def set_summary_cache(self, content_id: str, formato: str, data: dict[str, Any]) -> None:
         await self._redis.set(f"{self.prefix}:content:{content_id}:summary:v3:{formato}", json.dumps(data, ensure_ascii=False))
 
+    # quiz -> retroalimentacion asincrona del reto (Mistral) por intento
+    def _feedback_key(self, student_id: str, content_id: str, attempt_id: str) -> str:
+        return f"{self.prefix}:student:{student_id}:content:{content_id}:attempt:{attempt_id}:feedback"
+
+    async def set_quiz_feedback(self, student_id: str, content_id: str, attempt_id: str, feedback: dict[str, Any]) -> None:
+        await self._redis.set(self._feedback_key(student_id, content_id, attempt_id), json.dumps(feedback, ensure_ascii=False))
+
+    async def get_quiz_feedback(self, student_id: str, content_id: str, attempt_id: str) -> dict[str, Any] | None:
+        value = await self._redis.get(self._feedback_key(student_id, content_id, attempt_id))
+        return json.loads(value) if value else None
+
     async def student_used_questions(self, student_id: str, content_id: str) -> tuple[set[str], list[str]]:
         base = f"{self.prefix}:student:{student_id}:content:{content_id}:used-questions"
         ids = await self._redis.smembers(f"{base}:ids")

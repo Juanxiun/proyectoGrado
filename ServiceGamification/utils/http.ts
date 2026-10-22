@@ -1,5 +1,9 @@
 // utils -> helpers http
 import { Context } from "@oak/oak";
+import { HttpError } from "./errors.ts";
+
+export { HttpError };
+export { mapDbError } from "./errors.ts";
 
 export function parseNumericId(value: string | null | undefined): string {
   if (!value) throw new HttpError(400, "ID requerido");
@@ -28,13 +32,6 @@ export function respond(ctx: Context, status: number, body: unknown): void {
   ctx.response.body = body as Record<string, unknown> | string | number | boolean | null | undefined;
 }
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-    this.name = "HttpError";
-  }
-}
-
 export function handleControllerError(ctx: Context, err: unknown, defaultMsg: string): void {
   if (err instanceof HttpError) {
     ctx.response.status = err.status;
@@ -44,11 +41,4 @@ export function handleControllerError(ctx: Context, err: unknown, defaultMsg: st
   console.error("[ControllerError]", err);
   ctx.response.status = 500;
   ctx.response.body = { error: defaultMsg };
-}
-
-export function mapDbError(err: unknown, defaultMsg: string): HttpError {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (msg.includes("duplicate key")) return new HttpError(409, "Registro duplicado");
-  if (msg.includes("foreign key")) return new HttpError(400, "Referencia inválida");
-  return new HttpError(500, defaultMsg);
 }

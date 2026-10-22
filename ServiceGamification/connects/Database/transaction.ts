@@ -1,5 +1,6 @@
 // db -> transacciones y queries
 import { pool } from "./connect.ts";
+import { serialize } from "../../utils/serialize.ts";
 
 export interface QueryResult<R = Record<string, unknown>> {
   rows: R[];
@@ -13,7 +14,7 @@ export async function query<R = Record<string, unknown>>(
   const client = await pool.connect();
   try {
     const result = await client.queryObject<R>(text, params);
-    return { rows: result.rows, rowCount: result.rowCount ?? 0 };
+    return { rows: serialize(result.rows), rowCount: result.rowCount ?? 0 };
   } finally {
     client.release();
   }
@@ -28,7 +29,7 @@ export async function sTransaction<T>(
     const result = await fn({
       queryObject: async <R>(text: string, params: unknown[]) => {
         const res = await client.queryObject<R>(text, params);
-        return { rows: res.rows, rowCount: res.rowCount ?? 0 };
+        return { rows: serialize(res.rows), rowCount: res.rowCount ?? 0 };
       },
     });
     await client.queryObject("COMMIT");

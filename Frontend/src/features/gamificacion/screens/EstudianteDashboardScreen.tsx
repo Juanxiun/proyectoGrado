@@ -353,14 +353,14 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
                   {racha?.completada ? 'Racha Diaria Activa' : 'Activa tu racha hoy'}
                 </Text>
               </View>
-              <Text className="text-white/70 text-xs">Meta: más del 80%</Text>
+              <Text className="text-white/70 text-xs">Meta: 50% o más</Text>
             </View>
 
             <Text className="text-white text-2xl font-black">
               ¡Hola, {user?.nombre || 'Estudiante'}!
             </Text>
             <Text className="text-white/80 text-xs mt-1 leading-relaxed">
-              Completa una actividad diaria con más del 80% de aciertos para mantener tu racha.
+              Completa una actividad diaria con 50% o más de aciertos para mantener tu racha.
             </Text>
           </View>
 
@@ -389,15 +389,23 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
                 </Text>
               </View>
             ) : racha?.totalPreguntas ? (
-              <TouchableOpacity
-                onPress={handleSalvarRacha}
-                className="flex-row items-center gap-1.5 bg-amber-500 hover:bg-amber-600 px-3 py-1.5 rounded-xl shadow-sm"
-              >
-                <Ionicons name="shield-outline" size={14} color="#FFFFFF" />
-                <Text className="text-xs font-bold text-white">
-                  Salvar Racha (100 pts)
-                </Text>
-              </TouchableOpacity>
+              <View className="flex-row items-center gap-2 flex-wrap">
+                <View className="flex-row items-center gap-1.5 bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-400/30">
+                  <Ionicons name="analytics-outline" size={14} color="#FCD34D" />
+                  <Text className="text-xs font-bold text-amber-100">
+                    Mejor intento: {Math.round((racha.porcentajeAcierto ?? 0) * 100)}% · meta 50%
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleSalvarRacha}
+                  className="flex-row items-center gap-1.5 bg-amber-500 hover:bg-amber-600 px-3 py-1.5 rounded-xl shadow-sm"
+                >
+                  <Ionicons name="shield-outline" size={14} color="#FFFFFF" />
+                  <Text className="text-xs font-bold text-white">
+                    Salvar Racha (100 pts)
+                  </Text>
+                </TouchableOpacity>
+              </View>
             ) : <Text className="text-white/80 text-xs">Completa una actividad para activar tu racha de hoy.</Text>}
           </View>
 

@@ -1,7 +1,7 @@
 import { query, sTransaction } from "../connects/Database/transaction.ts";
 import { withRetry } from "../connects/Database/reintento.ts";
 import { HttpError, mapDbError } from "../utils/errors.ts";
-import { asDateTimeString, serialize, toId } from "../utils/serialize.ts";
+import { asDateTimeString, toNumber } from "../utils/serialize.ts";
 import { publicarEventoAsync } from "../utils/events.ts";
 import {
   RachasDiarias,
@@ -38,20 +38,39 @@ function diaAnterior(fecha: string): string {
 }
 
 // repo -> rachas diarias
+function normalizarRacha(row: RachasDiarias | undefined): RachasDiarias | null {
+  if (!row) return null;
+  return { ...row, porcentajeAcierto: toNumber(row.porcentajeAcierto) };
+}
+
+function normalizarActividad(row: ActividadGamificada): ActividadGamificada {
+  return { ...row, porcentajeAcierto: toNumber(row.porcentajeAcierto) };
+}
+
 async function getRacha(usuarioId: string): Promise<RachasDiarias | null> {
   const res = await query<RachasDiarias>(
-    `SELECT * FROM rachas_diarias WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 1`,
+    `SELECT id, usuario_id AS "usuarioId", fecha::text AS fecha, completada, aciertos,
+            total_preguntas AS "totalPreguntas", porcentaje_acierto::float8 AS "porcentajeAcierto",
+            racha_actual AS "rachaActual", mejor_racha AS "mejorRacha",
+            salvada_con_puntos AS "salvadaConPuntos", puntos_gastados AS "puntosGastados",
+            creada_en AS "creadaEn", actualizada_en AS "actualizadaEn"
+     FROM rachas_diarias WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 1`,
     [usuarioId],
   );
-  return res.rows[0] ?? null;
+  return normalizarRacha(res.rows[0]);
 }
 
 async function getRachaByFecha(usuarioId: string, fecha: string): Promise<RachasDiarias | null> {
   const res = await query<RachasDiarias>(
-    `SELECT * FROM rachas_diarias WHERE usuario_id = $1 AND fecha = $2`,
+    `SELECT id, usuario_id AS "usuarioId", fecha::text AS fecha, completada, aciertos,
+            total_preguntas AS "totalPreguntas", porcentaje_acierto::float8 AS "porcentajeAcierto",
+            racha_actual AS "rachaActual", mejor_racha AS "mejorRacha",
+            salvada_con_puntos AS "salvadaConPuntos", puntos_gastados AS "puntosGastados",
+            creada_en AS "creadaEn", actualizada_en AS "actualizadaEn"
+     FROM rachas_diarias WHERE usuario_id = $1 AND fecha = $2`,
     [usuarioId, fecha],
   );
-  return res.rows[0] ?? null;
+  return normalizarRacha(res.rows[0]);
 }
 
 async function crearOActualizarRacha(
@@ -69,16 +88,18 @@ async function crearOActualizarRacha(
     getRacha(usuarioId),
   ]);
   const mejorRacha = Math.max(rachaDeHoy?.mejorRacha ?? 0, rachaAnterior?.mejorRacha ?? 0);
-  const cumpleUmbral = completada && porcentajeAcierto > gamificationConfig.racha.umbralAcierto;
+  const cumpleUmbral = completada && porcentajeAcierto >= gamificationConfig.racha.umbralAcierto;
   const yaCompletoHoy = Boolean(rachaDeHoy?.completada && !rachaDeHoy.salvadaConPuntos);
   const rachaDeAyer = await getRachaByFecha(usuarioId, diaAnterior(fecha));
   const rachaBase = rachaDeAyer?.completada ? rachaDeAyer.rachaActual : 0;
   const completarHoy = cumpleUmbral || Boolean(rachaDeHoy?.completada) || salvadaConPuntos;
-  const aciertosDia = rachaDeHoy?.completada && !cumpleUmbral ? rachaDeHoy.aciertos : aciertos;
-  const totalDia = rachaDeHoy?.completada && !cumpleUmbral ? rachaDeHoy.totalPreguntas : totalPreguntas;
-  const porcentajeDia = rachaDeHoy?.completada && !cumpleUmbral
-    ? Math.max(rachaDeHoy.porcentajeAcierto, porcentajeAcierto)
-    : porcentajeAcierto;
+  // intento -> conservar el mejor del dia, un intento posterior peor no degrada la racha
+  const mejorIntento = rachaDeHoy && rachaDeHoy.porcentajeAcierto > porcentajeAcierto
+    ? { aciertos: rachaDeHoy.aciertos, total: rachaDeHoy.totalPreguntas, porcentaje: rachaDeHoy.porcentajeAcierto }
+    : { aciertos, total: totalPreguntas, porcentaje: porcentajeAcierto };
+  const aciertosDia = mejorIntento.aciertos;
+  const totalDia = mejorIntento.total;
+  const porcentajeDia = mejorIntento.porcentaje;
   const rachaActual = cumpleUmbral
     ? (yaCompletoHoy ? rachaDeHoy!.rachaActual : rachaBase + 1)
     : salvadaConPuntos ? (rachaDeHoy?.rachaActual ?? rachaBase) : (rachaDeHoy?.rachaActual ?? rachaBase);
@@ -98,7 +119,11 @@ async function crearOActualizarRacha(
          salvada_con_puntos = EXCLUDED.salvada_con_puntos,
          puntos_gastados = EXCLUDED.puntos_gastados,
          actualizada_en = NOW()
-       RETURNING *`,
+       RETURNING id, usuario_id AS "usuarioId", fecha::text AS fecha, completada, aciertos,
+                 total_preguntas AS "totalPreguntas", porcentaje_acierto::float8 AS "porcentajeAcierto",
+                 racha_actual AS "rachaActual", mejor_racha AS "mejorRacha",
+                 salvada_con_puntos AS "salvadaConPuntos", puntos_gastados AS "puntosGastados",
+                 creada_en AS "creadaEn", actualizada_en AS "actualizadaEn"`,
       [
         usuarioId,
         fecha,
@@ -112,7 +137,7 @@ async function crearOActualizarRacha(
         puntosGastados,
       ],
     );
-    return res.rows[0];
+    return normalizarRacha(res.rows[0]) as RachasDiarias;
   } catch (err) {
     throw mapDbError(err, "Error al guardar racha diaria");
   }
@@ -131,7 +156,7 @@ async function agregarPuntosIndividuales(
     const res = await query<PuntosIndividuales>(
       `INSERT INTO puntos_individuales (usuario_id, fecha, tipo, puntos, descripcion, metadata)
        VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
+       RETURNING id, usuario_id AS "usuarioId", fecha::text AS fecha, tipo, puntos, descripcion, metadata, creada_en AS "creadaEn"`,
       [usuarioId, fecha, tipo, puntos, descripcion, JSON.stringify(metadata ?? {})],
     );
     return res.rows[0];
@@ -174,7 +199,8 @@ async function agregarPuntosGlobales(
     const res = await query<PuntosGlobales>(
       `INSERT INTO puntos_globales (curso_periodo_id, paralelo, fecha, puntos_ganados, descripcion)
        VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
+       RETURNING id, curso_periodo_id AS "cursoPeriodoId", paralelo, fecha::text AS fecha,
+                 puntos_ganados AS "puntosGanados", descripcion, creada_en AS "creadaEn"`,
       [cursoPeriodoId, paralelo, fecha, puntos, descripcion],
     );
     return res.rows[0];
@@ -193,13 +219,18 @@ async function getPuntosGlobalesParalelo(cursoPeriodoId: string, paralelo: "A" |
 
 // repo -> insignias
 async function getInsigniasActivas(): Promise<Insignia[]> {
-  const res = await query<Insignia>(`SELECT * FROM insignias WHERE activa = true`);
+  const res = await query<Insignia>(
+    `SELECT id, codigo, nombre, descripcion, icono_url AS "iconoUrl", criterio, activa
+     FROM insignias WHERE activa = true`,
+  );
   return res.rows;
 }
 
 async function getInsigniasEstudiante(usuarioId: string): Promise<InsigniaEstudiante[]> {
   const res = await query<InsigniaEstudiante>(
-    `SELECT * FROM insignias_estudiante WHERE usuario_id = $1`,
+    `SELECT id, usuario_id AS "usuarioId", insignia_id AS "insigniaId",
+            fecha_obtencion AS "fechaObtencion", metadata
+     FROM insignias_estudiante WHERE usuario_id = $1`,
     [usuarioId],
   );
   return res.rows;
@@ -211,7 +242,8 @@ async function otorgarInsignia(usuarioId: string, insigniaId: string, metadata?:
       `INSERT INTO insignias_estudiante (usuario_id, insignia_id, metadata)
        VALUES ($1, $2, $3)
        ON CONFLICT DO NOTHING
-       RETURNING *`,
+       RETURNING id, usuario_id AS "usuarioId", insignia_id AS "insigniaId",
+                 fecha_obtencion AS "fechaObtencion", metadata`,
       [usuarioId, insigniaId, JSON.stringify(metadata ?? {})],
     );
     if (res.rows.length > 0) {
@@ -229,7 +261,10 @@ async function otorgarInsignia(usuarioId: string, insigniaId: string, metadata?:
 
 // repo -> trofeos
 async function getTrofeosActivos(): Promise<Trofeo[]> {
-  const res = await query<Trofeo>(`SELECT * FROM trofeos WHERE activo = true`);
+  const res = await query<Trofeo>(
+    `SELECT id, codigo, nombre, descripcion, icono_url AS "iconoUrl", puntos, criterio, periodo, activo
+     FROM trofeos WHERE activo = true`,
+  );
   return res.rows;
 }
 
@@ -256,7 +291,8 @@ async function otorgarTrofeo(
       `INSERT INTO trofeos_estudiante (usuario_id, trofeo_id, puntos_otorgados, metadata)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT DO NOTHING
-       RETURNING *`,
+       RETURNING id, usuario_id AS "usuarioId", trofeo_id AS "trofeoId",
+                 fecha_obtencion AS "fechaObtencion", puntos_otorgados AS "puntosOtorgados", metadata`,
       [usuarioId, trofeoId, puntosOtorgados, JSON.stringify(metadata ?? {})],
     );
     if (res.rows.length > 0) {
@@ -275,7 +311,11 @@ async function otorgarTrofeo(
 
 // service -> trofeo diario
 async function otorgarTrofeoDiario(usuarioId: string, codigo: string, metadata: Record<string, unknown> = {}): Promise<TrofeoEstudiante[]> {
-  const trofeoRes = await query<Trofeo>(`SELECT * FROM trofeos WHERE codigo = $1 AND activo = true LIMIT 1`, [codigo]);
+  const trofeoRes = await query<Trofeo>(
+    `SELECT id, codigo, nombre, descripcion, icono_url AS "iconoUrl", puntos, criterio, periodo, activo
+     FROM trofeos WHERE codigo = $1 AND activo = true LIMIT 1`,
+    [codigo],
+  );
   const trofeo = trofeoRes.rows[0];
   if (!trofeo) return [];
   const otorgado = await otorgarTrofeo(usuarioId, trofeo.id, trofeo.puntos, { ...metadata, fechaDia: fechaLocal() });
@@ -314,7 +354,10 @@ async function comprarRecompensa(
       [usuarioId, fechaLocal(), -recompensa.costoPuntosIndividuales, `Compra: ${recompensa.nombre}`, JSON.stringify({ recompensaId })],
     );
     const res = await tx.queryObject<CompraEstudiante>(
-      `INSERT INTO compras_estudiante (usuario_id, recompensa_id, puntos_gastados) VALUES ($1,$2,$3) RETURNING *`,
+      `INSERT INTO compras_estudiante (usuario_id, recompensa_id, puntos_gastados) VALUES ($1,$2,$3)
+       RETURNING id, usuario_id AS "usuarioId", recompensa_id AS "recompensaId",
+                 puntos_gastados AS "puntosGastados", fecha_compra AS "fechaCompra",
+                 usada, fecha_uso AS "fechaUso"`,
       [usuarioId, recompensaId, recompensa.costoPuntosIndividuales],
     );
     return res.rows[0];
@@ -331,7 +374,13 @@ async function registrarActividad(actividad: Omit<ActividadGamificada, "id" | "c
          tiempo_total_ms, puntos_ganados, puntos_calidad, puntos_tiempo, completada,
          fecha_inicio, fecha_fin
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-       RETURNING *`,
+       RETURNING id, usuario_id AS "usuarioId", estudiante_id AS "estudianteId", tipo,
+                 materia_id AS "materiaId", materia_nombre AS "materiaNombre", titulo,
+                 preguntas, respuestas, aciertos, total,
+                 porcentaje_acierto::float8 AS "porcentajeAcierto",
+                 tiempo_total_ms AS "tiempoTotalMs", puntos_ganados AS "puntosGanados",
+                 puntos_calidad AS "puntosCalidad", puntos_tiempo AS "puntosTiempo",
+                 completada, fecha_inicio AS "fechaInicio", fecha_fin AS "fechaFin"`,
       [
         actividad.usuarioId,
         actividad.estudianteId,
@@ -353,7 +402,7 @@ async function registrarActividad(actividad: Omit<ActividadGamificada, "id" | "c
         actividad.fechaFin ?? null,
       ],
     );
-    return res.rows[0];
+    return normalizarActividad(res.rows[0]);
   } catch (err) {
     throw mapDbError(err, "Error al registrar actividad gamificada");
   }
@@ -361,10 +410,17 @@ async function registrarActividad(actividad: Omit<ActividadGamificada, "id" | "c
 
 async function getActividadesEstudiante(usuarioId: string, limite = 50): Promise<ActividadGamificada[]> {
   const res = await query<ActividadGamificada>(
-    `SELECT * FROM actividades_gamificadas WHERE usuario_id = $1 ORDER BY fecha_inicio DESC LIMIT $2`,
+    `SELECT id, usuario_id AS "usuarioId", estudiante_id AS "estudianteId", tipo,
+            materia_id AS "materiaId", materia_nombre AS "materiaNombre", titulo,
+            preguntas, respuestas, aciertos, total,
+            porcentaje_acierto::float8 AS "porcentajeAcierto",
+            tiempo_total_ms AS "tiempoTotalMs", puntos_ganados AS "puntosGanados",
+            puntos_calidad AS "puntosCalidad", puntos_tiempo AS "puntosTiempo",
+            completada, fecha_inicio AS "fechaInicio", fecha_fin AS "fechaFin"
+     FROM actividades_gamificadas WHERE usuario_id = $1 ORDER BY fecha_inicio DESC LIMIT $2`,
     [usuarioId, limite],
   );
-  return res.rows;
+  return res.rows.map(normalizarActividad);
 }
 
 // repo -> ranking estudiantes paralelo
@@ -449,20 +505,20 @@ async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingP
     const estudiantes = res.rows
       .filter((r) => r.paralelo === paralelo)
       .map((r, i) => ({
-        usuarioId: r.usuario_id,
-        estudianteId: r.estudiante_id,
+        usuarioId: String(r.usuario_id),
+        estudianteId: String(r.estudiante_id),
         nombre: r.nombre,
         apellidoPaterno: r.apellido_paterno,
         avatarUrl: r.avatar_url,
-        rachaActual: r.racha_actual,
-        mejorRacha: r.mejor_racha,
-        promedioRendimiento: Number(r.promedio_rendimiento.toFixed(2)),
-        calidadPromedio: Number(r.calidad_promedio.toFixed(2)),
-        tiempoPromedioMs: r.tiempo_promedio_ms,
-        puntosIndividuales: r.puntos_semana,
-        puntosGlobales: r.puntos_globales,
-        insigniasCount: r.insignias_count,
-        trofeosCount: r.trofeos_count,
+        rachaActual: Number(r.racha_actual ?? 0),
+        mejorRacha: Number(r.mejor_racha ?? 0),
+        promedioRendimiento: Number(Number(r.promedio_rendimiento ?? 0).toFixed(2)),
+        calidadPromedio: Number(Number(r.calidad_promedio ?? 0).toFixed(2)),
+        tiempoPromedioMs: Number(r.tiempo_promedio_ms ?? 0),
+        puntosIndividuales: Number(r.puntos_semana ?? 0),
+        puntosGlobales: Number(r.puntos_globales ?? 0),
+        insigniasCount: Number(r.insignias_count ?? 0),
+        trofeosCount: Number(r.trofeos_count ?? 0),
         posicion: i + 1,
       }));
     return { paralelo, cursoPeriodoId, estudiantes, actualizadaEn: new Date().toISOString() };
@@ -552,7 +608,8 @@ export async function procesarActividadCompletada(input: {
   const resultado = await sTransaction(async (_tx) => {
     await _tx.queryObject(`SELECT pg_advisory_xact_lock($1::bigint)`, [input.usuarioId]);
     const puntosHoyRes = await query<{ total: string }>(
-      `SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2`,
+      `SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales
+       WHERE usuario_id = $1 AND fecha = $2 AND COALESCE(metadata->>'evento', '') <> 'bono_desafios_diarios'`,
       [input.usuarioId, fecha],
     );
     const puntosHoy = Number(puntosHoyRes.rows[0]?.total ?? 0);
@@ -918,13 +975,8 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
   const infoEst = await getInfoEstudianteGamificacion(usuarioId);
   const fecha = fechaLocal();
   const estadoDiario = await actualizarDesafiosDiarios(usuarioId, fecha);
-  const [ultimaRachaRes, totalIndividuales, totalGlobales, insignias, trofeos, puntosHoyRes, actividadesHoyRes] = await Promise.all([
-    query<RachasDiarias>(`SELECT id, usuario_id AS "usuarioId", fecha, completada, aciertos,
-      total_preguntas AS "totalPreguntas", porcentaje_acierto AS "porcentajeAcierto",
-      racha_actual AS "rachaActual", mejor_racha AS "mejorRacha",
-      salvada_con_puntos AS "salvadaConPuntos", puntos_gastados AS "puntosGastados",
-      creada_en AS "creadaEn", actualizada_en AS "actualizadaEn"
-      FROM rachas_diarias WHERE usuario_id = $1 ORDER BY fecha DESC LIMIT 1`, [usuarioId]),
+  const [ultimaRacha, totalIndividuales, totalGlobales, insignias, trofeos, puntosHoyRes, actividadesHoyRes] = await Promise.all([
+    getRacha(usuarioId),
     getTotalPuntosIndividuales(usuarioId),
     infoEst ? getPuntosGlobalesParalelo(infoEst.cursoPeriodoId, infoEst.paralelo) : Promise.resolve(0),
     getInsigniasEstudiante(usuarioId),
@@ -947,7 +999,6 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
       [usuarioId, fecha],
     ),
   ]);
-  const ultimaRacha = ultimaRachaRes.rows[0] ?? null;
   const racha = ultimaRacha && ultimaRacha.fecha === fecha
     ? ultimaRacha
     : ultimaRacha
