@@ -2,6 +2,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { storage } from '../utils/storage';
 import { useAuthActions } from '../hooks/useAuth';
+import { gamificacionApi } from '../api/gamificacion.api';
 import type { AuthUsuario, LoginResponse } from '../types';
 
 interface AuthContextValue {
@@ -48,6 +49,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (isLoading || !user || user.rol.toLocaleLowerCase('es') !== 'estudiante' || !user.cursoPeriodoId || !user.paralelo) return;
+    let activo = true;
+    void gamificacionApi.getInfoEstudiante().then(async (perfil) => {
+      if (perfil || !activo) return;
+      await gamificacionApi.registrarPerfil({
+        estudianteId: user.estudianteId || user.id,
+        cursoPeriodoId: user.cursoPeriodoId!,
+        paralelo: user.paralelo === 'B' ? 'B' : 'A',
+        nombre: user.nombre,
+        apellidoPaterno: user.apellidoPaterno,
+        avatarUrl: user.fotoUrl,
+      });
+    }).catch(() => {
+      // gamificacion -> reintentar la inicializacion al abrir el panel
+    });
+    return () => { activo = false; };
+  }, [isLoading, user]);
 
   const login = useCallback(
     async (username: string, password: string) => {

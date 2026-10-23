@@ -2,19 +2,21 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import re
 import time
+from html import escape
 from typing import Any
 
 import httpx
 from redis.asyncio import Redis
 
 from app.config import settings
-from app.chunking import CATEGORIA_EJERCICIOS, SemanticChunk, split_chunks
+from app.chunking import CATEGORIA_EJERCICIOS, SemanticChunk, split_document_sections
 from app.documents import extract_text
 from app.ollama_client import OllamaClient
 from app.RAG.repository import RAGRepository
-from app.schemas import ActivityBatchOutput, ContentCreatedEvent, ContentEvaluation, RefinedContent
+from app.schemas import ActivityBatchOutput, ContentCreatedEvent, ContentEvaluation, LearningUnit, RefinedContent
 from app.services.activities import normalize_activity
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,22 @@ def _metadata(event: ContentCreatedEvent) -> dict[str, str]:
         "subject": event.subject, "subject_id": event.subject_id, "topic_id": event.topic_id,
         "document_id": event.document_id, "source": event.source, "grade": event.grade, "course": event.course,
     }.items()}
+
+
+# visual -> SVG inline de conceptos respaldados
+def _svg_concept_map(titulo: str, conceptos: list[str]) -> str:
+    etiquetas = list(dict.fromkeys(str(item).strip()[:40] for item in conceptos if str(item).strip()))[:6]
+    etiquetas = etiquetas or [titulo[:40]]
+    nodos, enlaces = [], []
+    centro_x, centro_y = 200, 165
+    for indice, etiqueta in enumerate(etiquetas):
+        # visual -> distribuir conceptos alrededor del nodo central
+        angulo = (2 * 3.141592653589793 * indice / len(etiquetas)) - 1.5707963267948966
+        x = centro_x + int(115 * math.cos(angulo))
+        y = centro_y + int(105 * math.sin(angulo))
+        enlaces.append(f'<line x1="{centro_x}" y1="{centro_y}" x2="{x}" y2="{y}" stroke="#A78BFA" stroke-width="2"/>')
+        nodos.append(f'<rect x="{x-65}" y="{y-22}" width="130" height="44" rx="12" fill="#FFF7ED" stroke="#C2410C"/><text x="{x}" y="{y+5}" text-anchor="middle" font-size="11" fill="#431407">{escape(etiqueta)}</text>')
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="400" height="330" viewBox="0 0 400 330"><rect width="400" height="330" rx="16" fill="#FFFFFF"/>{"".join(enlaces)}<rect x="125" y="140" width="150" height="50" rx="16" fill="#801F3F"/><text x="200" y="170" text-anchor="middle" font-size="14" font-weight="700" fill="#FFFFFF">{escape(titulo[:30])}</text>{"".join(nodos)}</svg>'
 
 
 # document -> muestras distribuidas para planificacion rapida
@@ -110,7 +128,8 @@ async def _generate_learning_content(
     llm: OllamaClient,
     reference_chunks: list[tuple[int, SemanticChunk]],
     event: ContentCreatedEvent,
-    semaphore: asyncio.Semaphore
+    semaphore: asyncio.Semaphore,
+    checkpoint: str = "",
 ) -> RefinedContent:
     started = time.perf_counter()
     # prompt -> evidencia compacta para Gemma
@@ -119,12 +138,13 @@ async def _generate_learning_content(
         "description": event.description,
         "subject": event.subject,
         "grade": event.grade,
+        "checkpoint_anterior": checkpoint,
         "theory_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
                                                 if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading)),
         "practical_highlights": list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
                                                    if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading)),
         "chunks": [{"chunk_id": f"{index:04d}-{hashlib.sha256(chunk.text.encode('utf-8')).hexdigest()[:20]}",
-                    "heading": chunk.heading, "category": chunk.category, "text": chunk.text[:1600]}
+                    "heading": chunk.heading, "category": chunk.category, "text": chunk.text}
                    for index, chunk in reference_chunks],
     }, ensure_ascii=False)
     async with semaphore:
@@ -132,6 +152,76 @@ async def _generate_learning_content(
             settings.ollama_gemma_model, "gemma/learning_content.txt", compact, RefinedContent))
     logger.info(f"Contenido educativo (Gemma) completado en {time.perf_counter() - started:.2f}s")
     return result
+
+
+# contenido -> generar cada seccion en orden conservando checkpoints
+async def _generate_learning_path(llm: OllamaClient, chunks: list[SemanticChunk], event: ContentCreatedEvent, semaphore: asyncio.Semaphore) -> tuple[RefinedContent, list[dict[str, Any]]]:
+    por_seccion: dict[int, list[SemanticChunk]] = {}
+    for chunk in chunks:
+        if chunk.category != CATEGORIA_EJERCICIOS:
+            por_seccion.setdefault(int(chunk.meta.get("seccion", chunk.order)), []).append(chunk)
+    checkpoint = ""
+    secciones: list[dict[str, Any]] = []
+    for numero, partes in por_seccion.items():
+        # LLM -> lotes de hasta 5000 caracteres dentro de una seccion
+        lotes: list[list[SemanticChunk]] = []
+        lote: list[SemanticChunk] = []
+        longitud = 0
+        for parte in partes:
+            if lote and longitud + len(parte.text) > 5000:
+                lotes.append(lote)
+                lote, longitud = [], 0
+            lote.append(parte)
+            longitud += len(parte.text)
+        if lote:
+            lotes.append(lote)
+        resultados = [await _generate_learning_content(llm, lote, event, semaphore, checkpoint) for lote in lotes]
+        titulo = partes[0].heading or f"Seccion {numero}"
+        texto_teorico = "\n\n".join(dict.fromkeys(parte.text for parte in partes))
+        unidades = [unidad.model_dump() for resultado in resultados for unidad in resultado.microlearning_units]
+        resumen = " ".join(resultado.summary for resultado in resultados).strip()[:1800]
+        conceptos = list(dict.fromkeys(concepto for resultado in resultados for concepto in resultado.key_concepts))[:20]
+        objetivos = list(dict.fromkeys(objetivo for resultado in resultados for objetivo in resultado.learning_objectives))[:8]
+        checkpoint = f"{titulo}: {resumen[:360]}"
+        secciones.append({
+            "numero": numero,
+            "titulo": titulo,
+            "texto_plano": texto_teorico,
+            "resumen": resumen,
+            "conceptos": conceptos,
+            "objetivos": objetivos,
+            "microlearning": [
+                {**unidad, "svg_inline": unidad.get("svg_inline") or _svg_concept_map(unidad.get("title", titulo), [unidad.get("explanation", ""), *unidad.get("examples_blackboard", [])])}
+                for unidad in unidades
+            ],
+            "svg_inline": _svg_concept_map(titulo, conceptos),
+            "preguntas_indagacion": list(dict.fromkeys(unidad.get("inquiry_question", "") for unidad in unidades if unidad.get("inquiry_question")))[:8],
+            "conexiones": [],
+            "checkpoint": checkpoint,
+            "source_chunk_ids": [f"{parte.order:04d}-{hashlib.sha256(parte.text.encode('utf-8')).hexdigest()[:20]}" for parte in partes],
+        })
+    # mapa -> conectar conceptos de secciones previas y posteriores
+    for indice, seccion in enumerate(secciones):
+        seccion["conexiones"] = [
+            {"tema": vecino["titulo"], "relacion": "se apoya en" if pos < indice else "continua en", "conceptos": list(dict.fromkeys(seccion["conceptos"][:2] + vecino["conceptos"][:2]))}
+            for pos, vecino in enumerate(secciones) if abs(pos - indice) == 1
+        ]
+        seccion["svg_inline"] = _svg_concept_map(
+            seccion["titulo"], seccion["conceptos"][:4] + [item["tema"] for item in seccion["conexiones"]]
+        )
+    if not secciones:
+        raise ValueError("El documento no contiene secciones teóricas para generar la ruta")
+    plano = " ".join(seccion["resumen"] for seccion in secciones)
+    conceptos = list(dict.fromkeys(concepto for seccion in secciones for concepto in seccion["conceptos"]))
+    unidades = [LearningUnit.model_validate(unidad) for seccion in secciones for unidad in seccion["microlearning"]][:6]
+    final = RefinedContent(
+        title=secciones[0]["titulo"][:120], summary=plano[:500],
+        learning_objectives=(list(dict.fromkeys(objetivo for seccion in secciones for objetivo in seccion["objetivos"])) + [f"Comprender {concepto}" for concepto in conceptos])[:3],
+        key_concepts=conceptos[:12], microlearning_units=unidades,
+        inquiry_questions=list(dict.fromkeys(unidad.inquiry_question for unidad in unidades))[:8],
+        common_mistakes=[], difficulty="inicial", activities=[], examples_blackboard=[],
+    )
+    return final, secciones
 
 
 async def _generate_activity_batch(
@@ -200,6 +290,26 @@ async def _generate_activity_bank(
     return activities
 
 
+# actividad -> banco independiente por titulo del libro
+async def _generate_section_activity_bank(llm: OllamaClient, chunks: list[SemanticChunk], event: ContentCreatedEvent, semaphore: asyncio.Semaphore) -> list[dict[str, Any]]:
+    grupos: dict[int, list[tuple[int, SemanticChunk]]] = {}
+    for indice, chunk in enumerate(chunks, 1):
+        if chunk.category != CATEGORIA_EJERCICIOS:
+            grupos.setdefault(int(chunk.meta.get("seccion", indice)), []).append((indice, chunk))
+    banco: list[dict[str, Any]] = []
+    for numero, partes in grupos.items():
+        cantidad = min(4, len(partes))
+        posiciones = [round(indice * (len(partes) - 1) / max(1, cantidad - 1)) for indice in range(cantidad)]
+        teoria = [partes[posicion] for posicion in posiciones]
+        ejercicios = [parte for parte in partes if parte[1].category == CATEGORIA_EJERCICIOS][:2]
+        seleccion = sorted(teoria + ejercicios, key=lambda item: item[0])
+        actividades = await _generate_activity_bank(llm, seleccion, event, semaphore)
+        banco.extend({**actividad, "section_number": numero} for actividad in actividades)
+    if not banco:
+        raise ValueError("No hay secciones con evidencia para generar ejercicios")
+    return banco
+
+
 
 async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGRepository, llm: OllamaClient, http: httpx.AsyncClient, semaphore: asyncio.Semaphore, notify_redis: Redis) -> None:
     event = ContentCreatedEvent.model_validate(raw_event)
@@ -216,24 +326,21 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     await repo.update_job(content_id, status="EXTRACTING", progress="12")
 
     # chunking -> generar contexto distribuido desde el documento limpio
-    desired_chunks = 6
-    effective_chunk_size = max(settings.chunk_size, min(settings.chunk_size * 3, (len(source_text) + desired_chunks - 1) // desired_chunks))
-    chunks = split_chunks(source_text, effective_chunk_size, 6, settings.chunk_min_chars, settings.chunk_semantic_threshold)
+    chunks = split_document_sections(source_text, max(settings.chunk_size * 2, 2400))
     if not chunks:
         raise ValueError("No se pudieron crear fragmentos útiles del documento")
-    reference_chunks = _select_reference_chunks(chunks)
-    total_chunks = len(reference_chunks)
+    total_chunks = len(chunks)
     
     processed_key = f"{repo.prefix}:content:{content_id}:processed_chunks:v3"
     processed_raw = await repo.get_cache(processed_key)
     processed_indices = set(json.loads(processed_raw)) if processed_raw else set()
     
-    base_exercises = [chunk.text for _, chunk in reference_chunks if chunk.category == CATEGORIA_EJERCICIOS]
+    base_exercises = [chunk.text for chunk in chunks if chunk.category == CATEGORIA_EJERCICIOS]
     
     # embeddings -> preparar vectores en paralelo con el resumen
     embedding_entries: list[tuple[int, SemanticChunk, str, str]] = []
     vector_by_chunk: dict[str, list[float]] = {}
-    for index, chunk in reference_chunks:
+    for index, chunk in enumerate(chunks, 1):
         vector_text = "\n".join(part for part in (event.title, chunk.heading, chunk.text) if part)
         digest = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
         vector_digest = hashlib.sha256(vector_text.encode("utf-8")).hexdigest()
@@ -249,14 +356,16 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         if not embedding_entries:
             return
         started = time.perf_counter()
-        async with semaphore:
-            vectors = await _ollama_with_retry(lambda: llm.embed_many([
-                "\n".join(part for part in (event.title, chunk.heading, chunk.text) if part)
-                for _, chunk, _, _ in embedding_entries
-            ]))
-        for (_, _, chunk_id, cache_key), vector in zip(embedding_entries, vectors):
-            vector_by_chunk[chunk_id] = vector
-            await repo.set_cache(cache_key, json.dumps(vector), 30 * 24 * 60 * 60)
+        for inicio in range(0, len(embedding_entries), 32):
+            lote = embedding_entries[inicio:inicio + 32]
+            async with semaphore:
+                vectors = await _ollama_with_retry(lambda: llm.embed_many([
+                    "\n".join(part for part in (event.title, chunk.heading, chunk.text) if part)
+                    for _, chunk, _, _ in lote
+                ]))
+            for (_, _, chunk_id, cache_key), vector in zip(lote, vectors):
+                vector_by_chunk[chunk_id] = vector
+                await repo.set_cache(cache_key, json.dumps(vector), 30 * 24 * 60 * 60)
         logger.info(f"Embeddings completados en {time.perf_counter() - started:.2f}s")
 
     async def _timed(operation):
@@ -266,15 +375,15 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     
     # LLM -> resumen y actividades con solicitudes concurrentes
     await repo.update_job(content_id, status="GEMMA_PARALLEL_GENERATION", progress="20", total_chunks=str(total_chunks), current_chunk="0")
-    summary_task = asyncio.create_task(_timed(_generate_learning_content(llm, reference_chunks, event, semaphore)))
-    activity_task = asyncio.create_task(_timed(_generate_activity_bank(llm, reference_chunks, event, semaphore)))
+    summary_task = asyncio.create_task(_timed(_generate_learning_path(llm, chunks, event, semaphore)))
+    activity_task = asyncio.create_task(_timed(_generate_section_activity_bank(llm, chunks, event, semaphore)))
     embed_task = asyncio.create_task(_embed_pending())
     summary_result, activity_result = await asyncio.gather(summary_task, activity_task, return_exceptions=True)
     if isinstance(summary_result, BaseException):
         raise summary_result
     if isinstance(activity_result, BaseException):
         raise activity_result
-    refined, summary_ms = summary_result
+    (refined, learning_sections), summary_ms = summary_result
     activities, activity_ms = activity_result
     refined.activities = activities
     await repo.update_job(
@@ -291,7 +400,8 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     refined.summary = _resumen_conceptual(refined.summary, event.document_name, refined.key_concepts)
     await repo.update_job(content_id, status="MISTRAL_ANALYSIS", progress="72", total_chunks=str(total_chunks), current_chunk="0")
     indexed_chunk_ids: list[str] = []
-    for selected_index, (index, chunk) in enumerate(reference_chunks, 1):
+    for selected_index, chunk in enumerate(chunks, 1):
+        index = selected_index
         digest = hashlib.sha256(chunk.text.encode("utf-8")).hexdigest()
         chunk_id = f"{index:04d}-{digest[:20]}"
         indexed_chunk_ids.append(chunk_id)
@@ -331,10 +441,20 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     # rag -> guardando resumen general del tema vectorizado
     await repo.save_vector(content_id, "validated-summary", summary_text, summary_vector, {**_metadata(event), "record_type": "validated_summary", "record_slot": "validated-summary", "branch": "topics"})
 
-    # highlights teoricos y practicos desde reference_chunks (reemplaza DocumentPlan legacy)
-    theoretical_highlights = list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+    # rag -> indexar modulos de aprendizaje con teoria, conceptos y ejercicios
+    for seccion in learning_sections:
+        texto_modulo = "\n".join([seccion["titulo"], seccion["texto_plano"], *seccion["conceptos"], seccion["svg_inline"]])
+        async with semaphore:
+            vector_modulo = await _ollama_with_retry(lambda: llm.embed(texto_modulo))
+        await repo.save_vector(content_id, f"learning-module-{seccion['numero']}", texto_modulo, vector_modulo, {
+            **_metadata(event), "record_type": "learning_module", "record_slot": f"learning-module:{seccion['numero']:04d}",
+            "heading": seccion["titulo"], "branch": "topics",
+        })
+
+    # document -> registrar todos los encabezados procesados
+    theoretical_highlights = list(dict.fromkeys(chunk.heading for chunk in chunks
                                                 if chunk.category != CATEGORIA_EJERCICIOS and chunk.heading))
-    practical_highlights = list(dict.fromkeys(chunk.heading for _, chunk in reference_chunks
+    practical_highlights = list(dict.fromkeys(chunk.heading for chunk in chunks
                                               if chunk.category == CATEGORIA_EJERCICIOS and chunk.heading))
 
     learning_structure = {
@@ -343,13 +463,14 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         "materia": {"id": event.subject_id, "nombre": event.subject},
         "tema": {"id": event.topic_id, "titulo": refined.title},
         "resumen": refined.summary,
+        "partes": learning_sections,
         "resumen_estructurado": {
             "tema": refined.title,
             "resumen_general": refined.summary,
             "contenido": [{
                 "subtitulo": unit.title,
                 "microlearning": unit.explanation,
-                "ejemplos": [{"descripcion": example, "grafico_xml": ""}
+                "ejemplos": [{"descripcion": example, "grafico_xml": _svg_concept_map(unit.title, [unit.explanation])}
                               for example in unit.examples_blackboard],
             } for unit in refined.microlearning_units],
         },
@@ -373,13 +494,27 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
         data = normalize_activity(actividad, content_id, index, actividad.get("source_chunk_ids") or indexed_chunk_ids)
         data["content_id"] = content_id
         data["topic_id"] = event.topic_id
+        data["section_id"] = str(actividad.get("section_number") or "")
         data["created_at"] = event.timestamp
+        data["exercise_svg"] = _svg_concept_map(data.get("learning_objective") or data.get("question") or refined.title, [data.get("question", ""), data.get("answer", "")])
         generated_activities.append(data)
+    # rag -> guardar reactivos estructurados para su reutilizacion por tema
+    textos_reactivos = [json.dumps(item, ensure_ascii=False) for item in generated_activities]
+    if textos_reactivos:
+        async with semaphore:
+            vectores_reactivos = await _ollama_with_retry(lambda: llm.embed_many(textos_reactivos))
+        for index, (reactivo, texto, vector) in enumerate(zip(generated_activities, textos_reactivos, vectores_reactivos), 1):
+            huella = hashlib.sha256(texto.encode("utf-8")).hexdigest()[:24]
+            await repo.save_vector(content_id, f"learning-exercise-{index}-{huella}", texto, vector, {
+                **_metadata(event), "record_type": "learning_exercise", "record_slot": f"learning-exercise:{huella}",
+                "branch": "topics", "heading": reactivo.get("learning_objective", ""),
+            })
     generated.update({
         "content_id": content_id,
         "document_id": event.document_id,
         "source_document_id": event.document_id,
         "learning_structure": learning_structure,
+        "learning_sections": learning_sections,
         "subject": event.subject,
         "topic_id": event.topic_id,
         "source": event.source,

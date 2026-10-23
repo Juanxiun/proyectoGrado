@@ -19,6 +19,8 @@ export interface RachasDiarias {
 export interface PuntosIndividuales {
   id: string;
   usuarioId: string;
+  cursoPeriodoId?: string;
+  paralelo?: 'A' | 'B';
   fecha: string;
   tipo: 'respuesta_correcta' | 'leer_resumen' | 'salvar_racha' | 'pista_examen' | 'ajuste_manual' | 'canje_tienda';
   puntos: number;
@@ -83,6 +85,8 @@ export interface RecompensaTienda {
 export interface CompraEstudiante {
   id: string;
   usuarioId: string;
+  cursoPeriodoId?: string;
+  paralelo?: 'A' | 'B';
   recompensaId: string;
   puntosGastados: number;
   fechaCompra: string;
@@ -93,6 +97,7 @@ export interface CompraEstudiante {
 export interface RankingEstudiante {
   usuarioId: string;
   estudianteId: string;
+  tag: string;
   nombre: string;
   apellidoPaterno: string;
   avatarUrl?: string | null;
@@ -102,7 +107,8 @@ export interface RankingEstudiante {
   calidadPromedio: number;
   tiempoPromedioMs: number;
   puntosIndividuales: number;
-  puntosGlobales: number;
+  nivel: number;
+  rango: 'D' | 'C' | 'B' | 'A' | 'S';
   insigniasCount: number;
   trofeosCount: number;
   posicion: number;
@@ -118,9 +124,13 @@ export interface RankingParalelo {
 export interface ResumenGamificacion {
   racha: RachasDiarias | null;
   puntosIndividuales: number;
+  puntosCurso: number;
+  nivel: number;
+  rango: 'D' | 'C' | 'B' | 'A' | 'S';
+  puntosSiguienteNivel: number;
+  tag: string | null;
   puntosHoy: number;
   limiteDiario: number;
-  puntosGlobales: number;
   insignias: InsigniaEstudiante[];
   trofeos: TrofeoEstudiante[];
   ranking: RankingEstudiante | null;
@@ -139,6 +149,7 @@ export interface DesafioDiarioGamificacion {
 export interface InfoEstudianteGamificacion {
   usuarioId: string;
   estudianteId: string;
+  tag: string;
   cursoPeriodoId: string;
   paralelo: 'A' | 'B';
   nombre?: string;

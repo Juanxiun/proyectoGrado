@@ -46,7 +46,7 @@
 
 ## Inicialización por consola
 
-Requisitos: Postgres `127.0.0.1:5432`, Redis `6379` (stack externo al repo), esquema de `Esquems/BDmain.sql` (seed económico opcional: `Esquems/datos_economia.sql`) y `.env` local (gitignored) con `JWT_SECRET`, `EVENTOS_CANAL` y `GATEWAY_PUBLIC_URL` compartidos.
+Requisitos: Postgres `127.0.0.1:5432`, Redis `6379` (stack externo al repo), esquema y seed económico de `Esquems/` (`reiniciar.sql` crea ShalomDB y ShalomDBGM y aplica `BDmain.sql`, `datos.sql` y `BDgm.sql`) y `.env` local (gitignored) con `JWT_SECRET`, `EVENTOS_CANAL` y `GATEWAY_PUBLIC_URL` compartidos.
 
 ```powershell
 cd ServiceBilling

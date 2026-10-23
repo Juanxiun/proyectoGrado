@@ -35,6 +35,7 @@ class LearningUnit(BaseModel):
     objective: str = Field(max_length=160)
     inquiry_question: str = Field(max_length=240)
     examples_blackboard: list[str] = Field(default_factory=list, max_length=5)
+    svg_inline: str = Field(default="", max_length=5000)
 
 
 # compatibilidad -> modelos de analisis usados por integraciones existentes
@@ -188,7 +189,7 @@ class RefinedContent(BaseModel):
     summary: str = Field(max_length=500)
     learning_objectives: list[str] = Field(max_length=8)
     key_concepts: list[str] = Field(max_length=12)
-    microlearning_units: list[LearningUnit] = Field(max_length=6)
+    microlearning_units: list[LearningUnit] = Field(min_length=5, max_length=6)
     inquiry_questions: list[str] = Field(max_length=8)
     common_mistakes: list[str] = Field(max_length=8)
     difficulty: str = Field(max_length=20)
@@ -255,12 +256,14 @@ class QuizQualityFeedback(BaseModel):
     feedback: str = Field(max_length=320)
     next_step: str = Field(max_length=240)
     points: int = Field(ge=5, le=10)
+    explanation_svg: str = Field(default="", max_length=5000)
 
 
 class QuizRequest(BaseModel):
     student_id: str = Field(min_length=1, max_length=100)
     content_id: str = Field(min_length=1, max_length=200)
     activity_count: Literal[5, 6] = 5
+    section_id: str | None = Field(default=None, max_length=100)
 
 
 class StudentLearningAnalysis(BaseModel):
@@ -292,6 +295,7 @@ class StudentLearningOverviewRequest(BaseModel):
 class PersonalizedLearningContent(BaseModel):
     title: str
     explanation: str
+    explanation_svg: str = Field(default="", max_length=5000)
     microlearning_units: list[LearningUnit]
     inquiry_questions: list[str]
     examples: list[str]

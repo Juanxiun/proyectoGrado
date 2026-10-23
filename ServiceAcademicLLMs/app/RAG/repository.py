@@ -374,6 +374,31 @@ class RAGRepository:
         value = await self._redis.get(f"{self.prefix}:content:{content_id}:activities")
         return json.loads(value) if value else []
 
+    # rag -> reutilizar reactivos validados del mismo tema
+    async def get_reusable_exercises(self, topic_id: str, limit: int = 40) -> list[dict[str, Any]]:
+        if not topic_id:
+            return []
+        cursor = 0
+        encontrados: list[dict[str, Any]] = []
+        patron = f"{self._vector_key_prefix}*"
+        while len(encontrados) < limit:
+            cursor, keys = await self._redis.scan(cursor=cursor, match=patron, count=200)
+            for key in keys:
+                campos = await self._redis.hmget(key, "topic_id", "record_type", "text")
+                if _text(campos[0]) != topic_id or _text(campos[1]) != "learning_exercise":
+                    continue
+                try:
+                    ejercicio = json.loads(_text(campos[2]))
+                except (json.JSONDecodeError, TypeError):
+                    continue
+                if isinstance(ejercicio, dict):
+                    encontrados.append(ejercicio)
+                    if len(encontrados) >= limit:
+                        break
+            if cursor == 0:
+                break
+        return encontrados
+
     # resumen -> cache de formatos avanzados por contenido
     async def get_summary_cache(self, content_id: str, formato: str) -> dict[str, Any] | None:
         value = await self._redis.get(f"{self.prefix}:content:{content_id}:summary:v3:{formato}")

@@ -365,3 +365,30 @@ def split_chunks(text: str, max_size: int, max_chunks: int, min_size: int = 400,
     if len(fragmentos) > max_chunks:
         raise ValueError(f"El documento excede el máximo permitido de {max_chunks} fragmentos")
     return [fragmento for fragmento in fragmentos if fragmento.text]
+
+
+# document -> secciones jerarquicas completas para la ruta de aprendizaje
+def split_document_sections(text: str, max_size: int) -> list[SemanticChunk]:
+    limpio = filter_noise(text)
+    if not limpio:
+        return []
+    salida: list[SemanticChunk] = []
+    ruta: dict[int, str] = {}
+    for numero, (titulo, nivel, cuerpo) in enumerate(_split_sections(limpio) or [("Documento", 1, limpio)], 1):
+        nivel = max(1, nivel or 1)
+        ruta[nivel] = titulo or f"Seccion {numero}"
+        ruta = {profundidad: nombre for profundidad, nombre in ruta.items() if profundidad <= nivel}
+        encabezado = " / ".join(ruta[profundidad] for profundidad in sorted(ruta))
+        piezas = _corte_duro(_oraciones(cuerpo), max(700, max_size))
+        if not piezas:
+            piezas = [cuerpo.strip()]
+        for parte, contenido in enumerate(piezas, 1):
+            if contenido:
+                salida.append(SemanticChunk(
+                    text=contenido,
+                    heading=encabezado,
+                    category=CATEGORIA_EJERCICIOS if _es_seccion_ejercicios(titulo, cuerpo) else CATEGORIA_TEORIA,
+                    order=len(salida) + 1,
+                    meta={"seccion": numero, "nivel": nivel, "parte": parte},
+                ))
+    return salida

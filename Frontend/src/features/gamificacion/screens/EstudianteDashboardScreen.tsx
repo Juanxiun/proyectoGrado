@@ -58,6 +58,13 @@ const INSIGNIAS_CATALOGO = [
   },
 ];
 
+const coloresRango: Record<'D' | 'C' | 'B' | 'A' | 'S', string> = {
+  D: '#9CA3AF',
+  C: '#8B5E3C',
+  B: '#2563EB',
+  A: '#D4A017',
+  S: '#DC2626',
+};
 
 function InformeAprendizajeModal({
   visible,
@@ -80,6 +87,7 @@ function InformeAprendizajeModal({
     resumenes_directos: 'Resúmenes directos',
     ejercicios_practicos: 'Ejercicios prácticos',
   };
+
   return <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
     <View className="flex-1 bg-black/60 justify-center p-4">
       <View className="max-h-[88%] rounded-3xl bg-white overflow-hidden">
@@ -108,7 +116,7 @@ function InformeAprendizajeModal({
 function ListaDesafiosDiarios({ desafios, bonoOtorgado, insignias }: { desafios: DesafioDiarioGamificacion[]; bonoOtorgado: boolean; insignias: InsigniaEstudiante[] }) {
   return <View className="gap-2">
     {desafios.map((reto) => <View key={reto.codigo} className="flex-row items-center gap-2 rounded-xl bg-gray-50 p-3"><Ionicons name={reto.completado ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={reto.completado ? '#16A34A' : '#9CA3AF'} /><Text className="flex-1 text-xs text-gray-800">{reto.nombre}</Text></View>)}
-    {bonoOtorgado ? <Text className="text-xs font-bold text-emerald-700">¡Bono diario de 10 puntos obtenido!</Text> : null}
+    {bonoOtorgado ? <Text className="text-xs font-bold text-emerald-700">¡Bono semanal de hasta 20 puntos obtenido!</Text> : null}
     {insignias.filter((insignia) => Boolean(insignia.metadata?.contentId)).map((insignia) => <View key={insignia.id} className="rounded-xl bg-amber-50 p-3"><Text className="text-xs font-bold text-amber-900">Insignia de tema completado</Text><Text className="text-[10px] text-amber-800">Tema: {String(insignia.metadata?.titulo ?? insignia.metadata?.contentId)}</Text></View>)}
   </View>;
 }
@@ -122,6 +130,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [resumen, setResumen] = useState<ResumenGamificacion | null>(null);
   const [rankings, setRankings] = useState<RankingParalelo[]>([]);
   const [selectedParalelo, setSelectedParalelo] = useState<'A' | 'B'>(user?.paralelo === 'B' ? 'B' : 'A');
+  const [rankingVista, setRankingVista] = useState<'curso' | 'paralelo'>('curso');
 
   // Modal de recompensas
   const [tiendaModalOpen, setTiendaModalOpen] = useState(false);
@@ -215,7 +224,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     try {
       setTiendaModalOpen(true);
       const items = await gamificacionApi.getTienda();
-      setRecompensas(items.filter((item) => ['puntos dobles', 'recuperar racha'].includes(item.nombre.trim().toLocaleLowerCase('es'))));
+      setRecompensas(items.filter((item) => ['multiplicadores de puntos', 'salvar racha diaria'].includes(item.nombre.trim().toLocaleLowerCase('es'))));
     } catch {
       setRecompensas([]);
       Alert.alert('Tienda no disponible', 'No se pudieron cargar las recompensas. Inténtalo de nuevo.');
@@ -257,19 +266,21 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const handleSalvarRacha = async () => {
     try {
       await gamificacionApi.salvarRacha();
-      Alert.alert('¡Racha Salvada!', 'Tu racha consecutiva fue rescatada exitosamente (-100 pts).');
+      Alert.alert('¡Racha Salvada!', 'Tu racha consecutiva fue rescatada exitosamente (-50 pts).');
       fetchData();
     } catch {
-      Alert.alert('No se pudo salvar', 'Verifica que cuentes con 100 puntos individuales.');
+      Alert.alert('No se pudo salvar', 'Verifica que cuentes con 50 puntos individuales o un salvador de racha.');
     }
   };
 
   const racha = resumen?.racha;
   const puntosInd = resumen?.puntosIndividuales ?? 0;
-  const puntosGlob = resumen?.puntosGlobales ?? 0;
+  const puntosCurso = resumen?.puntosCurso ?? puntosInd;
   const hoyLaPaz = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/La_Paz' }).format(new Date());
 
-  const currentRankingList = rankings.find((r) => r.paralelo === selectedParalelo)?.estudiantes ?? [];
+  const rankingCurso = rankings.flatMap((ranking) => ranking.estudiantes).sort((a, b) => b.puntosIndividuales - a.puntosIndividuales).slice(0, 5);
+  const rankingParalelo = rankings.find((r) => r.paralelo === selectedParalelo)?.estudiantes ?? [];
+  const currentRankingList = rankingVista === 'curso' ? rankingCurso : rankingParalelo;
 
   if (isMobile) return (
     <ScrollView className="flex-1" contentContainerClassName="gap-3 pb-6">
@@ -278,11 +289,11 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <View className="flex-1 p-4">
             <Text className="self-start bg-[#F3D9B7] text-[#801F3F] text-[9px] font-extrabold px-2.5 py-1 rounded-full">PERFIL ESTUDIANTIL</Text>
             <Text className="text-white text-2xl font-black mt-2">¡Hola, {user?.nombre || 'Estudiante'}!</Text>
-            <Text className="text-white/80 text-xs mt-1">Nivel {user?.grado || '—'} · {puntosInd.toLocaleString('es-BO')} XP</Text>
+            <Text className="text-white/80 text-xs mt-1">Nivel {resumen?.nivel ?? 0} · Rango {resumen?.rango ?? 'D'} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
           </View>
-          <View className="w-24 h-24 mr-4 rounded-full bg-white/10 items-center justify-center"><Ionicons name="school" size={46} color="#F3D9B7" /></View>
+          <View className="w-24 h-24 mr-4 rounded-full bg-white/10 items-center justify-center"><Ionicons name="shield" size={46} color={coloresRango[resumen?.rango ?? 'D']} /></View>
         </View>
-        <View className="px-4 pb-4 pt-1"><Text className="text-white/80 text-[9px] font-bold">PUNTOS ACUMULADOS · {puntosGlob.toLocaleString('es-BO')} XP DE CURSO</Text></View>
+        <View className="px-4 pb-4 pt-1"><Text className="text-white/80 text-[9px] font-bold">TAG {resumen?.tag ?? '—'} · {resumen?.puntosSiguienteNivel ?? 100} XP PARA EL SIGUIENTE NIVEL</Text></View>
       </View>
 
       <View className="flex-row gap-3">
@@ -295,8 +306,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <Ionicons name="star" size={30} color="#D69A16" />
           <Text className="text-[#801F3F] text-2xl font-black mt-1">{puntosInd.toLocaleString('es-BO')}</Text>
           <Text className="text-gray-500 text-[9px] font-bold">PUNTOS ACADÉMICOS</Text>
-          <Text className="text-gray-500 text-[9px] mt-1">Hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 30} pts</Text>
-          <View className="mt-2 h-1.5 w-full rounded-full bg-amber-100 overflow-hidden"><View className="h-full bg-amber-500" style={{ width: `${Math.min(100, (puntosInd / 1500) * 100)}%` }}/></View>
+          <Text className="text-gray-500 text-[9px] mt-1">Hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 20} pts</Text>
+          <View className="mt-2 h-1.5 w-full rounded-full bg-amber-100 overflow-hidden"><View className="h-full bg-amber-500" style={{ width: `${Math.min(100, ((puntosCurso % 100) / 100) * 100)}%` }}/></View>
         </View>
       </View>
 
@@ -321,12 +332,13 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       </View>
 
       <View className="flex-row items-center justify-between px-1 mt-1"><Text className="text-[#801F3F] font-bold text-sm">Tu progreso</Text><StatusBadge label="Ciclo actual" variant="neutral" /></View>
-      <View className="rounded-2xl bg-white border border-gray-200 p-4 gap-3"><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos individuales</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosInd.toLocaleString('es-BO')} XP</Text></View><View className="h-px bg-gray-100"/><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos del curso</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosGlob.toLocaleString('es-BO')} XP</Text></View></View>
+      <View className="rounded-2xl bg-white border border-gray-200 p-4 gap-3"><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos individuales</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosInd.toLocaleString('es-BO')} XP</Text></View><View className="h-px bg-gray-100"/><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos del curso y paralelo</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosCurso.toLocaleString('es-BO')} XP</Text></View></View>
 
       <View className="flex-row gap-3">
         <View className="flex-1 rounded-2xl bg-white border border-gray-200 p-3">
           <View className="flex-row items-center gap-2 mb-3"><Ionicons name="ribbon-outline" size={16} color="#D69A16" /><Text className="text-[#801F3F] text-[10px] font-bold">RANKING SEMANAL</Text></View>
-          {rankings.length ? currentRankingList.slice(0, 3).map((st, index) => <View key={st.estudianteId} className="flex-row items-center gap-2 mb-3"><View className={`w-6 h-6 rounded-full items-center justify-center ${index === 0 ? 'bg-[#F3D9B7]' : 'bg-gray-100'}`}><Text className="text-[9px] font-bold text-[#801F3F]">{index + 1}</Text></View><View className="flex-1"><Text className="text-gray-800 text-[10px] font-bold" numberOfLines={1}>{st.nombre} {st.apellidoPaterno}</Text><Text className="text-gray-500 text-[9px]">{st.puntosIndividuales.toLocaleString('es-BO')} XP</Text></View></View>) : <Text className="text-gray-500 text-[10px] py-4 text-center">{loading ? 'Cargando ranking…' : 'Aún no hay estudiantes para mostrar en este paralelo.'}</Text>}
+          <View className="flex-row gap-1 mb-2"><TouchableOpacity onPress={() => setRankingVista('curso')} className={`rounded-lg px-2 py-1 ${rankingVista === 'curso' ? 'bg-[#801F3F]' : 'bg-gray-100'}`}><Text className={`text-[9px] font-bold ${rankingVista === 'curso' ? 'text-white' : 'text-gray-600'}`}>Top 5 curso</Text></TouchableOpacity><TouchableOpacity onPress={() => setRankingVista('paralelo')} className={`rounded-lg px-2 py-1 ${rankingVista === 'paralelo' ? 'bg-[#801F3F]' : 'bg-gray-100'}`}><Text className={`text-[9px] font-bold ${rankingVista === 'paralelo' ? 'text-white' : 'text-gray-600'}`}>Paralelo {selectedParalelo}</Text></TouchableOpacity></View>
+          {currentRankingList.length ? currentRankingList.slice(0, rankingVista === 'curso' ? 5 : 3).map((st, index) => <View key={st.estudianteId} className="flex-row items-center gap-2 mb-3"><View className={`w-6 h-6 rounded-full items-center justify-center ${index === 0 ? 'bg-[#F3D9B7]' : 'bg-gray-100'}`}><Text className="text-[9px] font-bold text-[#801F3F]">{index + 1}</Text></View><View className="flex-1"><Text className="text-gray-800 text-[10px] font-bold" numberOfLines={1}>{st.nombre} {st.apellidoPaterno}</Text><Text className="text-gray-500 text-[9px]">{st.puntosIndividuales.toLocaleString('es-BO')} XP</Text></View></View>) : <Text className="text-gray-500 text-[10px] py-4 text-center">{loading ? 'Cargando ranking…' : 'Aún no hay estudiantes para mostrar en este paralelo.'}</Text>}
           <TouchableOpacity onPress={() => onNavigate?.('Materias')} className="items-center pt-1"><Text className="text-[#801F3F] text-[9px] font-bold">VER MATERIAS</Text></TouchableOpacity>
         </View>
       </View>
@@ -402,7 +414,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
                 >
                   <Ionicons name="shield-outline" size={14} color="#FFFFFF" />
                   <Text className="text-xs font-bold text-white">
-                    Salvar Racha (100 pts)
+                    Salvar Racha (50 pts)
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -439,9 +451,10 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             <Text className="text-3xl font-black text-amber-700 mt-1">
               {puntosInd} <Text className="text-sm font-semibold text-amber-600">pts</Text>
             </Text>
-            <Text className="text-xs text-amber-800 mt-1">Ganados hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 30} pts</Text>
+            <Text className="text-xs font-bold mt-1" style={{ color: coloresRango[resumen?.rango ?? 'D'] }}>Rango {resumen?.rango ?? 'D'} · Nivel {resumen?.nivel ?? 0}</Text>
+            <Text className="text-xs text-amber-800 mt-1">Ganados hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 20} pts</Text>
             <Text className="text-[11px] text-gray-500 mt-1 leading-snug">
-              +5 por acierto rápido y de calidad · +4 por lectura de resúmenes.
+              5 puntos por ruta completada y de 5 a 10 por evaluación.
             </Text>
           </View>
 
@@ -466,26 +479,26 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
               <StatusBadge label="Competencia Curso" variant="info" />
             </View>
             <Text className="text-gray-500 text-xs font-bold uppercase tracking-wider mt-3">
-              Puntos Globales de Curso
+              Puntos del curso y paralelo
             </Text>
             <Text className="text-3xl font-black text-indigo-700 mt-1">
-              {puntosGlob} <Text className="text-sm font-semibold text-indigo-600">pts</Text>
+              {puntosCurso} <Text className="text-sm font-semibold text-indigo-600">pts</Text>
             </Text>
             <Text className="text-[11px] text-gray-500 mt-1 leading-snug">
-              Ganancia diaria de 3 a 5 pts. Desbloquea recompensas grupales de paralelo.
+              100 puntos obtenidos suben un nivel; máximo nivel 67.
             </Text>
           </View>
 
           {/* Barra de Progreso del Premio Grupal */}
           <View className="mt-4 bg-white/80 p-2.5 rounded-xl border border-indigo-100 gap-1.5">
             <View className="flex-row items-center justify-between text-[11px]">
-              <Text className="text-[11px] font-bold text-indigo-900">Premio de Curso</Text>
-              <Text className="text-[11px] font-bold text-indigo-700">{puntosGlob} / 25 pts</Text>
+              <Text className="text-[11px] font-bold text-indigo-900">Progreso de nivel</Text>
+              <Text className="text-[11px] font-bold text-indigo-700">{puntosCurso % 100} / 100 pts</Text>
             </View>
             <View className="h-2 w-full bg-indigo-100 rounded-full overflow-hidden">
               <View
                 className="h-full bg-indigo-600 rounded-full"
-                style={{ width: `${Math.min(100, (puntosGlob / 25) * 100)}%` }}
+                style={{ width: `${Math.min(100, (puntosCurso / 25) * 100)}%` }}
               />
             </View>
           </View>
@@ -507,7 +520,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
 
         <Text className="text-xs text-purple-900 leading-relaxed">
-          Hoy estudiaste {resumen?.aprendizajeHoy?.length ?? 0} actividades y ganaste {resumen?.puntosHoy ?? 0} de {resumen?.limiteDiario ?? 30} puntos diarios.
+          Hoy estudiaste {resumen?.aprendizajeHoy?.length ?? 0} actividades y ganaste {resumen?.puntosHoy ?? 0} de {resumen?.limiteDiario ?? 20} puntos diarios.
         </Text>
         <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Revisar mi forma de aprender</Text></TouchableOpacity>
         {resumen?.aprendizajeHoy?.length ? resumen.aprendizajeHoy.slice(0, 3).map((item, index) => <View key={`${item.titulo}-${index}`} className="rounded-xl bg-white p-3 border border-purple-100"><Text className="text-xs font-bold text-purple-950">{item.materiaNombre}: {item.titulo}</Text><Text className="text-[11px] text-gray-600 mt-1">{item.feedback || (item.porcentajeAcierto > 0.8 ? 'Buen dominio; explica el concepto con tus palabras.' : 'Vuelve a repasar y practicar este tema.')}</Text></View>) : <Text className="text-xs text-gray-500">Aún no hay actividades registradas hoy.</Text>}
@@ -536,35 +549,35 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
               Tabla de Clasificación de Paralelos
             </Text>
             <Text className="text-xs text-gray-500">
-              Puntos ganados esta semana por estudiantes de cada paralelo.
+              {rankingVista === 'curso' ? 'Los cinco puntajes más altos del curso.' : `Clasificación completa del paralelo ${selectedParalelo}.`}
             </Text>
           </View>
 
-          {/* Selector Paralelo A vs B */}
           <View className="flex-row bg-gray-100 p-1 rounded-xl">
-            {(['A', 'B'] as const).map((p) => (
+            {(['curso', 'paralelo'] as const).map((vista) => (
               <TouchableOpacity
-                key={p}
-                onPress={() => setSelectedParalelo(p)}
+                key={vista}
+                onPress={() => setRankingVista(vista)}
                 className={`px-3 py-1.5 rounded-lg ${
-                  selectedParalelo === p ? 'bg-maroon' : 'bg-transparent'
+                  rankingVista === vista ? 'bg-maroon' : 'bg-transparent'
                 }`}
               >
                 <Text
                   className={`text-xs font-bold ${
-                    selectedParalelo === p ? 'text-white' : 'text-gray-600'
+                    rankingVista === vista ? 'text-white' : 'text-gray-600'
                   }`}
                 >
-                  Paralelo {p}
+                  {vista === 'curso' ? 'Top 5 curso' : 'Ranking paralelo'}
                 </Text>
               </TouchableOpacity>
             ))}
           </View>
+          {rankingVista === 'paralelo' ? <View className="flex-row bg-gray-100 p-1 rounded-xl">{(['A', 'B'] as const).map((p) => <TouchableOpacity key={p} onPress={() => setSelectedParalelo(p)} className={`px-3 py-1.5 rounded-lg ${selectedParalelo === p ? 'bg-indigo-600' : 'bg-transparent'}`}><Text className={`text-xs font-bold ${selectedParalelo === p ? 'text-white' : 'text-gray-600'}`}>Paralelo {p}</Text></TouchableOpacity>)}</View> : null}
         </View>
 
         {/* Podio / Lista de Estudiantes */}
         <View className="gap-2.5">
-          {currentRankingList.map((st, index) => {
+          {currentRankingList.slice(0, rankingVista === 'curso' ? 5 : undefined).map((st, index) => {
             const isFirst = index === 0;
             const isSecond = index === 1;
             const isThird = index === 2;

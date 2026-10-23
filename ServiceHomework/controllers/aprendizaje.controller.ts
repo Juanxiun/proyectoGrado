@@ -108,11 +108,13 @@ export async function crearReto(ctx: Context): Promise<void> {
     }
     const contentId = String((contenido.data as Record<string, unknown>).content_id);
     const cantidad = Number(ctx.request.url.searchParams.get("cantidad") ?? "6");
+    const sectionId = ctx.request.url.searchParams.get("seccion");
     const studentId = claims(ctx).sub;
     const resultado = await llamarServicioLlm(`/students/${encodeURIComponent(studentId)}/contents/${encodeURIComponent(contentId)}/quizzes`, "POST", {
       student_id: studentId,
       content_id: contentId,
       activity_count: cantidad === 5 ? 5 : 6,
+      section_id: sectionId || undefined,
     }, 15_000);
     respond(ctx, resultado.status, resultado.data);
   } catch (error) {

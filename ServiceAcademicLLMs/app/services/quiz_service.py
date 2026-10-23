@@ -86,7 +86,7 @@ def _seleccion_diversa(disponibles: list[dict], cantidad: int, dificultad: str, 
 
 
 # activities -> emision de prueba con actividades gamificadas (Fase 3C: Gemma reestructura)
-async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: OllamaClient, semaphore) -> dict:
+async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo: RAGRepository, llm: OllamaClient, semaphore, section_id: str | None = None) -> dict:
     content = await repo.get_validated_content(content_id)
     if not content:
         raise LookupError("El material aun no tiene contenido validado para generar actividades")
@@ -98,6 +98,15 @@ async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo
     bank = await repo.get_activity_bank(content_id)
     if not bank:
         bank = content.get("activities", []) if isinstance(content.get("activities"), list) else []
+    topic_id = str(content.get("topic_id") or "")
+    reutilizables = await repo.get_reusable_exercises(topic_id) if topic_id else []
+    bank = list({str(item.get("activity_id") or item.get("fingerprint") or fingerprint(activity_statement(item))): item for item in [*bank, *reutilizables]}.values())
+    if section_id:
+        bank_seccion = [item for item in bank if str(item.get("section_id") or "") == section_id]
+        if bank_seccion:
+            bank = bank_seccion
+        elif content.get("learning_sections"):
+            raise ValueError("Esta sección todavía no tiene ejercicios generados")
     disponibles = _disponibles(bank, used_ids, used_fingerprints)
     if len(disponibles) < min(activity_count, 4):
         logger.warning(
@@ -132,6 +141,7 @@ async def issue_quiz(student_id: str, content_id: str, activity_count: int, repo
         "quiz_id": quiz_id,
         "student_id": student_id,
         "content_id": content_id,
+        "section_id": section_id,
         "difficulty": difficulty,
         "activity_count": len(issued),
         "activities": [public_activity(actividad, semilla=quiz_id, banco=bank) for actividad in issued],

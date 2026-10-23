@@ -40,6 +40,27 @@ CREATE DATABASE :"dbname" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
 \echo '  -> datos listos'
 \echo ''
 
+\echo '  -> esquema de gamificacion (BDgm.sql en ShalomDBGM)'
+\echo ''
+
+\set dbnameGM ShalomDBGM
+
+\connect postgres
+
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE datname = :'dbnameGM' AND pid <> pg_backend_pid();
+
+DROP DATABASE IF EXISTS :"dbnameGM";
+
+CREATE DATABASE :"dbnameGM" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
+\connect :"dbnameGM"
+\ir BDgm.sql
+\connect ShalomDB
+\echo ''
+\echo '  -> gamificacion lista'
+\echo ''
+
 \echo '=============================================================='
 \echo '  Resultado'
 \echo '=============================================================='

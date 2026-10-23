@@ -222,12 +222,12 @@ export function ActividadGamificadaModal({
   const handleSalvarRacha = async () => {
     try {
       const rachaActualizada = await gamificacionApi.salvarRacha();
-      Alert.alert('¡Racha Salvada!', `Tu racha diaria fue rescatada con éxito (-100 pts). Racha actual: ${rachaActualizada.rachaActual} días.`);
+      Alert.alert('¡Racha Salvada!', `Tu racha diaria fue rescatada con éxito (-50 pts). Racha actual: ${rachaActualizada.rachaActual} días.`);
       if (resultadoFinal) {
         setResultadoFinal({ ...resultadoFinal, racha: rachaActualizada });
       }
     } catch {
-      Alert.alert('No se pudo salvar', 'Necesitas 100 puntos individuales para salvar la racha.');
+      Alert.alert('No se pudo salvar', 'Necesitas 50 puntos individuales o un salvador de racha.');
     }
   };
 
@@ -286,7 +286,7 @@ export function ActividadGamificadaModal({
                   <BentoCard className="flex-1 p-3.5 bg-gray-50 items-center">
                     <Text className="text-xs text-gray-500 font-medium">Puntos Ganados</Text>
                     <Text className="text-2xl font-black text-maroon mt-0.5">+{resultadoFinal.puntosGanados + (resultadoFinal.bonoDesafios ?? 0)}</Text>
-                    <Text className="text-[10px] text-gray-400">{resultadoFinal.bonoDesafios ? `Incluye bono diario +${resultadoFinal.bonoDesafios}` : 'Calidad + Rapidez'}</Text>
+                    <Text className="text-[10px] text-gray-400">{resultadoFinal.bonoDesafios ? `Incluye bono semanal +${resultadoFinal.bonoDesafios}` : 'Calidad + Rapidez'}</Text>
                   </BentoCard>
 
                   <BentoCard className="flex-1 p-3.5 bg-gray-50 items-center">
@@ -310,13 +310,13 @@ export function ActividadGamificadaModal({
                       </Text>
                     </View>
                     <Text className="text-xs text-red-700">
-                      Necesitas 50% o más de aciertos en una actividad para activar la racha. Puedes salvar tu racha consecutiva usando 100 puntos individuales acumulados.
+                      Necesitas 50% o más de aciertos en una actividad para activar la racha. Puedes salvar tu racha consecutiva usando 50 puntos individuales o un salvador de racha.
                     </Text>
                     <TouchableOpacity
                       onPress={handleSalvarRacha}
                       className="bg-red-600 py-2.5 rounded-xl items-center mt-1"
                     >
-                      <Text className="text-white text-xs font-bold">Salvar Racha (100 pts)</Text>
+                      <Text className="text-white text-xs font-bold">Salvar Racha (50 pts)</Text>
                     </TouchableOpacity>
                   </View>
                 )}

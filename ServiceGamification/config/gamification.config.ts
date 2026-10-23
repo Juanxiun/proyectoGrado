@@ -3,12 +3,12 @@ export const gamificationConfig = {
   // racha diaria
   racha: {
     umbralAcierto: 0.5,
-    costoSalvarRacha: 100, // puntos individuales
+    costoSalvarRacha: 50, // puntos individuales
   },
 
   puntosDiarios: {
     maximo: 20,
-    bonoDesafios: 10,
+    bonoDesafios: 20,
   },
 
   // puntos individuales
@@ -23,10 +23,12 @@ export const gamificationConfig = {
     costo: 95, // puntos individuales
   },
 
-  // puntos globales / nivel curso
-  puntosGlobales: {
-    minPorDia: 3,
-    maxPorDia: 5,
+  // progresion -> curso y paralelo
+  progresion: {
+    puntosPorNivel: 100,
+    nivelMaximo: 67,
+    multiplicadoresMaximosSemanales: 2,
+    costoMultiplicador: 40,
   },
 
   // meta diaria microlearning

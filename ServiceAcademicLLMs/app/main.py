@@ -2,6 +2,8 @@ import asyncio
 import json
 import logging
 import math
+import re
+import xml.etree.ElementTree as ET
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
@@ -20,6 +22,26 @@ from app.worker import run_worker
 
 logging.basicConfig(level=settings.log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+# svg -> validar etiquetas inline permitidas
+def _svg_seguro(valor: str) -> str:
+    try:
+        raiz = ET.fromstring(valor)
+    except (ET.ParseError, ValueError):
+        return ""
+    permitidas = {"svg", "g", "rect", "line", "circle", "ellipse", "path", "text", "tspan", "polyline", "polygon"}
+    atributos = {"xmlns", "width", "height", "viewBox", "x", "y", "x1", "y1", "x2", "y2", "cx", "cy", "r", "rx", "ry", "d", "points", "fill", "stroke", "stroke-width", "font-size", "font-weight", "text-anchor", "opacity"}
+    for nodo in raiz.iter():
+        if nodo.tag.rsplit("}", 1)[-1] not in permitidas:
+            return ""
+        if any(clave.rsplit("}", 1)[-1] not in atributos for clave in nodo.attrib):
+            return ""
+        if nodo.text and re.search(r"<|javascript:|https?://", nodo.text, re.IGNORECASE):
+            return ""
+    if raiz.tag.rsplit("}", 1)[-1] != "svg":
+        return ""
+    return ET.tostring(raiz, encoding="unicode")[:5000]
 
 
 async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, llm, semaphore) -> dict:
@@ -53,7 +75,9 @@ async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict 
         async with semaphore:
             async with asyncio.timeout(settings.llm_feedback_timeout):
                 review = await llm.structured(settings.ollama_mistral_model, "mistral/quiz_feedback.txt", context, QuizQualityFeedback)
-        return {**review.model_dump(), "model": settings.ollama_mistral_model}
+        salida = review.model_dump()
+        salida["explanation_svg"] = _svg_seguro(review.explanation_svg)
+        return {**salida, "model": settings.ollama_mistral_model}
     except Exception:
         logger.exception("No se pudo generar retroalimentacion Mistral student_id=%s content_id=%s", event.student_id, event.content_id)
         return fallback
@@ -225,6 +249,7 @@ async def document_learning(document_id: str, request: Request, x_webhook_secret
         "learning_objectives": content.get("learning_objectives", []),
         "key_concepts": content.get("key_concepts", []),
         "microlearning_units": content.get("microlearning_units", []),
+        "learning_sections": content.get("learning_sections", []),
         "inquiry_questions": content.get("inquiry_questions", []),
         "difficulty": content.get("difficulty", "inicial"),
     }
@@ -334,7 +359,7 @@ async def create_student_quiz(student_id: str, content_id: str, body: QuizReques
         raise HTTPException(status_code=400, detail="Los IDs del cuerpo deben coincidir con la ruta")
     try:
         async with asyncio.timeout(12):
-            return await issue_quiz(student_id, content_id, body.activity_count, request.app.state.rag, request.app.state.llm, request.app.state.semaphore)
+            return await issue_quiz(student_id, content_id, body.activity_count, request.app.state.rag, request.app.state.llm, request.app.state.semaphore, body.section_id)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:

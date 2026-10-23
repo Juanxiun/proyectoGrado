@@ -3,6 +3,7 @@ export interface EstudianteGamificacion {
   id?: string;
   usuarioId: string;
   estudianteId: string;
+  tag: string;
   cursoPeriodoId: string;
   paralelo: "A" | "B";
   nombre?: string;
@@ -30,6 +31,8 @@ export interface RachasDiarias {
 export interface PuntosIndividuales {
   id: string;
   usuarioId: string;
+  cursoPeriodoId?: string;
+  paralelo?: "A" | "B";
   fecha: string;
   tipo: "respuesta_correcta" | "leer_resumen" | "salvar_racha" | "pista_examen" | "ajuste_manual" | "canje_tienda";
   puntos: number;
@@ -104,6 +107,8 @@ export interface RecompensaTienda {
 export interface CompraEstudiante {
   id: string;
   usuarioId: string;
+  cursoPeriodoId?: string;
+  paralelo?: "A" | "B";
   recompensaId: string;
   puntosGastados: number;
   fechaCompra: string;
@@ -115,6 +120,8 @@ export interface ActividadGamificada {
   id: string;
   usuarioId: string;
   estudianteId: string;
+  cursoPeriodoId?: string;
+  paralelo?: "A" | "B";
   tipo: "seleccion_multiple" | "cuestionario" | "flashcards" | "verdadero_falso" | "conectar_frases" | "drag_drop";
   materiaId: string;
   materiaNombre: string;
@@ -166,6 +173,7 @@ export interface RankingParalelo {
 export interface RankingEstudiante {
   usuarioId: string;
   estudianteId: string;
+  tag: string;
   nombre: string;
   apellidoPaterno: string;
   avatarUrl?: string | null;
@@ -175,7 +183,8 @@ export interface RankingEstudiante {
   calidadPromedio: number;
   tiempoPromedioMs: number;
   puntosIndividuales: number;
-  puntosGlobales: number;
+  nivel: number;
+  rango: "D" | "C" | "B" | "A" | "S";
   insigniasCount: number;
   trofeosCount: number;
   posicion: number;

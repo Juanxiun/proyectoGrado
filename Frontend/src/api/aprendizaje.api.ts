@@ -33,9 +33,21 @@ export interface ContenidoAprendizaje {
   topic_id?: string;
   learning_objectives: string[];
   key_concepts: string[];
-  microlearning_units: Array<{ title: string; explanation: string; objective: string; inquiry_question: string }>;
+  microlearning_units: Array<{ title: string; explanation: string; objective: string; inquiry_question: string; svg_inline?: string }>;
   inquiry_questions: string[];
   difficulty: string;
+  learning_sections?: Array<{
+    numero: number;
+    titulo: string;
+    texto_plano: string;
+    resumen: string;
+    conceptos: string[];
+    microlearning: Array<{ title: string; explanation: string; objective: string; inquiry_question: string; examples_blackboard?: string[]; svg_inline?: string }>;
+    checkpoint: string;
+    svg_inline: string;
+    preguntas_indagacion?: string[];
+    conexiones?: Array<{ tema: string; relacion: string; conceptos: string[] }>;
+  }>;
 }
 
 export interface VistaPreviaPdf {
@@ -62,6 +74,7 @@ export interface ResumenAprendizaje {
 export interface ExplicacionSeccion {
   title: string;
   explanation: string;
+  explanation_svg?: string;
   examples: string[];
   microlearning_units: Array<{ title: string; explanation: string; objective: string; inquiry_question: string }>;
   inquiry_questions: string[];
@@ -104,7 +117,7 @@ export interface ResultadoReto {
   score: number;
   correct: number;
   total: number;
-  learning_feedback?: { feedback: string; next_step: string; points: number; model?: string; pending?: boolean };
+  learning_feedback?: { feedback: string; next_step: string; points: number; explanation_svg?: string; model?: string; pending?: boolean };
   answers: Array<{
     activity_id: string;
     tipo: string;
@@ -149,7 +162,7 @@ export const aprendizajeApi = {
   contenido: (materialId: string) => solicitarConReintento(() => apiRequest<ContenidoAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}`, { signal: AbortSignal.timeout(30000) }), 3, true),
   resumen: (materialId: string, formato: FormatoResumen) => solicitarConReintento(() => apiRequest<ResumenAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/resumen`, { method: 'POST', body: { formato }, signal: AbortSignal.timeout(300000) }), 0),
   explicarSeccion: (materialId: string, section: { title: string; explanation: string; example?: string; format: ExplicacionSeccion['format'] }) => solicitarConReintento(() => apiRequest<ExplicacionSeccion>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/explicar-seccion`, { method: 'POST', body: section, signal: AbortSignal.timeout(300000) }), 0),
-  reto: (materialId: string, cantidad = 6) => apiRequest<RetoAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto?cantidad=${cantidad}`, { method: 'POST', signal: AbortSignal.timeout(30000) }),
+  reto: (materialId: string, cantidad = 5, sectionId?: string) => apiRequest<RetoAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto?cantidad=${cantidad}${sectionId ? `&seccion=${encodeURIComponent(sectionId)}` : ''}`, { method: 'POST', signal: AbortSignal.timeout(30000) }),
   validarEmparejamiento: (materialId: string, quizId: string, activityId: string, left: string, right: string) => apiRequest<ResultadoEmparejamiento>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/comprobar-pareja`, { method: 'POST', body: { activity_id: activityId, left, right }, signal: AbortSignal.timeout(30000) }),
   vistaPreviaPdf: (materialId: string) => apiRequest<VistaPreviaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/vista-previa`, { signal: AbortSignal.timeout(90000) }),
   paginaPdf: (materialId: string, numero: number) => apiRequest<PaginaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/pagina/${numero}`, { signal: AbortSignal.timeout(120000) }),
