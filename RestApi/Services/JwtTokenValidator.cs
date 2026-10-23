@@ -4,14 +4,7 @@ using System.Text.Json;
 
 namespace RestApi.Services;
 
-/// <summary>
-/// Validación mínima de JWT HS256. El gateway no autentica peticiones de
-/// negocio (delega eso en cada microservicio), pero sí necesita comprobar el
-/// token del cliente antes de dejarlo entrar a su grupo de notificaciones.
-///
-/// Se implementa a mano para no añadir un paquete NuGet al proyecto: basta con
-/// verificar firma, algoritmo y expiración.
-/// </summary>
+// jwt -> validar firma algoritmo expiracion
 public sealed class JwtTokenValidator
 {
     private readonly byte[] _key;

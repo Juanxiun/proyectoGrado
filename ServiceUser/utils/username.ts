@@ -70,17 +70,14 @@ export function generateEmail(username: string): string {
   return `${username}@shalom.edu.bo`;
 }
 
-/**
- * Genera una contraseña aleatoria y segura para el primer acceso.
- * Cumple con: Mínimo 8 caracteres, al menos una mayúscula, un número y un carácter especial (@, #, $, &).
- */
+// util -> generar password segura
 export function generateSecureRandomPassword(): string {
   const specials = ["@", "#", "$", "&"];
   const s1 = specials[Math.floor(Math.random() * specials.length)];
   const s2 = specials[Math.floor(Math.random() * specials.length)];
-  const randomUpper = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
-  const randomLower = String.fromCharCode(97 + Math.floor(Math.random() * 26)); // a-z
-  const randomDigits = Math.floor(1000 + Math.random() * 9000).toString(); // 4 dígitos
+  const randomUpper = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+  const randomLower = String.fromCharCode(97 + Math.floor(Math.random() * 26));
+  const randomDigits = Math.floor(1000 + Math.random() * 9000).toString();
   
   return `Sh${s1}${randomDigits}${randomUpper}${randomLower}${s2}`;
 }

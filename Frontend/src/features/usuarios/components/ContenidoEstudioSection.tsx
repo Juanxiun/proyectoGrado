@@ -1,16 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import {
-  ActivityIndicator,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { academicServicesApi } from '../../../api/academicServices.api';
+import { SvgXml } from 'react-native-svg';
+import { academicServicesApi, type TemaMalla } from '../../../api/academicServices.api';
+import { ApiClientError } from '../../../api/client';
+import { aprendizajeApi, type ActividadAprendizaje, type ContenidoAprendizaje, type ExplicacionSeccion, type FormatoResumen, type ResumenAprendizaje, type ResultadoReto, type RetoAprendizaje } from '../../../api/aprendizaje.api';
+import { gamificacionApi, type PreguntaActividad, type RespuestaActividad } from '../../../api/gamificacion.api';
+import { useAuth } from '../../../context/AuthContext';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
-import { InAppDocumentViewerModal } from '../../../displays/components/InAppDocumentViewerModal';
 import { connectUsersWebSocket } from '../../../api/users.websocket';
+import { DocumentWebView } from './DocumentWebView';
+import { PdfPaginasViewer } from './PdfPaginasViewer';
+import { ResumenInteractivo } from './ResumenInteractivo';
+import { EjemploCanvas } from './EjemploCanvas';
+import { API_BASE_URL } from '../../../constants/config';
 
 interface MaterialItem {
   id: string;
@@ -21,30 +25,213 @@ interface MaterialItem {
   tamanioBytes?: number;
   tipoMime?: string;
   fechaSubida?: string;
+  temaId?: string | null;
+  estadoProcesamiento?: string;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
 }
 
 interface ContenidoEstudioSectionProps {
   asignacionId: string;
+  nivel?: 'primaria' | 'secundaria';
+  grado?: string;
+  materiaId?: string;
   materiaNombre: string;
 }
 
-export function ContenidoEstudioSection({
-  asignacionId,
-  materiaNombre,
-}: ContenidoEstudioSectionProps) {
+const FORMATOS: Array<{ id: FormatoResumen; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
+  { id: 'CARTAS_EXPLICATIVAS', label: 'Cartas', detail: 'Ideas clave en tarjetas', icon: 'albums-outline' },
+  { id: 'ESQUEMA_GEMMA', label: 'Esquema', detail: 'Diagrama interactivo', icon: 'share-social-outline' },
+];
+
+const MENSAJES_CARGA_RETO = [
+  'Empezando con la actividad',
+  'Validando preguntas',
+  'Viendo tu conocimiento actual',
+  'Preparando retos a tu medida',
+];
+
+interface ZonaActividad {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function PiezaArrastrable({ texto, destino, alSoltar }: { texto: string; destino: React.MutableRefObject<ZonaActividad>; alSoltar: () => void }) {
+  const posicion = useRef(new Animated.ValueXY()).current;
+  const gesto = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponder: (_, estado) => Math.abs(estado.dx) + Math.abs(estado.dy) > 8,
+    onPanResponderMove: Animated.event([null, { dx: posicion.x, dy: posicion.y }], { useNativeDriver: false }),
+    onPanResponderRelease: (_, estado) => {
+      const area = destino.current;
+      if (estado.moveX >= area.x && estado.moveX <= area.x + area.width && estado.moveY >= area.y && estado.moveY <= area.y + area.height) alSoltar();
+      Animated.spring(posicion, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start();
+    },
+    onPanResponderTerminate: () => Animated.spring(posicion, { toValue: { x: 0, y: 0 }, useNativeDriver: true }).start(),
+  });
+  return <Animated.View {...gesto.panHandlers} style={{ transform: posicion.getTranslateTransform(), zIndex: 2 }}><BentoCard className="border border-indigo-200 bg-indigo-50 p-3"><Text className="text-sm font-semibold text-indigo-900">{texto}</Text></BentoCard></Animated.View>;
+}
+
+function LectorArchivo({ material }: { material: MaterialItem }) {
+  const nombreArchivo = material.nombreArchivo || material.archivoUrl.split('?')[0].split('/').pop() || '';
+  const extension = nombreArchivo.split('.').pop()?.toLowerCase();
+  const esImagen = material.tipoMime?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '');
+  const esPdf = material.tipoMime?.toLowerCase() === 'application/pdf' || extension === 'pdf';
+  const url = normalizarUrlMovil(material.archivoUrl);
+  // material -> PDF se lee por paginas dentro de la app, sin descargar el archivo
+  if (esPdf && !esImagen) return <PdfPaginasViewer materialId={material.id} titulo={material.titulo}/>;
+  return <DocumentWebView uri={url} title={material.titulo} mimeType={material.tipoMime} isPdf={esPdf} preferNativePdf={Platform.OS !== 'web'} fileName={nombreArchivo}/>;
+}
+
+function normalizarUrlMovil(rawUrl: string): string {
+  if (Platform.OS !== 'android') return rawUrl;
+  try {
+    const media = new URL(rawUrl);
+    if (!['localhost', '127.0.0.1', 'host.docker.internal'].includes(media.hostname)) return rawUrl;
+    const apiHost = new URL(API_BASE_URL).hostname;
+    media.hostname = apiHost === 'localhost' || apiHost === '127.0.0.1' ? '10.0.2.2' : apiHost;
+    return media.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+type ParteRuta = NonNullable<ContenidoAprendizaje['learning_sections']>[number];
+type CartaRuta = { titulo: string; explicacion: string; ejemplo: string; svg?: string };
+
+// ruta -> completar cinco cartas con evidencia de la seccion
+function crearCartasRuta(parte: ParteRuta): CartaRuta[] {
+  return parte.microlearning.slice(0, 5).map((unidad, indice) => ({
+    titulo: unidad.title || parte.conceptos[indice] || `Idea ${indice + 1}`,
+    explicacion: unidad.explanation || parte.resumen,
+    ejemplo: unidad.examples_blackboard?.find((ejemplo) => ejemplo.trim()) || parte.resumen,
+    svg: unidad.svg_inline,
+  }));
+}
+
+// feedback -> esperar la retroalimentacion de Mistral sin bloquear la pantalla
+async function esperarRetroalimentacion(materialId: string, quizId: string, alRecibir: (feedback: NonNullable<ResultadoReto['learning_feedback']>) => void, intentos = 45, esperaMs = 3000) {
+  for (let intento = 0; intento < intentos; intento += 1) {
+    await new Promise((resolve) => setTimeout(resolve, esperaMs));
+    try {
+      const feedback = await aprendizajeApi.retroalimentacionReto(materialId, quizId);
+      if (feedback && !feedback.pending) {
+        alRecibir(feedback);
+        return;
+      }
+    } catch {
+      // todavia no esta lista, se reintenta
+    }
+  }
+}
+
+export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId, materiaNombre }: ContenidoEstudioSectionProps) {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [materiales, setMateriales] = useState<MaterialItem[]>([]);
-  const [selectedMaterial, setSelectedMaterial] = useState<MaterialItem | null>(null);
-  const [viewerModalOpen, setViewerModalOpen] = useState(false);
+  const [tema, setTema] = useState<MaterialItem | null>(null);
+  const [contenido, setContenido] = useState<ContenidoAprendizaje | null>(null);
+  const [parteRutaSeleccionada, setParteRutaSeleccionada] = useState(0);
+  const [rutaIniciada, setRutaIniciada] = useState(false);
+  const [cartaRutaSeleccionada, setCartaRutaSeleccionada] = useState(0);
+  const [contenidoLoading, setContenidoLoading] = useState(false);
+  const [contenidoError, setContenidoError] = useState(false);
+  const [contenidoErrorDetalle, setContenidoErrorDetalle] = useState('');
+  const [resumen, setResumen] = useState<ResumenAprendizaje | null>(null);
+  const [resumenLoading, setResumenLoading] = useState(false);
+  const [pantallaResumen, setPantallaResumen] = useState(false);
+  const [reto, setReto] = useState<RetoAprendizaje | null>(null);
+  const [seccionRetoActual, setSeccionRetoActual] = useState<string | undefined>();
+  const [retoLoading, setRetoLoading] = useState(false);
+  const [mensajeCargaReto, setMensajeCargaReto] = useState(0);
+  const mensajeOpacity = useRef(new Animated.Value(1)).current;
+  const mensajeOffset = useRef(new Animated.Value(0)).current;
+  const cargaMovimiento = useRef(new Animated.Value(0)).current;
+  const cargaPulso = useRef(new Animated.Value(0)).current;
+  const [respuestas, setRespuestas] = useState<Record<string, string>>({});
+  const [opcionSeleccionada, setOpcionSeleccionada] = useState<string | null>(null);
+  const [parejaSeleccionada, setParejaSeleccionada] = useState<string | null>(null);
+  const [parejas, setParejas] = useState<Record<string, string>>({});
+  const [resultadoParejas, setResultadoParejas] = useState<Record<string, { correct: boolean; expected?: string; explanation?: string }>>({});
+  const [textoLibre, setTextoLibre] = useState('');
+  const [posicion, setPosicion] = useState(0);
+  const [resultadoReto, setResultadoReto] = useState<{ puntos: number; correctas: number; total: number; answers: ResultadoReto['answers']; feedback?: ResultadoReto['learning_feedback'] } | null>(null);
+  const [retoSubmitting, setRetoSubmitting] = useState(false);
+  const [explicacion, setExplicacion] = useState<ExplicacionSeccion | null>(null);
+  const [seccionExplicada, setSeccionExplicada] = useState<string | null>(null);
+  const [explicacionLoading, setExplicacionLoading] = useState<string | null>(null);
+  const inicioRetoRef = useRef(0);
+  const feedbackVivoRef = useRef(true);
+  const zonaActividadRef = useRef<ZonaActividad>({ x: 0, y: 0, width: 0, height: 0 });
+  const zonaVisualRef = useRef<View | null>(null);
+
+  useEffect(() => {
+    setParteRutaSeleccionada(0);
+    setCartaRutaSeleccionada(0);
+    setRutaIniciada(false);
+  }, [tema?.id]);
+
+  useEffect(() => () => {
+    feedbackVivoRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!retoLoading) {
+      setMensajeCargaReto(0);
+      mensajeOpacity.setValue(1);
+      mensajeOffset.setValue(0);
+      return;
+    }
+
+    let activo = true;
+    let temporizador: ReturnType<typeof setTimeout>;
+    const movimiento = Animated.loop(Animated.timing(cargaMovimiento, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: true,
+    }));
+    const pulso = Animated.loop(Animated.sequence([
+      Animated.timing(cargaPulso, { toValue: 1, duration: 650, useNativeDriver: true }),
+      Animated.timing(cargaPulso, { toValue: 0, duration: 650, useNativeDriver: true }),
+    ]));
+    movimiento.start();
+    pulso.start();
+
+    const cambiarMensaje = () => {
+      Animated.parallel([
+        Animated.timing(mensajeOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+        Animated.timing(mensajeOffset, { toValue: -8, duration: 220, useNativeDriver: true }),
+      ]).start(({ finished }) => {
+        if (!activo || !finished) return;
+        setMensajeCargaReto((actual) => (actual + 1) % MENSAJES_CARGA_RETO.length);
+        mensajeOffset.setValue(8);
+        Animated.parallel([
+          Animated.timing(mensajeOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+          Animated.timing(mensajeOffset, { toValue: 0, duration: 300, useNativeDriver: true }),
+        ]).start();
+        temporizador = setTimeout(cambiarMensaje, 1900);
+      });
+    };
+    temporizador = setTimeout(cambiarMensaje, 1900);
+
+    return () => {
+      activo = false;
+      clearTimeout(temporizador);
+      movimiento.stop();
+      pulso.stop();
+      mensajeOpacity.stopAnimation();
+      mensajeOffset.stopAnimation();
+      cargaMovimiento.setValue(0);
+      cargaPulso.setValue(0);
+    };
+  }, [retoLoading, cargaMovimiento, cargaPulso, mensajeOpacity, mensajeOffset]);
 
   const fetchMateriales = async () => {
     try {
       setLoading(true);
-      const res = await academicServicesApi.list('materiales', {
-        asignacionId,
-        limit: 100,
-      });
-      setMateriales(res.data as any[]);
+      const res = await academicServicesApi.list('materiales', { asignacionId, activo: 'true', limit: 100 });
+      setMateriales(res.data as unknown as MaterialItem[]);
     } catch (err) {
       console.error('Error al cargar contenido de estudio:', err);
     } finally {
@@ -52,110 +239,495 @@ export function ContenidoEstudioSection({
     }
   };
 
-  useEffect(() => {
-    fetchMateriales();
-    // Suscripción WebSocket en tiempo real para nuevos materiales
-    const unsub = connectUsersWebSocket(() => {
-      fetchMateriales();
-    });
-    return () => {
-      if (unsub) unsub();
-    };
-  }, [asignacionId]);
+  const [malla, setMalla] = useState<TemaMalla[]>([]);
+  const [mallaLoading, setMallaLoading] = useState(false);
 
-  const handleOpenMaterial = (mat: MaterialItem) => {
-    setSelectedMaterial(mat);
-    setViewerModalOpen(true);
+  const fetchMalla = async () => {
+    if (!materiaId || !nivel || !grado) {
+      setMalla([]);
+      return;
+    }
+    try {
+      setMallaLoading(true);
+      const res = await academicServicesApi.getMallaMateria(nivel, grado, materiaId);
+      setMalla(Array.isArray(res) ? res : []);
+    } catch (err) {
+      console.error('Error al cargar malla curricular:', err);
+      setMalla([]);
+    } finally {
+      setMallaLoading(false);
+    }
   };
 
-  return (
-    <View className="gap-4 my-2">
-      {/* Cabecera de la Sección */}
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <View className="w-8 h-8 rounded-lg bg-gold/20 items-center justify-center">
-            <Ionicons name="library" size={18} color="#B45309" />
-          </View>
-          <Text className="text-lg font-bold text-gray-900">Materiales Didácticos y de Consulta</Text>
+  useEffect(() => {
+    void fetchMateriales();
+    void fetchMalla();
+    const unsub = connectUsersWebSocket(() => { void fetchMateriales(); });
+    return () => { if (unsub) unsub(); };
+  }, [asignacionId, nivel, grado, materiaId]);
+
+  const abrirTema = async (material: MaterialItem) => {
+    setTema(material);
+    setContenido(null);
+    setRutaIniciada(false);
+    setContenidoError(false);
+    setContenidoErrorDetalle('');
+    setResumen(null);
+    setExplicacion(null);
+    setSeccionExplicada(null);
+    setPantallaResumen(false);
+    setReto(null);
+    setResultadoReto(null);
+    setPosicion(0);
+    if (material.tipoMaterial === 'actividad') {
+      setContenidoLoading(false);
+      return;
+    }
+    setContenidoLoading(true);
+    try {
+      setContenido(await aprendizajeApi.contenido(material.id));
+    } catch (error) {
+      setContenido(null);
+      const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
+      const esperandoRag = error instanceof ApiClientError && error.status === 404 && /material.*proces/i.test(detalle);
+      setContenidoError(!esperandoRag);
+      setContenidoErrorDetalle(detalle);
+    } finally {
+      setContenidoLoading(false);
+    }
+  };
+
+  const generarResumen = async (formato: FormatoResumen) => {
+    if (!tema) return;
+    setResumenLoading(true);
+    setResumen(null);
+    try {
+      setResumen(await aprendizajeApi.resumen(tema.id, formato));
+      setPantallaResumen(true);
+    } catch (error) {
+      const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
+      Alert.alert('No se pudo generar el resumen', detalle);
+    } finally {
+      setResumenLoading(false);
+    }
+  };
+
+  const actualizarContenido = async () => {
+    if (!tema || contenidoLoading) return;
+    setContenidoLoading(true);
+    setContenidoError(false);
+    setContenidoErrorDetalle('');
+    try {
+      setContenido(await aprendizajeApi.contenido(tema.id));
+    } catch (error) {
+      setContenido(null);
+      const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
+      const esperandoRag = error instanceof ApiClientError && error.status === 404 && /material.*proces/i.test(detalle);
+      setContenidoError(!esperandoRag);
+      setContenidoErrorDetalle(detalle);
+    } finally {
+      setContenidoLoading(false);
+    }
+  };
+
+  const explicarMejor = async (section: { title: string; explanation: string; example?: string }, format: ExplicacionSeccion['format']) => {
+    if (!tema) return;
+    const key = `${section.title}-${format}`;
+    setExplicacionLoading(key);
+    try {
+      setExplicacion(await aprendizajeApi.explicarSeccion(tema.id, { ...section, format }));
+      setSeccionExplicada(section.title);
+      if (format === 'preguntas') {
+        await gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: section.title, materiaNombre, investigacion: true });
+      }
+    } catch {
+      Alert.alert('No se pudo generar la explicación', 'Comprueba tu conexión e inténtalo de nuevo.');
+    } finally {
+      setExplicacionLoading(null);
+    }
+  };
+
+  const iniciarReto = async (sectionId?: string) => {
+    if (!tema) return;
+    setSeccionRetoActual(sectionId);
+    setRetoLoading(true);
+    setRespuestas({});
+    setParejas({});
+    setResultadoParejas({});
+    setPosicion(0);
+    setResultadoReto(null);
+    try {
+      setReto(await aprendizajeApi.reto(tema.id, 5, sectionId));
+      inicioRetoRef.current = Date.now();
+    } catch (error) {
+      const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
+      Alert.alert('No se pudo preparar el reto', detalle);
+    } finally {
+      setRetoLoading(false);
+    }
+  };
+
+  const actividadActual = reto?.activities[posicion];
+  const totalActividades = reto?.activities.length ?? 0;
+  const partesRuta: ParteRuta[] = contenido?.learning_sections?.length ? contenido.learning_sections : contenido ? [{
+    numero: 1,
+    titulo: contenido.title,
+    texto_plano: contenido.summary,
+    resumen: contenido.summary,
+    conceptos: contenido.key_concepts || [],
+    microlearning: contenido.microlearning_units || [],
+    checkpoint: contenido.summary,
+    svg_inline: '',
+  }] : [];
+  const parteRutaActual = partesRuta[parteRutaSeleccionada];
+  const cartasRutaActual = parteRutaActual ? crearCartasRuta(parteRutaActual) : [];
+  const cartaRutaActual = cartasRutaActual[cartaRutaSeleccionada];
+  const responderSeleccion = (activity: ActividadAprendizaje, answer: string) => {
+    setRespuestas((previous) => ({ ...previous, [activity.activity_id]: answer }));
+    setOpcionSeleccionada(answer);
+  };
+
+  const seleccionarConcepto = (left: string) => {
+    setParejaSeleccionada(left);
+  };
+
+  const asignarConcepto = async (right: string) => {
+    if (!parejaSeleccionada || !tema || !reto || !actividadActual || actividadActual.tipo !== 'CONECTAR_FRASES') return;
+    try {
+      const resultado = await aprendizajeApi.validarEmparejamiento(tema.id, reto.quiz_id, actividadActual.activity_id, parejaSeleccionada, right);
+      setParejas((previous) => ({ ...previous, [parejaSeleccionada]: right }));
+      setResultadoParejas((previous) => ({ ...previous, [parejaSeleccionada]: { correct: resultado.correct, expected: resultado.expected, explanation: resultado.feedback?.explanation } }));
+    } catch (error) {
+      const detalle = error instanceof ApiClientError ? error.message : 'No se pudo validar esta relacion. Intenta de nuevo.';
+      Alert.alert('No se pudo validar la conexion', detalle);
+      return;
+    }
+    setParejaSeleccionada(null);
+  };
+
+  const respuestaActual = actividadActual ? (respuestas[actividadActual.activity_id] ?? '') : '';
+  const puedeContinuar = !actividadActual ? false : actividadActual.tipo === 'CONECTAR_FRASES'
+    ? Object.keys(parejas).length === (actividadActual.left_items?.length ?? 0)
+    : actividadActual.tipo === 'DRAG_AND_DROP'
+    ? respuestaActual.split(';').filter(Boolean).length === (actividadActual.items?.length ?? 0)
+    : actividadActual.tipo === 'CUESTIONARIO'
+    ? respuestaActual.trim().length > 0 || textoLibre.trim().length > 0
+    : Boolean(respuestaActual);
+
+  const avanzarReto = async () => {
+    if (!actividadActual || !reto) return;
+    const respuestaActualPregunta = actividadActual.tipo === 'CUESTIONARIO' ? textoLibre.trim() : '';
+    if (actividadActual.tipo === 'CONECTAR_FRASES') {
+      const answer = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
+      setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: answer }));
+    }
+    if (posicion + 1 < totalActividades) {
+      if (actividadActual.tipo === 'CUESTIONARIO') {
+        setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: respuestaActualPregunta }));
+      }
+      setPosicion((previous) => previous + 1);
+      setOpcionSeleccionada(null);
+      setTextoLibre('');
+      setParejas({});
+      setResultadoParejas({});
+      setParejaSeleccionada(null);
+      return;
+    }
+
+    const respuestasFinales = { ...respuestas };
+    if (actividadActual.tipo === 'CONECTAR_FRASES') {
+      respuestasFinales[actividadActual.activity_id] = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
+    }
+    if (actividadActual.tipo === 'CUESTIONARIO') respuestasFinales[actividadActual.activity_id] = respuestaActualPregunta || respuestasFinales[actividadActual.activity_id];
+    if (actividadActual.tipo === 'FLASHCARD' && !respuestasFinales[actividadActual.activity_id]) respuestasFinales[actividadActual.activity_id] = 'recordado';
+    const answers = reto.activities.map((activity) => ({ activity_id: activity.activity_id, response: respuestasFinales[activity.activity_id] || '' }));
+    if (answers.some((answer) => !answer.response.trim())) {
+      Alert.alert('Falta una respuesta', 'Completa todas las actividades antes de enviar el reto.');
+      return;
+    }
+    setRetoSubmitting(true);
+    try {
+      const resultado = await aprendizajeApi.completarReto(tema!.id, reto.quiz_id, answers, Date.now() - inicioRetoRef.current);
+      const puntos = resultado.learning_feedback?.points ?? Math.max(5, Math.min(10, 5 + Math.round((resultado.score || 0) * 5)));
+      try {
+        const preguntas: PreguntaActividad[] = reto.activities.map((activity, index) => ({
+          id: activity.activity_id,
+          texto: activity.question || activity.front || activity.statement || `Actividad ${index + 1}`,
+          tipo: activity.tipo === 'FLASHCARD' ? 'flashcards' : activity.tipo === 'VERDADERO_FALSO' ? 'verdadero_falso' : activity.tipo === 'CONECTAR_FRASES' ? 'conectar' : activity.tipo === 'DRAG_AND_DROP' ? 'drag_drop' : activity.tipo === 'CUESTIONARIO' ? 'cuestionario' : 'seleccion_multiple',
+          opciones: activity.options,
+          respuestaCorrecta: '',
+          explicacion: activity.learning_objective,
+          puntosBase: 5,
+          orden: index + 1,
+        }));
+        const respuestasGamificacion: RespuestaActividad[] = resultado.answers.map((answer, index) => ({
+          preguntaId: answer.activity_id,
+          respuesta: answers[index]?.response ?? '',
+          correcta: answer.correct,
+          tiempoMs: Math.round((Date.now() - inicioRetoRef.current) / Math.max(1, totalActividades)),
+          feedback: resultado.learning_feedback?.feedback,
+        }));
+        const reward = await gamificacionApi.completarActividad({
+          estudianteId: user?.estudianteId || user?.id || '',
+          cursoPeriodoId: user?.cursoPeriodoId || '1',
+          paralelo: user?.paralelo === 'B' ? 'B' : 'A',
+          materiaId: materiaId || asignacionId,
+          materiaNombre,
+          tipo: 'cuestionario',
+          titulo: `Reto: ${contenido?.title || tema?.titulo || materiaNombre}`,
+          preguntas,
+          respuestas: respuestasGamificacion,
+          tiempoTotalMs: Date.now() - inicioRetoRef.current,
+          fechaInicio: new Date(inicioRetoRef.current).toISOString(),
+          fechaFin: new Date().toISOString(),
+        });
+        void reward;
+      } catch (error) {
+        console.error('No se pudo registrar puntos de gamificacion:', error);
+      }
+      setResultadoReto({ puntos, correctas: resultado.correct, total: resultado.total, answers: resultado.answers, feedback: resultado.learning_feedback });
+      // feedback -> Mistral llega en segundo plano, no bloquea la pantalla de resultados
+      if (resultado.learning_feedback?.pending) {
+        void esperarRetroalimentacion(tema!.id, reto.quiz_id, (retroalimentacion) => {
+          if (!feedbackVivoRef.current) return;
+          setResultadoReto((previo) => (previo ? { ...previo, feedback: retroalimentacion } : previo));
+        });
+      }
+      return;
+    } catch (error) {
+      console.error('No se pudo registrar el resultado del reto:', error);
+      const detalle = error instanceof ApiClientError ? error.message : 'Intenta enviar tus respuestas otra vez.';
+      Alert.alert('No se pudo guardar el resultado', detalle);
+    } finally {
+      setRetoSubmitting(false);
+    }
+  };
+
+  const renderReto = (activity: ActividadAprendizaje) => {
+    const choose = (answer: string) => responderSeleccion(activity, answer);
+    if (activity.tipo === 'SELECCION_MULTIPLE') return <View className="gap-2">{activity.options?.map((option) => <TouchableOpacity key={option} onPress={() => choose(option)} className={`p-4 rounded-2xl border ${respuestaActual === option ? 'border-maroon bg-maroon/10' : 'border-gray-200 bg-white'}`}><Text className="text-sm font-semibold text-gray-800">{option}</Text></TouchableOpacity>)}</View>;
+    if (activity.tipo === 'VERDADERO_FALSO') return <View className="flex-row gap-3">{['Verdadero', 'Falso'].map((option) => <TouchableOpacity key={option} onPress={() => choose(option)} className={`flex-1 p-4 rounded-2xl border ${respuestaActual === option ? 'border-maroon bg-maroon/10' : 'border-gray-200'}`}><Text className="text-center font-bold">{option}</Text></TouchableOpacity>)}</View>;
+    if (activity.tipo === 'FLASHCARD') return <View className="gap-3"><BentoCard className="p-6 bg-amber-50"><Text className="text-center text-lg font-bold">{respuestaActual === 'recordado' ? activity.back : activity.front}</Text></BentoCard><TouchableOpacity onPress={() => choose(respuestaActual === 'recordado' ? 'no lo recuerdo' : 'recordado')} className="bg-maroon rounded-2xl p-4"><Text className="text-center text-white font-bold">{respuestaActual === 'recordado' ? 'Ver de nuevo' : 'Ya lo recorde'}</Text></TouchableOpacity></View>;
+    if (activity.tipo === 'DRAG_AND_DROP') return <View className="gap-3"><Text className="text-xs text-gray-500">Arrastra cada pieza al area de respuesta para ordenar el procedimiento.</Text><View className="flex-row flex-wrap gap-2">{activity.items?.filter((item) => !respuestaActual.split(';').includes(item)).map((item) => <PiezaArrastrable key={item} texto={item} destino={zonaActividadRef} alSoltar={() => choose([respuestaActual, item].filter(Boolean).join(';'))}/>)}</View><View ref={zonaVisualRef} onLayout={() => zonaVisualRef.current?.measureInWindow((x, y, width, height) => { zonaActividadRef.current = { x, y, width, height }; })} className="min-h-20 rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50 p-3"><Text className="text-xs font-bold text-indigo-800">Tu orden · suelta aqui</Text>{respuestaActual.split(';').filter(Boolean).map((item, index) => <Text key={`${item}-${index}`} className="mt-2 rounded-xl bg-white p-3 text-sm text-gray-800">{index + 1}. {item}</Text>)}</View>{respuestaActual ? <TouchableOpacity onPress={() => choose('')}><Text className="text-xs font-bold text-maroon">Borrar respuesta</Text></TouchableOpacity> : null}</View>;
+    if (activity.tipo === 'CONECTAR_FRASES') return <View className="gap-3"><Text className="text-xs text-gray-500">Toca un concepto y luego su pareja. Cada conexion se valida al instante.</Text><View className="flex-row gap-2"><View className="flex-1 gap-2">{activity.left_items?.map((left) => <TouchableOpacity key={left} onPress={() => seleccionarConcepto(left)} className={`p-3 rounded-xl ${parejaSeleccionada === left ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={parejaSeleccionada === left ? 'text-white text-xs font-bold' : 'text-gray-800 text-xs font-semibold'}>{left}</Text></TouchableOpacity>)}</View><View className="flex-1 gap-2">{activity.right_items?.map((right) => <TouchableOpacity key={right} onPress={() => void asignarConcepto(right)} className="p-3 rounded-xl bg-sky-50"><Text className="text-sky-900 text-xs font-semibold">{right}</Text></TouchableOpacity>)}</View></View>{Object.entries(parejas).map(([left, right]) => { const evaluacion = resultadoParejas[left]; return <View key={left} className={`rounded-xl p-3 ${evaluacion?.correct ? 'bg-emerald-50' : 'bg-rose-50'}`}><Text className="text-xs font-semibold text-gray-800">{left} → {right}</Text><Text className={`text-xs font-bold mt-1 ${evaluacion?.correct ? 'text-emerald-800' : 'text-rose-800'}`}>{evaluacion?.correct ? 'Relacion correcta' : `Vuelve a intentarlo. Relacion correcta: ${evaluacion?.expected || ''}`}</Text>{evaluacion?.explanation ? <Text className="text-xs text-gray-700 mt-1">{evaluacion.explanation}</Text> : null}</View>; })}</View>;
+    return <View className="gap-3"><TextInput value={textoLibre} onChangeText={setTextoLibre} multiline placeholder={activity.question?.includes('_____') ? 'Completa el espacio en blanco' : 'Escribe tu respuesta'} className="min-h-28 bg-gray-50 rounded-2xl p-4 text-sm text-gray-900"/><TouchableOpacity onPress={() => choose(textoLibre)} className="bg-sky-50 p-3 rounded-xl"><Text className="text-sky-900 font-bold">{activity.question?.includes('_____') ? 'Comprobar respuesta' : 'Guardar respuesta'}</Text></TouchableOpacity></View>;
+  };
+
+  if (tema) return <>
+    <View className="flex-1 gap-3">
+    <View className="flex-row items-center gap-3"><TouchableOpacity onPress={() => pantallaResumen ? setPantallaResumen(false) : setTema(null)} className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center"><Ionicons name="arrow-back" size={20} color="#374151" /></TouchableOpacity><View className="flex-1"><Text className="text-lg font-black text-gray-900" numberOfLines={1}>{contenido?.title || tema.titulo}</Text><Text className="text-xs text-gray-500">{materiaNombre} · {pantallaResumen ? 'Resumen' : reto ? 'Prueba' : 'Lectura'}</Text></View></View>
+    {tema.tipoMaterial === 'actividad' ? <BentoCard className="p-4 bg-amber-50"><Text className="font-bold text-amber-900">Actividad del docente</Text><Text className="text-xs text-amber-800 mt-1">Abre el archivo para revisar las instrucciones y completar la actividad.</Text></BentoCard> : contenidoLoading ? <View className="py-5 items-center"><ActivityIndicator color="#801529"/><Text className="text-xs text-gray-500 mt-2">Cargando contenido generado por IA...</Text></View> : !contenido ? <BentoCard className="p-4 bg-amber-50"><Text className="font-bold text-amber-900">{contenidoError ? 'No pudimos cargar el contenido de IA' : 'El análisis del material sigue en proceso'}</Text><Text className="text-xs text-amber-800 mt-1">{contenidoError ? (contenidoErrorDetalle || 'Revisa el estado y vuelve a intentarlo.') : 'Puedes leer el archivo mientras se prepara el resumen y las actividades.'}</Text><TouchableOpacity onPress={() => void actualizarContenido()} className="mt-3 self-start rounded-xl bg-white border border-amber-200 px-4 py-2"><Text className="text-xs font-bold text-amber-900">Actualizar contenido</Text></TouchableOpacity></BentoCard> : null}
+    <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
+      {!reto && !pantallaResumen && <>
+        {tema.tipoMaterial !== 'actividad' ? <BentoCard className="gap-2 bg-slate-50 p-3"><Text className="text-xs font-bold text-gray-600">LECTURA DEL DOCUMENTO</Text><LectorArchivo material={tema}/></BentoCard> : null}
+        {tema.tipoMaterial !== 'actividad' && !rutaIniciada && <TouchableOpacity disabled={!contenido || contenidoLoading || !partesRuta.length} onPress={() => { setCartaRutaSeleccionada(0); setRutaIniciada(true); }} className="flex-row items-center justify-center gap-2 rounded-2xl bg-[#801F3F] p-4 disabled:opacity-50"><Ionicons name="map" size={20} color="white"/><Text className="font-black text-white">{contenidoLoading ? 'Preparando tu ruta...' : 'Iniciar ruta de aprendizaje'}</Text></TouchableOpacity>}
+        {rutaIniciada && parteRutaActual ? <View className="gap-4">
+          <BentoCard className="gap-3 border border-violet-100 bg-violet-50 p-4">
+            <Text className="text-lg font-black text-violet-950">Ruta de aprendizaje</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2">
+              {partesRuta.map((parte, index) => <TouchableOpacity key={`${parte.numero}-${parte.titulo}`} onPress={() => { setParteRutaSeleccionada(index); setCartaRutaSeleccionada(0); }} className={`rounded-xl px-3 py-2 ${index === parteRutaSeleccionada ? 'bg-[#801F3F]' : 'bg-white'}`}>
+                <Text className={`text-xs font-bold ${index === parteRutaSeleccionada ? 'text-white' : 'text-violet-900'}`}>Parte {parte.numero}: {parte.titulo}</Text>
+              </TouchableOpacity>)}
+            </ScrollView>
+            <Text className="text-base font-black text-gray-900">{parteRutaActual.titulo}</Text>
+            <Text className="text-xs text-gray-600">Carta {cartaRutaSeleccionada + 1} de {cartasRutaActual.length}</Text>
+            {cartaRutaActual ? <BentoCard className="gap-3 border border-amber-200 bg-amber-50 p-5">
+              <Text className="text-xs font-black text-amber-800">CONCEPTO</Text>
+              <Text className="text-lg font-black text-gray-900">{cartaRutaActual.titulo}</Text>
+              <Text className="text-sm leading-6 text-gray-800">{cartaRutaActual.explicacion}</Text>
+              <View className="rounded-xl bg-white p-3"><Text className="text-[10px] font-black uppercase text-sky-800">Ejemplo</Text><Text className="mt-1 text-sm leading-6 text-gray-800">{cartaRutaActual.ejemplo}</Text></View>
+              {cartaRutaActual.svg ? <SvgXml xml={cartaRutaActual.svg} width="100%" height={180} /> : null}
+              <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => void explicarMejor({ title: cartaRutaActual.titulo, explanation: cartaRutaActual.explicacion, example: cartaRutaActual.ejemplo }, 'analogía')} className="self-start rounded-xl bg-white px-3 py-2"><Text className="text-xs font-bold text-violet-900">{explicacionLoading ? 'Preparando otra explicación…' : 'Explicar de mejor manera'}</Text></TouchableOpacity>
+              {seccionExplicada === cartaRutaActual.titulo && explicacion ? <View className="gap-2 rounded-xl bg-violet-50 p-3"><Text className="font-bold text-violet-950">{explicacion.title}</Text><Text className="text-sm leading-6 text-violet-900">{explicacion.explanation}</Text>{(explicacion as any).explanation_svg ? <SvgXml xml={(explicacion as any).explanation_svg} width="100%" height={180} /> : null}<EjemploCanvas ejemplos={explicacion.examples || []}/></View> : null}
+            </BentoCard> : null}
+            <View className="flex-row gap-2">
+              <TouchableOpacity disabled={cartaRutaSeleccionada === 0} onPress={() => setCartaRutaSeleccionada((actual) => Math.max(0, actual - 1))} className="flex-1 rounded-xl bg-white p-3 disabled:opacity-40"><Text className="text-center text-xs font-bold text-violet-900">Anterior</Text></TouchableOpacity>
+              <TouchableOpacity disabled={cartaRutaSeleccionada + 1 >= cartasRutaActual.length} onPress={() => setCartaRutaSeleccionada((actual) => Math.min(cartasRutaActual.length - 1, actual + 1))} className="flex-1 rounded-xl bg-white p-3 disabled:opacity-40"><Text className="text-center text-xs font-bold text-violet-900">Siguiente carta</Text></TouchableOpacity>
+            </View>
+          </BentoCard>
+          {cartaRutaSeleccionada + 1 === cartasRutaActual.length ? <>
+            <BentoCard className="gap-2 border border-sky-100 bg-white p-4"><Text className="text-sm font-black text-sky-900">Esquema de la parte</Text>{parteRutaActual.svg_inline ? <SvgXml xml={parteRutaActual.svg_inline} width="100%" height={Math.min(360, 72 + parteRutaActual.conceptos.length * 56)} /> : <Text className="text-sm leading-6 text-gray-700">{parteRutaActual.conceptos.join('  →  ') || parteRutaActual.resumen}</Text>}</BentoCard>
+            {parteRutaActual.conexiones?.length ? <BentoCard className="gap-2 border border-violet-100 bg-violet-50 p-4"><Text className="font-black text-violet-950">Conexiones con el libro</Text>{parteRutaActual.conexiones.map((conexion, index) => <Text key={`${conexion.tema}-${index}`} className="text-sm leading-6 text-violet-900">{conexion.conceptos.join(' · ')} {conexion.relacion} «{conexion.tema}»</Text>)}</BentoCard> : null}
+            {parteRutaActual.preguntas_indagacion?.length ? <BentoCard className="gap-2 border border-amber-100 bg-amber-50 p-4"><Text className="font-black text-amber-950">Preguntas de indagación</Text>{parteRutaActual.preguntas_indagacion.map((pregunta, index) => <Text key={`${index}-${pregunta}`} className="text-sm leading-6 text-amber-900">{index + 1}. {pregunta}</Text>)}</BentoCard> : null}
+            {parteRutaSeleccionada + 1 < partesRuta.length ? <TouchableOpacity onPress={() => { setParteRutaSeleccionada((actual) => actual + 1); setCartaRutaSeleccionada(0); }} className="rounded-xl bg-white border border-violet-200 p-3"><Text className="text-center font-bold text-violet-900">Seguir estudiando · {partesRuta[parteRutaSeleccionada + 1].titulo}</Text></TouchableOpacity> : null}
+            <BentoCard className="gap-2 border border-emerald-100 bg-emerald-50 p-4"><Text className="text-sm font-black text-emerald-900">Ejercicios de esta parte</Text><Text className="text-xs text-emerald-800">Resuelve cinco actividades basadas en el material del libro.</Text><TouchableOpacity disabled={retoLoading} onPress={() => void iniciarReto(String(parteRutaActual.numero))} className="rounded-xl bg-[#801F3F] p-3"><Text className="text-center text-sm font-black text-white">Empezar ejercicios</Text></TouchableOpacity></BentoCard>
+            <Text className="text-[10px] text-gray-500">Punto de referencia: {parteRutaActual.checkpoint}</Text>
+          </> : null}
+        </View> : null}
+        {rutaIniciada && contenido && <View className="gap-2"><Text className="text-xs font-black text-gray-700">OTROS FORMATOS DE ESTUDIO</Text><View className="flex-row flex-wrap gap-2">{FORMATOS.map((format) => <TouchableOpacity key={format.id} disabled={resumenLoading} onPress={() => void generarResumen(format.id)} className="w-[48%] min-h-20 flex-row items-center gap-2 rounded-2xl border border-[#E8D9DD] bg-white px-3 py-3"><Ionicons name={format.icon} size={19} color="#801F3F"/><View className="flex-1"><Text className="text-xs font-bold text-[#801F3F]">{format.label}</Text><Text className="mt-1 text-[10px] text-gray-500">{format.detail}</Text></View></TouchableOpacity>)}</View>{resumenLoading ? <ActivityIndicator color="#801529"/> : null}</View>}
+      </>}
+      {pantallaResumen && resumen && !reto && <><View className="flex-row items-center justify-between"><Text className="text-xl font-black text-gray-900">{(resumen.data as any)?.title || (resumen as any)?.title || 'Tu resumen'}</Text><StatusBadge label={(resumen.formato || 'ESQUEMA_GEMMA').replaceAll('_', ' ')} variant="brand"/></View><ResumenInteractivo key={`${resumen.content_id}-${resumen.formato}`} formato={(resumen.formato === 'CARTAS_EXPLICATIVAS' ? 'CARTAS_EXPLICATIVAS' : 'ESQUEMA_GEMMA') as FormatoResumen} data={(resumen.data || resumen) as any} explicacion={explicacion && seccionExplicada ? explicacion : null} explicacionLoading={Boolean(explicacionLoading)} onExplain={(section) => void explicarMejor(section, 'paso_a_paso')} onCompleteStudy={(formato) => { void gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: (resumen.data as any)?.title || tema.titulo, materiaNombre, formato, completo: true }).then((resultado) => { if (resultado.bonoDesafios > 0) Alert.alert('¡Desafíos completados!', `Ganaste ${resultado.bonoDesafios} puntos de bono.`); }).catch(() => Alert.alert('No se registró el logro', 'Comprueba tu conexión e inténtalo de nuevo.')); }} onAlternateSummary={(formato) => void generarResumen(formato)} onStartActivity={() => void iniciarReto()}/></>}
+      {reto && !resultadoReto && actividadActual && <View className="gap-4"><View className="flex-row items-center justify-between"><StatusBadge label={`RETO ${posicion + 1} / ${totalActividades}`} variant="brand"/><Text className="text-xs font-bold text-amber-700">⭐ Gana puntos al terminar</Text></View><BentoCard className="p-4 bg-indigo-50"><Text className="text-xs font-bold text-indigo-700">{actividadActual.activity_mode === 'practica' ? 'EJERCICIO PRÁCTICO · RESUELVE Y ESCRIBE' : actividadActual.tipo === 'SELECCION_MULTIPLE' ? 'SELECCIÓN MÚLTIPLE · RELACIONA CONCEPTO Y RESPUESTA' : actividadActual.tipo.replaceAll('_', ' ')}</Text>{actividadActual.learning_objective ? <Text className="mt-1 text-xs text-indigo-900">Concepto: {actividadActual.learning_objective}</Text> : null}</BentoCard>{actividadActual.question ? <EjemploCanvas etiqueta={actividadActual.activity_mode === 'practica' ? 'Resuelve el ejercicio y escribe el resultado' : 'Explica el concepto con tus palabras'} ejemplos={[actividadActual.question]}/> : <BentoCard className="p-4 bg-indigo-50"><Text className="text-lg font-black text-gray-900">{activityPrompt(actividadActual)}</Text></BentoCard>}{renderReto(actividadActual)}<TouchableOpacity disabled={!puedeContinuar || retoSubmitting} onPress={() => void avanzarReto()} className="bg-maroon disabled:opacity-40 rounded-2xl p-4"><Text className="text-center text-white font-black">{retoSubmitting ? 'Mistral analiza tu respuesta y el tiempo…' : posicion + 1 === totalActividades ? 'Terminar y ver mis puntos' : 'Continuar'}</Text></TouchableOpacity>{retoSubmitting ? <View className="items-center gap-2"><ActivityIndicator color="#801529"/><Text className="text-center text-xs text-gray-600">Estamos preparando tu retroalimentación para que puedas mejorar.</Text></View> : null}</View>}
+      {resultadoReto && <View className="gap-3"><BentoCard className="p-6 items-center bg-amber-50"><Ionicons name="trophy" size={48} color="#D97706"/><Text className="text-2xl font-black text-gray-900 mt-3">Reto completado</Text><Text className="text-base text-gray-700 mt-2">{resultadoReto.correctas} de {resultadoReto.total} correctas</Text><Text className="text-3xl font-black text-maroon mt-2">{resultadoReto.puntos} puntos del módulo</Text></BentoCard>{resultadoReto.feedback ? <BentoCard className="gap-2 border border-violet-200 bg-violet-50 p-4"><Text className="font-bold text-violet-950">{resultadoReto.feedback.pending ? 'Analizando con Mistral 7B…' : resultadoReto.feedback.model === 'fallback' ? 'Retroalimentación del reto' : 'Retroalimentación de Mistral 7B'}</Text><Text className="text-sm leading-6 text-violet-900">{resultadoReto.feedback.feedback}</Text><Text className="text-sm font-semibold text-violet-950">Siguiente paso: {resultadoReto.feedback.next_step}</Text>{resultadoReto.feedback.explanation_svg ? <SvgXml xml={resultadoReto.feedback.explanation_svg} width="100%" height={220} /> : null}</BentoCard> : null}{resultadoReto.answers.map((answer, index) => { const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id); const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'CUESTIONARIO' }); const feedback = answer.feedback; const duda = !answer.correct; return <BentoCard key={answer.activity_id} className={`p-4 ${duda ? 'bg-rose-50' : 'bg-emerald-50'}`}><Text className="text-xs font-bold">{duda ? 'A REFORZAR' : 'DOMINADO'} · {answer.tipo.replaceAll('_', ' ')}</Text><Text className="text-sm font-bold text-gray-900 mt-1">{index + 1}. {titulo}</Text>{feedback?.correct_answer ? <Text className="text-sm text-gray-800 mt-2">Respuesta: {feedback.correct_answer}</Text> : null}<Text className="text-sm text-gray-700 mt-2">{feedback?.explanation || feedback?.where_failed || answer.concept}</Text>{duda ? <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => void explicarMejor({ title: answer.concept || titulo, explanation: feedback?.explanation || answer.concept || titulo, example: feedback?.correct_answer }, 'paso_a_paso')} className="mt-3 self-start rounded-xl bg-white border border-rose-200 px-3 py-2"><Text className="text-xs font-bold text-rose-900">{explicacionLoading === `${answer.concept || titulo}-paso_a_paso` ? 'Explicando...' : 'Explicar esta duda'}</Text></TouchableOpacity> : null}{seccionExplicada === (answer.concept || titulo) && explicacion ? <View className="mt-3 gap-3 rounded-xl bg-white p-3"><Text className="font-bold text-gray-900">{explicacion.title}</Text><Text className="text-sm leading-6 text-gray-700">{explicacion.explanation}</Text><EjemploCanvas ejemplos={explicacion.examples || []}/></View> : null}</BentoCard>; })}<TouchableOpacity disabled={retoLoading} onPress={() => void iniciarReto(seccionRetoActual)} className="rounded-xl bg-[#801F3F] px-6 py-3"><Text className="text-center font-bold text-white">Repetir reto para mejorar</Text></TouchableOpacity><TouchableOpacity onPress={() => setTema(null)} className="bg-maroon rounded-xl px-6 py-3"><Text className="text-center text-white font-bold">Volver a temas</Text></TouchableOpacity></View>}
+    </ScrollView>
+    </View>
+    <Modal visible={retoLoading} animationType="fade" presentationStyle="fullScreen" statusBarTranslucent onRequestClose={() => undefined}>
+      <View className="flex-1 items-center justify-center bg-[#F8F7F6] px-7">
+        <View className="mb-8 h-40 w-64 items-center justify-center">
+          <Animated.View
+            style={{
+              position: 'absolute',
+              left: 22,
+              top: 18,
+              transform: [
+                { translateY: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [5, -7] }) },
+                { rotate: '-12deg' },
+              ],
+            }}
+            className="h-16 w-16 items-center justify-center rounded-2xl bg-sky-100 shadow-sm"
+          >
+            <Ionicons name="book" size={30} color="#2563EB" />
+          </Animated.View>
+          <Animated.View
+            style={{
+              transform: [
+                { scale: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.08] }) },
+                { rotate: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: ['-5deg', '5deg'] }) },
+              ],
+            }}
+            className="z-10 h-24 w-24 items-center justify-center rounded-[28px] bg-[#801F3F] shadow-lg"
+          >
+            <Ionicons name="flash" size={46} color="#FFD700" />
+          </Animated.View>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              right: 20,
+              bottom: 14,
+              transform: [
+                { translateY: cargaPulso.interpolate({ inputRange: [0, 1], outputRange: [-5, 7] }) },
+                { rotate: '10deg' },
+              ],
+            }}
+            className="h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 shadow-sm"
+          >
+            <Ionicons name="bulb" size={30} color="#D97706" />
+          </Animated.View>
         </View>
-        <StatusBadge label={`${materiales.length} Recursos`} variant="info" />
+        <Text className="text-center text-xl font-black text-gray-900">Tu reto está tomando forma</Text>
+        <Animated.Text
+          key={MENSAJES_CARGA_RETO[mensajeCargaReto]}
+          style={{ opacity: mensajeOpacity, transform: [{ translateY: mensajeOffset }] }}
+          className="mt-3 min-h-12 text-center text-base font-semibold text-[#801F3F]"
+        >
+          {MENSAJES_CARGA_RETO[mensajeCargaReto]}
+        </Animated.Text>
+        <View className="mt-6 h-2 w-64 overflow-hidden rounded-full bg-rose-100">
+          <Animated.View
+            style={{ transform: [{ translateX: cargaMovimiento.interpolate({ inputRange: [0, 1], outputRange: [-90, 260] }) }] }}
+            className="h-full w-24 rounded-full bg-[#801F3F]"
+          />
+        </View>
       </View>
+    </Modal>
+  </>;
 
-      {/* Contenido / Lista */}
-      {loading && materiales.length === 0 ? (
-        <View className="p-8 items-center justify-center">
-          <ActivityIndicator size="small" color="#801529" />
-          <Text className="text-xs text-gray-500 mt-2 font-medium">Cargando material educativo...</Text>
-        </View>
-      ) : materiales.length === 0 ? (
-        <BentoCard className="p-6 items-center justify-center bg-gray-50 border border-dashed border-gray-200">
-          <Ionicons name="folder-open-outline" size={32} color="#9CA3AF" />
-          <Text className="text-sm font-semibold text-gray-600 mt-2">
-            No hay materiales disponibles todavía
-          </Text>
-          <Text className="text-xs text-gray-400 text-center mt-1">
-            El profesor aún no ha subido recursos de apoyo para {materiaNombre}.
-          </Text>
-        </BentoCard>
-      ) : (
-        <View className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {materiales.map((mat) => (
-            <BentoCard
-              key={mat.id}
-              className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
-            >
-              <View>
-                <View className="flex-row items-start justify-between">
-                  <View className="w-9 h-9 rounded-xl bg-maroon/10 items-center justify-center">
-                    <Ionicons name="document-text-outline" size={20} color="#801529" />
+  // Helper: agrupar materiales por temaId
+  const materialesPorTema = materiales.reduce((acc, mat) => {
+    const key = mat.temaId || 'sin_tema';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(mat);
+    return acc;
+  }, {} as Record<string, MaterialItem[]>);
+
+  // Helper: obtener unidades únicas ordenadas
+  const unidades = [...new Set(malla.map(t => t.unidad))].sort((a, b) => a - b);
+  const temasMallaIds = new Set(malla.map((item) => String(item.id)));
+  const materialesSinTemaMalla = materiales.filter((item) => !item.temaId || !temasMallaIds.has(String(item.temaId)));
+  const renderMaterialSinTema = (material: MaterialItem) => <TouchableOpacity key={material.id} onPress={() => void abrirTema(material)} className="p-3 bg-white rounded-xl border border-gray-200 flex-row items-center gap-3">
+    <Ionicons name={material.tipoMaterial === 'actividad' ? 'clipboard-outline' : 'document-text-outline'} size={19} color={material.tipoMaterial === 'actividad' ? '#B45309' : '#2563EB'} />
+    <View className="flex-1"><Text className="font-bold text-gray-900 text-sm">{material.titulo}</Text><Text className="text-xs text-gray-500 mt-0.5">{material.tipoMaterial === 'actividad' ? 'Actividad del docente' : material.detalle || material.nombreArchivo || 'Material de estudio'}</Text></View>
+    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+  </TouchableOpacity>;
+
+  return <View className="gap-4 my-2">
+    <View className="flex-row items-center justify-between"><View><Text className="text-lg font-black text-gray-900">Malla Curricular · {materiaNombre}</Text><Text className="text-xs text-gray-500">{unidades.length} unidad{unidades.length !== 1 ? 'es' : ''} · {malla.length} tema{malla.length !== 1 ? 's' : ''}</Text></View><StatusBadge label={`${materiales.length} Recursos`} variant="brand"/></View>
+
+    {(loading || mallaLoading) ? <View className="p-8 items-center"><ActivityIndicator color="#801529"/><Text className="text-xs text-gray-500 mt-2">Cargando plan de estudios...</Text></View> : malla.length === 0 ? <View className="gap-3"><BentoCard className="p-4 bg-gray-50"><Text className="text-sm font-bold text-gray-700">Materiales de {materiaNombre}</Text><Text className="text-xs text-gray-500 mt-1">No hay una malla disponible; aquí aparecen igualmente los archivos compartidos por el docente.</Text></BentoCard>{materiales.length ? materiales.map(renderMaterialSinTema) : <BentoCard className="p-6 items-center bg-gray-50"><Ionicons name="book-outline" size={32} color="#9CA3AF"/><Text className="text-sm font-bold text-gray-600 mt-2">Todavía no hay materiales para {materiaNombre}</Text></BentoCard>}</View> : (
+      <View className="gap-4">
+        {unidades.map((unidadNum) => {
+          const temasUnidad = malla.filter(t => t.unidad === unidadNum);
+          const temasConMateriales = temasUnidad.filter(t => materialesPorTema[t.id]?.length);
+          return (
+            <BentoCard key={`unidad-${unidadNum}`} className="p-4 bg-white border border-gray-100">
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-center gap-2">
+                  <View className="w-8 h-8 rounded-xl bg-maroon/10 items-center justify-center">
+                    <Ionicons name="grid-outline" size={18} color="#801529" />
                   </View>
-                  <View className="bg-gray-100 px-2 py-0.5 rounded text-[11px]">
-                    <Text className="text-[11px] text-gray-600 font-mono">
-                      {mat.nombreArchivo?.split('.').pop()?.toUpperCase() || 'DOC'}
-                    </Text>
-                  </View>
+                  <Text className="text-lg font-black text-gray-900">Unidad {unidadNum}</Text>
                 </View>
-
-                <Text className="font-bold text-gray-800 text-sm mt-2.5" numberOfLines={1}>
-                  {mat.titulo}
-                </Text>
-
-                {mat.detalle ? (
-                  <Text className="text-xs text-gray-500 mt-1 line-clamp-2" numberOfLines={2}>
-                    {mat.detalle}
-                  </Text>
-                ) : null}
+                <View className="text-xs text-gray-400 font-mono">{temasUnidad.length} tema{temasUnidad.length !== 1 ? 's' : ''}</View>
               </View>
 
-              <View className="mt-4 pt-3 border-t border-gray-100 flex-row items-center justify-between">
-                <Text className="text-[11px] text-gray-400">
-                  {mat.fechaSubida ? mat.fechaSubida.slice(0, 10) : 'Disponible'}
-                </Text>
-
-                <TouchableOpacity
-                  onPress={() => handleOpenMaterial(mat)}
-                  className="bg-maroon hover:bg-maroon/90 px-3 py-1.5 rounded-lg flex-row items-center gap-1.5 shadow-sm"
-                >
-                  <Ionicons name="eye-outline" size={14} color="#FFFFFF" />
-                  <Text className="text-xs font-bold text-white">Visualizar en Pantalla</Text>
-                </TouchableOpacity>
+              <View className="gap-2">
+                {temasUnidad.map((tema) => {
+                  const mats = materialesPorTema[tema.id] || [];
+                  const estudios = mats.filter(m => m.tipoMaterial !== 'actividad');
+                  const actividades = mats.filter(m => m.tipoMaterial === 'actividad');
+                  return (
+                    <View key={tema.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 gap-3">
+                      <View>
+                        <View className="flex-row items-center gap-2 flex-wrap">
+                          <View className={`w-6 h-6 rounded-lg items-center justify-center ${tema.esEvaluacion ? 'bg-amber-100' : 'bg-blue-100'}`}>
+                            <Ionicons name={tema.esEvaluacion ? 'flag' : 'book'} size={13} color={tema.esEvaluacion ? '#D97706' : '#2563EB'} />
+                          </View>
+                          <Text className="flex-1 text-sm font-bold text-gray-900">{tema.titulo}</Text>
+                          {tema.esEvaluacion && <View className="px-1.5 py-0.5 bg-amber-100 rounded-md"><Text className="text-[9px] font-bold text-amber-700">EVALUACIÓN</Text></View>}
+                        </View>
+                        {tema.contenidos ? <Text className="text-xs text-gray-500 mt-1">{tema.contenidos}</Text> : null}
+                      </View>
+                      {estudios.length > 0 ? <View className="gap-1.5">
+                        <Text className="text-[10px] font-black uppercase text-blue-800">Material educativo</Text>
+                        {estudios.map((material) => <TouchableOpacity key={material.id} onPress={() => void abrirTema(material)} className="flex-row items-center gap-2 rounded-lg bg-white border border-blue-100 p-2.5">
+                          <Ionicons name="document-text-outline" size={17} color="#2563EB" />
+                          <View className="flex-1"><Text className="text-xs font-bold text-gray-800">{material.titulo}</Text><Text className="text-[10px] text-gray-500">{material.nombreArchivo || material.detalle || 'Abrir material'}</Text></View>
+                          <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+                        </TouchableOpacity>)}
+                      </View> : null}
+                      {actividades.length > 0 ? <View className="gap-1.5">
+                        <Text className="text-[10px] font-black uppercase text-amber-800">Actividades del tema</Text>
+                        {actividades.map((material) => <TouchableOpacity key={material.id} onPress={() => void abrirTema(material)} className="flex-row items-center gap-2 rounded-lg bg-white border border-amber-100 p-2.5">
+                          <Ionicons name="clipboard-outline" size={17} color="#B45309" />
+                          <View className="flex-1"><Text className="text-xs font-bold text-gray-800">{material.titulo}</Text><Text className="text-[10px] text-gray-500">{material.nombreArchivo || material.detalle || 'Abrir actividad'}</Text></View>
+                          <Ionicons name="chevron-forward" size={16} color="#6B7280" />
+                        </TouchableOpacity>)}
+                      </View> : null}
+                      {mats.length === 0 ? <Text className="text-[10px] text-gray-400">Todavía no hay materiales para este tema.</Text> : null}
+                    </View>
+                  );
+                })}
               </View>
             </BentoCard>
-          ))}
-        </View>
-      )}
+          );
+        })}
 
-      {/* Visor In-App Modal Integrado */}
-      <InAppDocumentViewerModal
-        visible={viewerModalOpen}
-        onClose={() => setViewerModalOpen(false)}
-        title={selectedMaterial?.titulo || 'Material de Consulta'}
-        url={selectedMaterial?.archivoUrl}
-        fileName={selectedMaterial?.nombreArchivo}
-        mimeType={selectedMaterial?.tipoMime}
-        fileSize={selectedMaterial?.tamanioBytes}
-        uploadedAt={selectedMaterial?.fechaSubida}
-      />
-    </View>
-  );
+        {/* Materiales sin tema asignado */}
+        {materialesSinTemaMalla.length > 0 && (
+          <BentoCard className="p-4 bg-white border border-gray-100">
+            <View className="flex-row items-center justify-between mb-3">
+              <View className="flex-row items-center gap-2">
+                <View className="w-8 h-8 rounded-xl bg-gray-200 items-center justify-center">
+                  <Ionicons name="folder-open-outline" size={18} color="#6B7280" />
+                </View>
+                <Text className="text-lg font-black text-gray-900">Sin unidad asignada</Text>
+              </View>
+              <View className="text-xs text-gray-400 font-mono">{materialesSinTemaMalla.length} recurso{materialesSinTemaMalla.length !== 1 ? 's' : ''}</View>
+            </View>
+            <View className="gap-2">
+              {materialesSinTemaMalla.map(renderMaterialSinTema)}
+            </View>
+          </BentoCard>
+        )}
+      </View>
+    )}
+  </View>;
+}
+
+function activityPrompt(activity: ActividadAprendizaje): string {
+  if (activity.tipo === 'FLASHCARD') return activity.front || 'Recuerda el concepto';
+  if (activity.tipo === 'VERDADERO_FALSO') return activity.statement || '¿Es verdadero o falso?';
+  if (activity.tipo === 'CONECTAR_FRASES') return 'Conecta cada concepto con su pareja';
+  if (activity.tipo === 'DRAG_AND_DROP') return 'Ordena los pasos para resolver el ejercicio';
+  return 'Responde la pregunta';
 }

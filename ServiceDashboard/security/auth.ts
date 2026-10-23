@@ -14,10 +14,10 @@ export interface AuthClaims extends JWTPayload {
   role: AppRole;
 }
 
-/** Roles que ven la institución completa. */
+// roles -> institucion completa
 export const ROLES_INSTITUCION: AppRole[] = ["director", "control"];
 
-/** Roles que ven únicamente los cursos donde tiene carga horaria. */
+// roles -> docentes con carga
 export const ROLES_DOCENTES: AppRole[] = ["profesor"];
 
 export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor", "estudiante"];

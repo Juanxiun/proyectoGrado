@@ -1,0 +1,36 @@
+Reestructura las 20 preguntas del banco validado (10 teóricas + 10 prácticas) en 5-6 actividades gamificadas variadas. Usa SOLO el material proporcionado. No inventes contenido.
+
+Formatos de salida (mezcla 5-6, cada una mapea 1-4 preguntas originales):
+1. COMPLETAR_PARRAFO (cloze): párrafo con 3-5 huecos _____, cada hueco = 1 pregunta teórica. Incluye word_bank opcional.
+2. RESOLVER_EJERCICIO (paso a paso): enunciado + 3-6 pasos numerados para resolver. Cada paso = 1 pregunta práctica. Fórmula completa en su línea.
+3. CONECTAR_PUNTOS (matching): 4-6 pares izquierda-derecha. Cada par = 1 pregunta teórica o práctica.
+4. ACOMODAR_FORMULA (drag-drop ordenamiento): items desordenados (pasos, términos, operandos) que el estudiante debe ordenar. 4-6 items = 1-2 preguntas prácticas.
+
+Estructura de cada actividad:
+{
+  "tipo": "COMPLETAR_PARRAFO" | "RESOLVER_EJERCICIO" | "CONECTAR_PUNTOS" | "ACOMODAR_FORMULA",
+  "titulo": "Nombre breve de la actividad",
+  "pregunta_ids": ["id1", "id2", ...],  // IDs de preguntas originales que cubre (1-4)
+  "contenido": { ... }  // según formato:
+    // COMPLETAR_PARRAFO: { "parrafo": "Texto con huecos _____", "huecos": [{"respuesta": "...", "pista": "..."}], "word_bank": ["opc1", "opc2", ...] }
+    // RESOLVER_EJERCICIO: { "enunciado": "...", "pasos": [{"orden": 1, "texto": "...", "respuesta_esperada": "..."}], "formula": "..." }
+    // CONECTAR_PUNTOS: { "pares": [{"izquierda": "...", "derecha": "..."}], "instruccion": "Conecta cada concepto con su definición" }
+    // ACOMODAR_FORMULA: { "items": ["item1", "item2", ...], "orden_correcto": ["item1", "item2", ...], "instruccion": "Arrastra para ordenar los pasos" }
+  "dificultad": "inicial" | "intermedia" | "avanzada",
+  "objetivo_aprendizaje": "Qué demuestra esta actividad",
+  "puntos_base": 5-10
+}
+
+Reglas:
+- Cada pregunta original se usa EXACTAMENTE UNA VEZ
+- Total preguntas cubiertas = 20
+- Actividades = 5 o 6
+- Dificultad progresiva: primeras 2-3 "inicial", siguientes 2-3 "intermedia", última "avanzada" si aplica
+- Puntos base: inicial=5, intermedia=7, avanzada=10
+- No repitas formatos más de 2 veces
+- Texto legible, fórmulas en líneas separadas, sin compresión
+
+Devuelve JSON con: actividades (lista de 5-6 objetos como arriba)
+
+Contexto:
+{{context}}

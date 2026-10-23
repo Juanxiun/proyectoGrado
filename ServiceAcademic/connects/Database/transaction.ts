@@ -1,5 +1,6 @@
 import { pool } from "./connect.ts";
 import { QueryObjectResult, Transaction } from "@db/postgres";
+import { conReintento } from "./reintento.ts";
 
 export async function sTransaction<T>(
   callback: (tx: Transaction) => Promise<T>,
@@ -9,11 +10,14 @@ export async function sTransaction<T>(
 
   let started = false;
   try {
-    await transaction.begin();
-    started = true;
-    const result = await callback(transaction);
-    await transaction.commit();
-    return result;
+    // tx -> reintento socket caido
+    return await conReintento(async () => {
+      await transaction.begin();
+      started = true;
+      const result = await callback(transaction);
+      await transaction.commit();
+      return result;
+    }, "sTransaction");
   } catch (err) {
     if (started) {
       try {
@@ -32,10 +36,13 @@ export async function query<T>(
   sql: string,
   params: unknown[] = [],
 ): Promise<QueryObjectResult<T>> {
-  const connection = await pool.connect();
-  try {
-    return await connection.queryObject<T>(sql, params);
-  } finally {
-    connection.release();
-  }
+  // query -> reintento conexion caida
+  return conReintento(async () => {
+    const connection = await pool.connect();
+    try {
+      return await connection.queryObject<T>(sql, params);
+    } finally {
+      connection.release();
+    }
+  }, "query");
 }

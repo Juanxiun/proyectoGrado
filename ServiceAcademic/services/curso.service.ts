@@ -43,10 +43,7 @@ function parseNivel(value: unknown): NivelEducativo {
   return nivel;
 }
 
-// El conteo de materias viene con el listado para que la interfaz pueda
-// advertir qué grados quedan fuera de la próxima gestión, sin una consulta
-// extra por curso. La materia es por GRADO: 1°A y 1°B muestran el mismo
-// número aunque sean filas distintas.
+// query -> contar materias por grado
 const SELECT = `
   SELECT
     c.id,

@@ -1,3 +1,4 @@
+// campo_texto -> entrada de datos con validación
 import { forwardRef } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import type { ComponentProps } from 'react';

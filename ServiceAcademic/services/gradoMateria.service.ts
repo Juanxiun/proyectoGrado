@@ -9,13 +9,7 @@ import { HttpError, mapDbError } from "../utils/errors.ts";
 import { publicarEventoAsync } from "../utils/events.ts";
 import { serialize, toId } from "../utils/serialize.ts";
 
-/**
- * Materias por GRADO (nivel + grado), compartidas por todos sus paralelos.
- *
- * 1°A y 1°B cursan lo mismo, así que la materia se configura una sola vez a
- * nivel de grado. Los paralelos siguen siendo filas de `cursos` porque
- * horarios, inscripciones y asignaciones docentes sí son por paralelo.
- */
+// servicio -> materias por grado
 
 export interface GradoMateria extends MateriaDelGrado {
   nivel: NivelEducativo;
@@ -68,10 +62,7 @@ function validarCarga(valor: number | undefined): number {
   return carga;
 }
 
-/**
- * Publica el cambio en el bus de eventos. ServiceNotification decide a quién
- * le corresponde el aviso; este servicio sólo informa que algo cambió.
- */
+// evento -> publicar cambio dominio
 function avisarMateriasGrado(nivel: NivelEducativo, grado: string, total: number): void {
   publicarEventoAsync("grados.materias", { nivel, grado, totalMaterias: total });
 }
@@ -205,12 +196,7 @@ export async function reemplazarMateriasGrado(
   }
 }
 
-/**
- * Grados que ya tienen al menos una materia, con sus paralelos.
- *
- * Es la fuente de la vista "Cursos base": un bloque por grado, no uno por
- * paralelo, porque la materia es la misma para todos.
- */
+// funcion -> listar grados con materias
 export async function listarGradosConMaterias(nivel?: NivelEducativo) {
   const params: unknown[] = [];
   let filtro = "";
@@ -249,7 +235,7 @@ export async function listarGradosConMaterias(nivel?: NivelEducativo) {
   }));
 }
 
-/** Grados sin ninguna materia: se avisan para que no se carguen a la gestión. */
+// funcion -> listar grados sin materias
 export async function listarGradosSinMaterias(nivel?: NivelEducativo) {
   const params: unknown[] = [];
   let filtro = "";
@@ -276,7 +262,7 @@ export async function listarGradosSinMaterias(nivel?: NivelEducativo) {
   }));
 }
 
-/** ¿Tiene materia este grado? Determina si el curso entra a la gestión. */
+// funcion -> verificar materia grado
 export async function gradoTieneMaterias(nivel: NivelEducativo, grado: string): Promise<boolean> {
   const res = await query<{ total: string }>(
     `SELECT COUNT(*) AS total FROM grado_materias WHERE nivel = $1 AND grado = $2`,
@@ -285,7 +271,7 @@ export async function gradoTieneMaterias(nivel: NivelEducativo, grado: string): 
   return Number(res.rows[0]?.total ?? 0) > 0;
 }
 
-/** Grados con materia de un nivel, para la malla de una gestión. */
+// funcion -> materias grado para malla
 export async function obtenerMateriasPorGrado(
   nivel: NivelEducativo,
   grado: string,

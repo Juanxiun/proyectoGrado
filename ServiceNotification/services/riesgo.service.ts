@@ -4,26 +4,13 @@ import { limpiarAvisos, marcarAvisado, yaAvisado } from "./alertaDedupe.service.
 import { query } from "../connects/Database/transaction.ts";
 import { publicarEventoAsync } from "../utils/events.ts";
 
-/**
- * Reevaluación del riesgo académico.
- *
- * Se dispara cada vez que se registra una nota o la asistencia, porque el
- * promedio y la tasa cambian sin aviso. Para no inundar al estudiante, el
- * mismo aviso no se repite dentro de un trimestre (ver alertaDedupe.service).
- *
- * El cálculo NO se replica aquí: se consulta a ServiceAcademic, que es el dueño
- * de periodos, trimestres y ponderaciones.
- */
+// archivo -> reevaluar riesgo academico
 
 function trimestreActual(periodoId: string): number {
   return Number(Deno.env.get("SEG_TRIMESTRE_ACTUAL") ?? 1);
 }
 
-/**
- * El evento de calificaciones no viaja con el período: se resuelve desde la
- * inscripción activa del estudiante. Si hubiera varias, se prioriza el
- * período que esté activo.
- */
+// funcion -> resolver periodo estudiante
 async function resolverPeriodo(estudianteId: string): Promise<string | null> {
   try {
     const res = await query<{ periodo_id: bigint }>(
@@ -42,14 +29,13 @@ async function resolverPeriodo(estudianteId: string): Promise<string | null> {
   }
 }
 
-/** Publica los avisos de un panel si el riesgo es nuevo para ese trimestre. */
+// funcion -> publicar avisos riesgo
 export async function avisarRiesgos(panel: PanelRiesgo): Promise<number> {
   const enRiesgo = panel.nivelRiesgo === "riesgo" || panel.nivelRiesgo === "riesgo_alto";
   const nombre = `${panel.nombre} ${panel.apellidoPaterno}`.trim();
 
   if (!enRiesgo) {
-    // Mejoró: se liberan los avisos para que un deterioro futuro pueda
-    // volver a notificarse.
+    // flujo -> liberar avisos mejora
     for (const periodo of panel.periodos) {
       await limpiarAvisos(panel.estudianteId, trimestreActual(periodo.periodoId));
     }
@@ -99,16 +85,13 @@ export async function avisarRiesgos(panel: PanelRiesgo): Promise<number> {
   return enviados;
 }
 
-/**
- * Punto de entrada del bus. Llega desde `calificaciones.*` y
- * `asistencia.bulk`, que el docente dispara sin percatarse.
- */
+// funcion -> reevaluar desde bus
 export async function reevaluar(
   payload: Record<string, unknown>,
 ): Promise<{ enviados: number }> {
   const estudianteId = String(payload.estudianteId ?? "").trim();
 
-  // Sin estudiante no hay nada que reevaluar; no es un error.
+  // valida -> sin estudiante
   if (!estudianteId) return { enviados: 0 };
 
   const periodoId = String(payload.periodoId ?? "").trim() ||

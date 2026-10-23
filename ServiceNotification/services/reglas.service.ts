@@ -8,13 +8,7 @@ import type {
   NotificationPriority,
 } from "../models/notification.ts";
 
-/**
- * Catálogo central de reglas: es el ÚNICO lugar donde se decide qué evento del
- * sistema genera una notificación, a quién le llega y con qué texto.
- *
- * Para agregar una notificación nueva basta con añadir una entrada aquí; el
- * servicio que origina el evento sólo publica en el canal de Redis.
- */
+// interfaz -> catalogo reglas notificacion
 interface ReglaNotificacion {
   evento: string;
   tipo: string;
@@ -23,22 +17,19 @@ interface ReglaNotificacion {
   titulo: (payload: Record<string, unknown>) => string;
   mensaje: (payload: Record<string, unknown>) => string;
   audiencia: NotificationAudience;
-  /** Ids de usuarios destino cuando la audiencia es "usuario". */
+  // campo -> usuarios destino
   usuarios?: (payload: Record<string, unknown>) => Promise<string[]>;
-  /** Curso-periodo a notificar cuando la audiencia es "curso". */
+  // campo -> curso destino
   cursoPeriodo?: (payload: Record<string, unknown>) => string | undefined;
-  /**
-   * Período académico: si el evento no identifica un curso concreto, se
-   * notifican todos los cursos del período que tengan horario activo.
-   */
+  // campo -> cursos del periodo
   cursosDelPeriodo?: (payload: Record<string, unknown>) => string | undefined;
-  /** Asignación docente usada para resolver materia/docente/curso. */
+  // campo -> asignacion docente
   asignacion?: (payload: Record<string, unknown>) => string | undefined;
-  /** Roles de la tabla `roles` cuando la audiencia es "rol". */
+  // campo -> roles destino
   roles?: string[];
 }
 
-/** Roles de administración: avisos de gestión académica y de usuarios. */
+// const -> roles gestion
 const ROLES_GESTION = [
   "director",
   "control",
@@ -76,14 +67,14 @@ async function construirCurso(
 }
 
 const REGLAS: ReglaNotificacion[] = [
-  // ── ServiceHomework: materiales y encargos ────────────────────────────────
+  // reglas -> homework materiales
   {
     evento: "materiales.create",
     tipo: "material",
     canal: "academico",
     prioridad: "media",
-    titulo: (p) => texto(p.titulo, "Nuevo material académico"),
-    mensaje: (p) => `Se publicó un material: ${texto(p.titulo, "Material académico")}`,
+    titulo: () => "Nuevo material de clase",
+    mensaje: (p) => `Se subió material de clase: ${texto(p.titulo, "Material académico")}`,
     audiencia: "curso",
     asignacion: (p) => numero(p.asignacionId),
     cursoPeriodo: (p) => numero(p.cursoPeriodoId),
@@ -178,7 +169,7 @@ const REGLAS: ReglaNotificacion[] = [
     cursoPeriodo: (p) => numero(p.cursoPeriodoId),
   },
 
-  // ── ServiceAcademic: materias, cursos, horarios y periodos ────────────────
+  // reglas -> academic generales
   {
     evento: "materias.create",
     tipo: "materia",
@@ -262,7 +253,7 @@ const REGLAS: ReglaNotificacion[] = [
     },
     audiencia: "curso",
     cursoPeriodo: (p) => numero(p.cursoPeriodoId),
-    /** Si el evento no trae curso, se notifican todos los del período. */
+    // campo -> periodo sin curso
     cursosDelPeriodo: (p) => numero(p.periodoId),
   },
   {
@@ -305,7 +296,7 @@ const REGLAS: ReglaNotificacion[] = [
     roles: ROLES_GESTION,
   },
 
-  // ── ServiceEnrollment: inscripciones, solicitudes y asignaciones ──────────
+  // reglas -> enrollment inscripciones
   {
     evento: "inscripciones.create",
     tipo: "inscripcion",
@@ -369,9 +360,7 @@ const REGLAS: ReglaNotificacion[] = [
     },
   },
 
-  // ── ServiceAcademic: seguimiento de desempeño ─────────────────────────────
-  // La reevaluación de riesgo se dispara desde el seguimiento académico
-  // (ServiceAcademic) y desde cualquier carga de notas o asistencia.
+  // reglas -> desempeno seguimiento
   {
     evento: "seguimiento.riesgo",
     tipo: "desempeno",
@@ -422,7 +411,7 @@ const REGLAS: ReglaNotificacion[] = [
     },
   },
 
-  // ── ServiceUser: altas, bajas y seguridad ────────────────────────────────
+  // reglas -> usuarios seguridad
   {
     evento: "usuarios.create",
     tipo: "usuario",
@@ -469,6 +458,43 @@ const REGLAS: ReglaNotificacion[] = [
       return usuarioId ? [usuarioId] : [];
     },
   },
+  {
+    evento: "content.processed",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Material procesado: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El contenido "${texto(p.title, "tu material")}" ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y las actividades generadas.`,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const teacherId = numero(p.teacher_id);
+      return teacherId ? [teacherId] : [];
+    },
+  },
+  {
+    evento: "content.processing",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Procesando material: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El documento "${texto(p.title, "tu material")}" se está procesando con IA. Tiempo estimado: ${texto(p.estimated_minutes, "3")} minutos.`,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const teacherId = numero(p.teacher_id);
+      return teacherId ? [teacherId] : [];
+    },
+  },
+  {
+    evento: "content.processed.students",
+    tipo: "material",
+    canal: "academico",
+    prioridad: "media",
+    titulo: (p) => `Contenido listo: ${texto(p.title, "Material de estudio")}`,
+    mensaje: (p) => `El contenido: ${texto(p.title, "tu tema")} ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y resuelve las actividades que te prepararon.`,
+    audiencia: "curso",
+    asignacion: (p) => numero(p.assignment_id),
+    cursoPeriodo: (p) => numero(p.cursoPeriodoId),
+  },
 ];
 
 const INDICE = new Map(REGLAS.map((r) => [r.evento.toLowerCase(), r]));
@@ -498,7 +524,7 @@ async function resolverDestinatarios(
         (await construirCurso(payload, asignacionId))) as string | undefined;
 
       if (cursoPeriodoId) {
-        return NotificationService.resolveCursoDocentes(cursoPeriodoId);
+        return NotificationService.resolveCursoStudents(cursoPeriodoId);
       }
 
       const periodoId = regla.cursosDelPeriodo?.(payload);
@@ -507,7 +533,7 @@ async function resolverDestinatarios(
       const cursos = await NotificationService.resolveCursosDelPeriodoConHorarios(periodoId);
       const todos: string[] = [];
       for (const curso of cursos) {
-        todos.push(...await NotificationService.resolveCursoDocentes(curso));
+        todos.push(...await NotificationService.resolveCursoStudents(curso));
       }
       return [...new Set(todos)];
     }
@@ -520,11 +546,7 @@ async function resolverDestinatarios(
   }
 }
 
-/**
- * Punto de entrada del bus de eventos. Traduce un evento de dominio en una
- * notificación y la entrega. Si no hay regla, el evento se ignora en silencio:
- * no es un error, sólo significa que ese cambio no genera aviso.
- */
+// funcion -> procesar evento dominio
 export async function procesarEvento(evento: DomainEvent): Promise<void> {
   const eventType = String(evento?.eventType ?? "").trim();
   const regla = INDICE.get(eventType.toLowerCase());
@@ -542,7 +564,7 @@ export async function procesarEvento(evento: DomainEvent): Promise<void> {
     origen: `${evento.origen || "desconocido"}:${eventType}`,
   };
 
-  // El contexto académico sólo aplica a las reglas de curso/asignación.
+  // contexto -> solo reglas curso
   if (regla.audiencia === "curso") {
     const asignacionId = regla.asignacion?.(payload);
     if (asignacionId) {

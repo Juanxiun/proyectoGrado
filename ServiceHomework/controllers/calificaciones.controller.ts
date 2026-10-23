@@ -47,8 +47,7 @@ export async function createCalificacion(ctx: Context): Promise<void> {
       nota: created.nota,
       titulo: created.encargo?.titulo,
       itemId: created.id,
-      // El seguimiento académico usa esto para reevaluar el riesgo del
-      // estudiante sin que el docente tenga que pedirlo.
+      // evento -> reevaluar riesgo estudiante
       evaluacionRiesgo: true,
     });
     respond(ctx, 201, created);

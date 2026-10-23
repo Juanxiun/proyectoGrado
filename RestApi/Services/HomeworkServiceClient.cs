@@ -1,8 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP gateway hacia ServiceHomework (LMS & Assessment Service en Deno/Oak).
-/// </summary>
+// cliente -> reenviar servicio tareas
 public sealed class HomeworkServiceClient
 {
     private readonly HttpClient _http;
@@ -14,7 +12,7 @@ public sealed class HomeworkServiceClient
             ?? throw new InvalidOperationException("Services:HomeworkService no configurado en appsettings.json");
 
         _http.BaseAddress = new Uri(baseUrl);
-        _http.Timeout = TimeSpan.FromMinutes(10); // Permitir tiempo para subida de archivos hasta 150MB
+        _http.Timeout = TimeSpan.FromMinutes(10); // timeout -> subir archivos 150mb
     }
 
     public Task<HttpResponseMessage> ForwardAsync(HttpMethod method, string path, HttpRequest request)
@@ -59,7 +57,14 @@ public sealed class HomeworkServiceClient
                 incomingRequest.HttpContext.Connection.RemoteIpAddress.ToString());
         }
 
-        return await _http.SendAsync(message);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(incomingRequest.HttpContext.RequestAborted);
+        var routePath = path.Split('?', 2)[0];
+        if (routePath.EndsWith("/reto", StringComparison.OrdinalIgnoreCase))
+        {
+            timeout.CancelAfter(TimeSpan.FromSeconds(25));
+        }
+
+        return await _http.SendAsync(message, timeout.Token);
     }
 
     private static void CopyHeaderIfPresent(HttpRequest src, HttpRequestMessage dest, string headerName)

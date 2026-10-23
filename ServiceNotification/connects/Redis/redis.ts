@@ -46,10 +46,7 @@ export function getRedis(): any {
   return redisClient;
 }
 
-/**
- * Una conexión exclusiva en modo suscriptor. Redis exige una conexión
- * dedicada por cliente en modo pub/sub, por eso no se reutiliza `getRedis()`.
- */
+// funcion -> suscriptor redis exclusivo
 export async function createSubscriber(): Promise<any> {
   const base = getRedis();
   if (!base) throw new Error("No se pudo crear el suscriptor: Redis no inicializado");

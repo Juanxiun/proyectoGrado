@@ -6,19 +6,13 @@ namespace RestApi.Controllers;
 
 public sealed class NotificationPushDto
 {
-    /// <summary>Usuario destino. Si se omite, se difunde a todos los clientes.</summary>
+    /// <summary>Usuario destino; si se omite difunde a todos.</summary>
     public string? DestinatarioId { get; set; }
     public object? Notificacion { get; set; }
     public string Resource { get; set; } = "notificaciones";
 }
 
-/// <summary>
-/// Canal interno para el push en tiempo real. Lo usa ServiceNotification, que
-/// no expone sockets: el gateway es el único proceso con conexiones de cliente.
-///
-/// No es una ruta de negocio: se autentica con un secreto compartido
-/// (<c>Internal:PushToken</c>) en lugar de con el JWT del usuario.
-/// </summary>
+/// <summary>Canal interno de push con token secreto.</summary>
 [ApiController]
 [Route("api/internal/notificaciones")]
 public sealed class InternalNotificationsController : ControllerBase

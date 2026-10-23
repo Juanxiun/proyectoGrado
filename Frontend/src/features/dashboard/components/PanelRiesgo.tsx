@@ -1,6 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { Text, View } from 'react-native';
-import { StatusBadge } from '../../../shared/ui';
+import { StatusBadge, UserAvatar } from '../../../shared/ui';
 import type { NivelRiesgo, ResumenRiesgo } from '../../../api/dashboard.api';
 
 const META: Record<NivelRiesgo, { label: string; variant: 'success' | 'info' | 'warning' | 'danger' }> = {
@@ -44,11 +44,12 @@ export function PanelRiesgo({ riesgo }: { riesgo: ResumenRiesgo }) {
               key={estudiante.estudianteId}
               className="flex-row items-center gap-3 py-2.5 border-b border-gray-50"
             >
-              <View className="w-9 h-9 rounded-xl bg-maroon/10 items-center justify-center">
-                <Text className="text-xs font-bold text-maroon">
-                  {estudiante.nombre.charAt(0)}{estudiante.apellidoPaterno.charAt(0)}
-                </Text>
-              </View>
+              <UserAvatar
+                nombre={estudiante.nombre}
+                apellidoPaterno={estudiante.apellidoPaterno}
+                className="w-9 h-9 rounded-xl bg-maroon/10"
+                textoClassName="text-xs font-bold text-maroon"
+              />
               <View className="flex-1">
                 <Text className="text-sm font-semibold text-gray-800" numberOfLines={1}>
                   {estudiante.nombre} {estudiante.apellidoPaterno}
