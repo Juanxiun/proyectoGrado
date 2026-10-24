@@ -66,6 +66,7 @@ function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator
+        key={`${isAuthenticated ? user?.rol ?? 'authenticated' : 'anonymous'}-${pending2FA ? '2fa' : 'session'}`}
         initialRouteName={activeScreen}
         screenOptions={{ headerShown: false, animation: 'fade' }}
       >

@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -230,7 +230,7 @@ export function ProfileScreen() {
   const apoderados = usuario?.apoderados ?? [];
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="gap-4 p-4 pb-8">
+    <View className="gap-4 p-4 pb-8">
       {showCompleteAlert && canEditDocuments && (
         <BentoCard className="border-l-4 border-amber-400 bg-amber-50">
           <View className="flex-row items-start gap-3">
@@ -551,7 +551,7 @@ export function ProfileScreen() {
         <Ionicons name="log-out-outline" size={18} color="#DC2626" />
         <Text className="text-red-600 font-semibold">Cerrar sesión</Text>
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
