@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     ollama_mistral_model: str = "mistral:7b"
     ollama_embedding_model: str = "nomic-embed-text"
     # ollama -> contexto efectivo por solicitud
-    ollama_num_ctx: int = 16384
+    ollama_num_ctx: int = 8192
     # ollama -> tiempo que el modelo permanece cargado en memoria
     ollama_keep_alive: str = "30m"
     # ollama -> desactivar razonamiento extendido en modelos que lo soportan
@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     chunk_min_chars: int = 400
     chunk_semantic_threshold: float = 0.05
     max_chunks_per_document: int = 6
+    # chunking -> documentos pequenos compactos
+    small_document_bytes: int = 1_048_576
+    small_document_max_chunks: int = 3
+    small_document_chunk_size: int = 12_000
+    small_document_activity_count: int = 8
     llm_acceptance_threshold: float = 0.85
     llm_max_refinement_iterations: int = 2
     # ollama -> espera para generaciones largas
@@ -51,7 +56,7 @@ class Settings(BaseSettings):
     worker_count: int = 2
     pipeline_max_duration_sec: int = 540
     max_document_bytes: int = 157_286_400
-    job_max_retries: int = 3
+    job_max_retries: int = 0
     quiz_advance_threshold: float = 0.80
     quiz_retain_threshold: float = 0.60
 

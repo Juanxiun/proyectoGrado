@@ -6,7 +6,7 @@ import unicodedata
 # activities -> campos que revelan la respuesta segun el tipo (LEGACY: mantener para compatibilidad UI)
 CAMPOS_RESPUESTA = {
     "SELECCION_MULTIPLE": ("correct_answer", "explanation", "source_chunk_ids"),
-    "CUESTIONARIO": ("keywords", "model_answer", "explanation", "source_chunk_ids"),
+    "COMPLETAR": ("correct_answer", "explanation", "source_chunk_ids"),
     "FLASHCARD": ("source_chunk_ids",),
     "VERDADERO_FALSO": ("answer", "justification", "source_chunk_ids"),
     "CONECTAR_FRASES": ("explanation", "source_chunk_ids"),
@@ -16,10 +16,10 @@ CAMPOS_RESPUESTA = {
 # activities -> campos visibles para el estudiante (LEGACY: mantener para compatibilidad UI)
 CAMPOS_PUBLICOS = {
     "SELECCION_MULTIPLE": ("question", "options"),
-    "CUESTIONARIO": ("question",),
+    "COMPLETAR": ("question", "options"),
     "FLASHCARD": ("front", "back"),
     "VERDADERO_FALSO": ("statement",),
-    "CONECTAR_FRASES": (),
+    "CONECTAR_FRASES": ("question",),
     "DRAG_AND_DROP": ("question", "items"),
 }
 
@@ -69,14 +69,14 @@ def activity_id(content_id: str, index: int, statement: str) -> str:
 # activities -> copia sin respuestas ni metadatos internos (LEGACY: para UI con formatos de interaccion)
 def public_activity(activity: dict, semilla: str = "", banco: list[dict] | None = None) -> dict:
     if _is_seed_format(activity):
-        tipo_practica = activity.get("type") == "PRACTICAL"
+        # migracion -> los bancos previos no deben romper retos ya guardados.
         return {
             "activity_id": activity.get("activity_id", ""),
-            "activity_mode": "practica" if tipo_practica else "concepto",
-            "tipo": "CUESTIONARIO",
-            "question": activity.get("question", ""),
+            "tipo": "COMPLETAR",
+            "question": f"Completa la respuesta: {activity.get('question', '')} _____",
             "difficulty": activity.get("difficulty", "inicial"),
             "learning_objective": activity.get("learning_objective", ""),
+            "exercise_svg": activity.get("exercise_svg", ""),
         }
     tipo = activity.get("tipo", "SELECCION_MULTIPLE")
     publico = {"activity_id": activity.get("activity_id", ""), "tipo": tipo}
@@ -90,9 +90,33 @@ def public_activity(activity: dict, semilla: str = "", banco: list[dict] | None 
         random.Random(semilla or activity.get("activity_id", "")).shuffle(derechos)
         publico["left_items"] = lados
         publico["right_items"] = derechos
+    if tipo == "COMPLETAR":
+        opciones = [str(opt).strip() for opt in (activity.get("options") or []) if str(opt).strip()]
+        correcta = str(activity.get("correct_answer") or "").strip()
+        if not opciones and correcta:
+            candidatos = []
+            if banco:
+                for b_act in banco:
+                    c = str(b_act.get("correct_answer") or b_act.get("answer") or "").strip()
+                    if c and c.lower() != correcta.lower() and len(c) <= 60 and c not in candidatos:
+                        candidatos.append(c)
+                    for opt in b_act.get("options") or []:
+                        opt_str = str(opt).strip()
+                        if opt_str and opt_str.lower() != correcta.lower() and len(opt_str) <= 60 and opt_str not in candidatos:
+                            candidatos.append(opt_str)
+            distractores = candidatos[:3]
+            while len(distractores) < 3:
+                distractores.append(f"Término {len(distractores) + 1}")
+            opciones = [correcta, *distractores]
+        if opciones:
+            rng = random.Random(semilla or activity.get("activity_id", ""))
+            rng.shuffle(opciones)
+            publico["options"] = opciones
     for campo in ("difficulty", "learning_objective"):
         if campo in activity:
             publico[campo] = activity[campo]
+    if activity.get("exercise_svg"):
+        publico["exercise_svg"] = activity["exercise_svg"]
     if tipo == "DRAG_AND_DROP" and semilla:
         mezcla = list(publico.get("items", []))
         random.Random(semilla).shuffle(mezcla)
@@ -127,48 +151,39 @@ def _parse_pares(response: str) -> dict[str, str]:
 
 # activities -> correccion de una respuesta segun el tipo de actividad
 def score_activity(activity: dict, response: str) -> bool:
-    if _is_seed_format(activity):
-        # Formato nuevo: comparacion simple de respuesta normalizada
-        respuesta = _norm(response)
-        if not respuesta:
-            raise ValueError("La respuesta no puede estar vacía")
-        expected = _norm(activity.get("answer", ""))
-        return respuesta == expected
-
-    # LEGACY: logica original para formatos de interaccion
-    tipo = activity.get("tipo", "SELECCION_MULTIPLE")
     respuesta = _norm(response)
     if not respuesta:
         raise ValueError("La respuesta no puede estar vacía")
-    if tipo == "SELECCION_MULTIPLE":
-        opciones = {_norm(opcion) for opcion in activity.get("options", [])}
-        if respuesta not in opciones:
-            raise ValueError("Una respuesta no coincide con las opciones de su actividad")
-        return respuesta == _norm(activity.get("correct_answer", ""))
-    if tipo == "CUESTIONARIO":
-        claves = [_norm(clave) for clave in activity.get("keywords", [])]
-        if not claves:
-            return respuesta == _norm(activity.get("model_answer", ""))
-        aciertos = sum(1 for clave in claves if clave and clave in respuesta)
-        return aciertos >= max(1, (len(claves) + 1) // 2)
-    if tipo == "FLASHCARD":
-        return respuesta in RESPUESTAS_FLASHCARD
-    if tipo == "VERDADERO_FALSO":
-        if respuesta not in {"verdadero", "falso", "v", "f", "true", "false"}:
-            raise ValueError("La respuesta debe ser verdadero o falso")
-        elegida = respuesta in {"verdadero", "v", "true"}
-        return elegida == bool(activity.get("answer"))
-    if tipo == "CONECTAR_FRASES":
-        pares = _parse_pares(response)
-        esperado = {_norm(par.get("left", "")): _norm(par.get("right", "")) for par in activity.get("pairs", [])}
-        if set(pares) != set(esperado):
-            raise ValueError("Debe relacionar exactamente los pares emitidos")
-        return all(pares[lado] == derecha for lado, derecha in esperado.items())
-    if tipo == "DRAG_AND_DROP":
-        orden = [_norm(item) for item in re.split(r"[;|,]", response) if item.strip()]
-        esperado = [_norm(item) for item in activity.get("correct_order", [])]
-        return orden == esperado and bool(orden)
-    raise ValueError(f"Tipo de actividad no admitido: {tipo}")
+    try:
+        if _is_seed_format(activity):
+            expected = _norm(activity.get("answer", activity.get("correct_answer", "")))
+            return respuesta == expected
+
+        tipo = activity.get("tipo", "SELECCION_MULTIPLE")
+        if tipo == "SELECCION_MULTIPLE":
+            return respuesta == _norm(activity.get("correct_answer", ""))
+        if tipo == "COMPLETAR":
+            return respuesta == _norm(activity.get("correct_answer", activity.get("answer", "")))
+        if tipo == "FLASHCARD":
+            return respuesta in RESPUESTAS_FLASHCARD
+        if tipo == "VERDADERO_FALSO":
+            if respuesta not in {"verdadero", "falso", "v", "f", "true", "false"}:
+                return False
+            elegida = respuesta in {"verdadero", "v", "true"}
+            return elegida == bool(activity.get("answer"))
+        if tipo == "CONECTAR_FRASES":
+            pares = _parse_pares(response)
+            esperado = {_norm(par.get("left", "")): _norm(par.get("right", "")) for par in activity.get("pairs", [])}
+            if set(pares) != set(esperado):
+                return False
+            return all(pares[lado] == derecha for lado, derecha in esperado.items())
+        if tipo == "DRAG_AND_DROP":
+            orden = [_norm(item) for item in re.split(r"[;|,]", response) if item.strip()]
+            esperado = [_norm(item) for item in activity.get("correct_order", [])]
+            return orden == esperado and bool(orden)
+        return False
+    except ValueError:
+        return False
 
 
 # feedback -> explicacion correctiva ligada al concepto evaluado
@@ -190,8 +205,8 @@ def remediation(activity: dict, correct: bool) -> dict[str, str]:
     if tipo == "SELECCION_MULTIPLE":
         answer = str(activity.get("correct_answer", ""))
         explanation = str(activity.get("explanation", ""))
-    elif tipo == "CUESTIONARIO":
-        answer = str(activity.get("model_answer", ""))
+    elif tipo == "COMPLETAR":
+        answer = str(activity.get("correct_answer", ""))
         explanation = str(activity.get("explanation", ""))
     elif tipo == "FLASHCARD":
         answer = str(activity.get("back", ""))

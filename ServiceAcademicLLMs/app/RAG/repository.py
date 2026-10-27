@@ -1,4 +1,5 @@
 import json
+import logging
 import hashlib
 import struct
 from datetime import datetime, timezone
@@ -8,6 +9,8 @@ from redis.asyncio import Redis
 
 from app.config import settings
 from app.services.activities import activity_statement, remediation, score_activity, _is_seed_format
+
+logger = logging.getLogger(__name__)
 
 
 def utcnow() -> str:
@@ -237,16 +240,27 @@ class RAGRepository:
         index_name = f"{self.index_prefix}_{self._embedding_namespace}_{dimension}"
         if self._vector_dimension == dimension and self._index_name == index_name:
             return index_name
+        if self._vector_dimension == dimension and self._index_name == "":
+            return ""
         try:
             await self._redis.execute_command("FT.INFO", index_name)
-        except Exception:
-            await self._redis.execute_command(
-                "FT.CREATE", index_name, "ON", "HASH", "PREFIX", "1", self._vector_key_prefix,
-                "SCHEMA", "branch", "TAG", "content_id", "TAG", "student_id", "TAG", "subject_id", "TAG",
-                "topic_id", "TAG", "grade", "TAG", "record_type", "TAG", "source", "TAG", "text", "TEXT",
-                "embedding", "VECTOR", "HNSW", "6", "TYPE", "FLOAT32", "DIM", dimension,
-                "DISTANCE_METRIC", "COSINE",
-            )
+        except Exception as exc:
+            if "unknown command" in str(exc).casefold():
+                self._vector_dimension, self._index_name = dimension, ""
+                return ""
+            try:
+                await self._redis.execute_command(
+                    "FT.CREATE", index_name, "ON", "HASH", "PREFIX", "1", self._vector_key_prefix,
+                    "SCHEMA", "branch", "TAG", "content_id", "TAG", "student_id", "TAG", "subject_id", "TAG",
+                    "topic_id", "TAG", "grade", "TAG", "record_type", "TAG", "source", "TAG", "text", "TEXT",
+                    "embedding", "VECTOR", "HNSW", "6", "TYPE", "FLOAT32", "DIM", dimension,
+                    "DISTANCE_METRIC", "COSINE",
+                )
+            except Exception as create_exc:
+                if "unknown command" in str(create_exc).casefold():
+                    self._vector_dimension, self._index_name = dimension, ""
+                    return ""
+                raise
         self._vector_dimension, self._index_name = dimension, index_name
         return index_name
 
@@ -478,37 +492,66 @@ class RAGRepository:
         correct = expected.strip().casefold() == right.strip().casefold()
         return {"correct": correct, "feedback": remediation(activity, correct), "expected": "" if correct else expected}
 
+    # quiz -> comprobar una actividad sin registrar todavía el intento final
+    async def check_quiz_activity(self, student_id: str, content_id: str, quiz_id: str, activity_id: str, response: str) -> dict[str, Any]:
+        quiz = await self.get_quiz(student_id, content_id, quiz_id)
+        if not quiz:
+            raise LookupError("No existe este reto para el estudiante")
+        activity = next((item for item in quiz.get("activities", []) if item.get("activity_id") == activity_id), None)
+        if not activity:
+            raise LookupError("No existe esta actividad en el reto")
+        correct = score_activity(activity, response)
+        return {"correct": correct, "feedback": remediation(activity, correct)}
+
     async def vector_search(self, query_vector: list[float], limit: int = 5, filters: dict[str, str] | None = None) -> list[dict[str, str]]:
-        index_name = await self.ensure_vector_index(len(query_vector))
-        vector = struct.pack(f"{len(query_vector)}f", *query_vector)
-        query = "*"
-        if filters:
-            clauses = []
-            for key, value in filters.items():
-                escaped = str(value).replace("\\", "\\\\").replace("-", "\\-").replace(" ", "\\ ")
-                clauses.append(f"@{key}:{{{escaped}}}")
-            query = " ".join(clauses)
-        result = await self._redis.execute_command(
-            "FT.SEARCH", index_name, f"({query})=>[KNN {limit} @embedding $vector AS score]",
-            "PARAMS", "2", "vector", vector, "SORTBY", "score", "RETURN", "9",
-            "content_id", "chunk_id", "text", "subject_id", "topic_id", "grade", "student_id", "record_type", "branch", "DIALECT", "2",
-        )
-        found = []
-        if isinstance(result, dict):
-            rows = result.get(b"results", result.get("results", []))
-            for row in rows:
-                if not isinstance(row, dict):
-                    continue
-                fields = row.get(b"extra_attributes", row.get("extra_attributes", {}))
-                if isinstance(fields, dict):
-                    found.append({_text(key): _text(value) for key, value in fields.items()})
-                elif isinstance(fields, list):
-                    found.append({_text(fields[i]): _text(fields[i + 1]) for i in range(0, len(fields) - 1, 2)})
+        try:
+            index_name = await self.ensure_vector_index(len(query_vector))
+            # RAG -> Redis sin módulo RediSearch conserva el contenido, pero no admite KNN.
+            if not index_name:
+                return []
+            vector = struct.pack(f"{len(query_vector)}f", *query_vector)
+            query = "*"
+            if filters:
+                clauses = []
+                for key, value in filters.items():
+                    escaped = str(value).replace("\\", "\\\\").replace("-", "\\-").replace(" ", "\\ ")
+                    clauses.append(f"@{key}:{{{escaped}}}")
+                query = " ".join(clauses)
+            result = await self._redis.execute_command(
+                "FT.SEARCH", index_name, f"({query})=>[KNN {limit} @embedding $vector AS score]",
+                "PARAMS", "2", "vector", vector, "SORTBY", "score", "RETURN", "9",
+                "content_id", "chunk_id", "text", "subject_id", "topic_id", "grade", "student_id", "record_type", "branch", "DIALECT", "2",
+            )
+            found = []
+            if isinstance(result, dict):
+                rows = result.get(b"results", result.get("results", []))
+                for row in rows:
+                    if not isinstance(row, dict):
+                        continue
+                    fields = row.get(b"extra_attributes", row.get("extra_attributes", {}))
+                    if isinstance(fields, dict):
+                        found.append({_text(key): _text(value) for key, value in fields.items()})
+                    elif isinstance(fields, list):
+                        found.append({_text(fields[i]): _text(fields[i + 1]) for i in range(0, len(fields) - 1, 2)})
+                return found
+            for i in range(1, len(result), 2):
+                fields = result[i + 1]
+                found.append({fields[j].decode(): fields[j + 1].decode(errors="ignore") for j in range(0, len(fields), 2)})
             return found
-        for i in range(1, len(result), 2):
-            fields = result[i + 1]
-            found.append({fields[j].decode(): fields[j + 1].decode(errors="ignore") for j in range(0, len(fields), 2)})
-        return found
+        except Exception as exc:
+            logger.warning("Fallo en vector_search (fallback RAG activo): %s", exc)
+            return []
+
+    # rag -> reiniciar base de datos vectorial y cache a cero
+    async def reset_rag(self) -> None:
+        try:
+            await self._redis.flushdb()
+            self._vector_dimension = None
+            self._index_name = ""
+            logger.info("RAG reiniciado exitosamente (flushdb)")
+        except Exception as exc:
+            logger.exception("Error al reiniciar RAG: %s", exc)
+            raise
 
     # quiz -> corrige la entrega segun el tipo de cada actividad
     async def record_quiz_attempt(self, student_id: str, content_id: str, attempt_id: str, answers: list[dict[str, str]], elapsed_ms: int = 0) -> dict[str, Any]:

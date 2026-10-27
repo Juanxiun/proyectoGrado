@@ -29,12 +29,15 @@ class ContentCreatedEvent(BaseModel):
     timestamp: str | None = None
 
 
-class LearningUnit(BaseModel):
+class LearningUnitDraft(BaseModel):
     title: str = Field(max_length=100)
     explanation: str = Field(max_length=320)
     objective: str = Field(max_length=160)
     inquiry_question: str = Field(max_length=240)
     examples_blackboard: list[str] = Field(default_factory=list, max_length=5)
+
+
+class LearningUnit(LearningUnitDraft):
     svg_inline: str = Field(default="", max_length=5000)
 
 
@@ -93,12 +96,12 @@ class ActivitySeleccionMultiple(BaseModel):
         return self
 
 
-# generator -> actividad de cuestionario abierto corto (LEGACY: mantener para compatibilidad)
-class ActivityCuestionario(BaseModel):
-    tipo: Literal["CUESTIONARIO"]
+# generator -> actividad de completar una respuesta concreta
+class ActivityCompletar(BaseModel):
+    tipo: Literal["COMPLETAR"]
     question: TextoBreve
-    keywords: list[Annotated[str, Field(max_length=50)]] = Field(min_length=2, max_length=6)
-    model_answer: TextoBreve
+    options: list[TextoBreve] = Field(default_factory=list)
+    correct_answer: TextoBreve
     explanation: TextoBreve
     difficulty: str = Field(default="inicial", max_length=20)
     learning_objective: TextoBreve
@@ -134,7 +137,8 @@ class MatchPair(BaseModel):
 # generator -> actividad de conectar frases por pares (LEGACY: mantener para compatibilidad)
 class ActivityConectarFrases(BaseModel):
     tipo: Literal["CONECTAR_FRASES"]
-    pairs: list[MatchPair] = Field(min_length=2, max_length=4)
+    question: TextoBreve = "Conecta cada idea de la columna A con su pareja de la columna B"
+    pairs: list[MatchPair] = Field(min_length=3, max_length=5)
     explanation: TextoBreve
     difficulty: str = Field(default="inicial", max_length=20)
     learning_objective: TextoBreve
@@ -163,7 +167,7 @@ class ActivityDragAndDrop(BaseModel):
 Activity = Annotated[
     Union[
         ActivitySeleccionMultiple,
-        ActivityCuestionario,
+        ActivityCompletar,
         ActivityFlashcard,
         ActivityVerdaderoFalso,
         ActivityConectarFrases,
@@ -184,15 +188,36 @@ class ActivitySeed(BaseModel):
     source_chunk_ids: list[str] = Field(default_factory=list, min_length=1, max_length=1)
 
 
+class ConceptNode(BaseModel):
+    id: str = Field(default="")
+    label: str = Field(max_length=80)
+    detail: str = Field(default="", max_length=260)
+    mini_example: str = Field(default="", max_length=200)
+
+
+class ConceptEdge(BaseModel):
+    source: str = Field(max_length=80)
+    target: str = Field(max_length=80)
+    label: str = Field(default="se relaciona con", max_length=60)
+
+
+class InquiryQuestionDetail(BaseModel):
+    pregunta: str = Field(max_length=240)
+    respuesta: str = Field(max_length=400)
+
+
 class RefinedContent(BaseModel):
     title: str = Field(max_length=120)
     summary: str = Field(max_length=500)
-    learning_objectives: list[str] = Field(max_length=8)
-    key_concepts: list[str] = Field(max_length=12)
-    microlearning_units: list[LearningUnit] = Field(min_length=5, max_length=6)
-    inquiry_questions: list[str] = Field(max_length=8)
-    common_mistakes: list[str] = Field(max_length=8)
-    difficulty: str = Field(max_length=20)
+    learning_objectives: list[str] = Field(default_factory=list, max_length=8)
+    key_concepts: list[str] = Field(default_factory=list, max_length=12)
+    microlearning_units: list[LearningUnitDraft] = Field(min_length=3, max_length=6)
+    inquiry_questions: list[str] = Field(default_factory=list, max_length=8)
+    inquiry_details: list[InquiryQuestionDetail] = Field(default_factory=list, max_length=8)
+    concept_nodes: list[ConceptNode] = Field(default_factory=list, max_length=12)
+    concept_edges: list[ConceptEdge] = Field(default_factory=list, max_length=12)
+    common_mistakes: list[str] = Field(default_factory=list, max_length=8)
+    difficulty: str = Field(default="inicial", max_length=20)
     activities: list[ActivitySeed] = Field(default_factory=list, max_length=20)
     examples_blackboard: list[str] = Field(default_factory=list, max_length=10)
 
@@ -212,7 +237,7 @@ class CompactActivity(BaseModel):
 
 
 class ActivityBatchOutput(BaseModel):
-    activities: list[CompactActivity] = Field(min_length=10, max_length=10)
+    activities: list[CompactActivity] = Field(min_length=3, max_length=10)
 
 
 class ContentEvaluation(BaseModel):
@@ -230,7 +255,7 @@ class ContentEvaluation(BaseModel):
 
 # generator -> banco de actividades para una prueba breve
 class ActivitySet(BaseModel):
-    activities: list[Activity] = Field(min_length=5, max_length=6)
+    activities: list[Activity] = Field(min_length=5, max_length=8)
 
 
 class QuizAnswer(BaseModel):
@@ -248,14 +273,14 @@ class QuizCompletedEvent(BaseModel):
     student_id: str = Field(min_length=1, max_length=100)
     content_id: str = Field(min_length=1, max_length=200)
     attempt_id: str = Field(min_length=1, max_length=200)
-    answers: list[QuizAnswer] = Field(min_length=5, max_length=6)
+    answers: list[QuizAnswer] = Field(min_length=1, max_length=8)
     elapsed_ms: int = Field(default=0, ge=0, le=3_600_000)
 
 
 class QuizQualityFeedback(BaseModel):
     feedback: str = Field(max_length=320)
     next_step: str = Field(max_length=240)
-    points: int = Field(ge=5, le=10)
+    points: int = Field(ge=0, le=6)
     explanation_svg: str = Field(default="", max_length=5000)
 
 
@@ -292,14 +317,17 @@ class StudentLearningOverviewRequest(BaseModel):
     evidence: dict = Field(default_factory=dict)
 
 
-class PersonalizedLearningContent(BaseModel):
+class PersonalizedLearningDraft(BaseModel):
     title: str
-    explanation: str
+    explanation: str = Field(max_length=480)
+    microlearning_units: list[LearningUnitDraft] = Field(default_factory=list, max_length=1)
+    inquiry_questions: list[str] = Field(default_factory=list, max_length=2)
+    examples: list[str] = Field(default_factory=list, max_length=1)
+    concepts_to_reinforce: list[str] = Field(default_factory=list, max_length=3)
+
+
+class PersonalizedLearningContent(PersonalizedLearningDraft):
     explanation_svg: str = Field(default="", max_length=5000)
-    microlearning_units: list[LearningUnit]
-    inquiry_questions: list[str]
-    examples: list[str]
-    concepts_to_reinforce: list[str]
 
 
 # LLM -> fase 3b esquema gemma

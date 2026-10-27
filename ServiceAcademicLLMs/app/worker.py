@@ -44,7 +44,9 @@ async def run_worker(repo: RAGRepository, llm: OllamaClient, semaphore: asyncio.
                         await repo.acknowledge(repo.content_stream, repo.content_group, message_id)
                     except Exception as exc:
                         logger.exception("Procesamiento LLM falló job_id=%s attempt=%s", content_id, attempts)
-                        if attempts >= settings.job_max_retries or isinstance(exc, StructuredOutputError):
+                        if isinstance(exc, StructuredOutputError) or (
+                            settings.job_max_retries > 0 and attempts >= settings.job_max_retries
+                        ):
                             await repo.update_job(content_id, status="FAILED", error=str(exc)[:1000])
                             await repo.mark_content_state(content_id, "failed")
                             await repo.acknowledge(repo.content_stream, repo.content_group, message_id)

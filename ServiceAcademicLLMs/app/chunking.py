@@ -49,7 +49,11 @@ PATRON_MD = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 PATRON_NUMERICO = re.compile(r"^(\d+(?:\.\d+){0,3})[.)]?\s+(\S.*)$")
 PATRON_ROMANO = re.compile(r"^([IVXLC]{1,6})[.)]\s+(\S.*)$")
 PATRON_DOSPUNTOS = re.compile(r"^[A-ZÁÉÍÓÚÜÑ0-9][^\n]{0,88}:\s*$")
-PATRON_TITULO = re.compile(r"^[A-ZÁÉÍÓÚÜÑ0-9][^\n.]{2,78}$")
+PATRON_TITULO = re.compile(r"^[A-ZÁÉÍÓÚÜÑ0-9][^\n.]{10,78}$")
+PATRON_SUBBLOQUE = re.compile(
+    r"^(figura|fig\.|tabla|ejemplo|ejercicio|actividad|problema|anexo|ap[eé]ndice)\b",
+    re.IGNORECASE,
+)
 PATRON_ACTIVIDAD = re.compile(r"^((?:actividad|ejercicio|pr[aá]ctica|tarea)\s*\d*)\.?(?:\s+(.*))?$", re.IGNORECASE)
 
 # chunking -> inicio de un ejercicio numerado
@@ -79,6 +83,23 @@ PATRON_SECCION_EJERCICIOS = re.compile(
     r"(ejercicios?|pr[aá]cticas?|actividad(?:es)?|tareas?|problemas?|ejercitaci[oó]n|cuestionario|quizz?)",
     re.IGNORECASE,
 )
+
+# chunking -> indices, tablas de contenido y preambulos a ignorar
+PATRON_SECCION_IGNORAR = re.compile(
+    r"^(?:[íi]ndice\b|tabla\s+de\s+contenido|contenido\s+general|consejos\s+a\s+tener|presentaci[óo]n|introducci[óo]n\s+general|pr[óo]logo|editorial|bibliograf[íi]a)",
+    re.IGNORECASE,
+)
+
+def _es_indice_o_preambulo(titulo: str, cuerpo: str) -> bool:
+    if PATRON_SECCION_IGNORAR.search(titulo.strip()):
+        return True
+    lineas = [l.strip() for l in cuerpo.splitlines() if l.strip()]
+    if not lineas:
+        return False
+    lineas_con_puntos = sum(1 for l in lineas if re.search(r"\.{3,}\s*\d+", l) or re.search(r"^[•·*–-]?\s*[\w\s]{2,40}\s+\d{1,3}$", l))
+    if len(lineas) >= 2 and lineas_con_puntos >= 2:
+        return True
+    return False
 
 
 # chunking -> fragmento con titulo, categoria y dificultad
@@ -132,7 +153,7 @@ def _es_titulo(linea: str, siguiente: str) -> tuple[bool, int, str]:
     coincidencia = PATRON_MD.match(linea)
     if coincidencia:
         return True, len(coincidencia.group(1)), coincidencia.group(2).strip()
-    limpio = linea.strip()
+    limpio = re.sub(r"^[•·\-–]+\s*", "", linea.strip())
     if not limpio or len(limpio) > 90:
         return False, 0, ""
     actividad = PATRON_ACTIVIDAD.match(limpio)
@@ -169,14 +190,14 @@ def _split_sections(text: str) -> list[tuple[str, int, str]]:
     for indice, linea in enumerate(lineas):
         es_titulo, nivel_titulo, texto_titulo = _es_titulo(linea, por_linea[indice])
         if es_titulo and texto_titulo:
-            if cuerpo:
+            if cuerpo and not _es_indice_o_preambulo(titulo, "\n".join(cuerpo)):
                 secciones.append((titulo, nivel, "\n".join(cuerpo).strip()))
             actividad = PATRON_ACTIVIDAD.match(linea.strip())
             resto = actividad.group(2).strip() if actividad and actividad.group(2) else ""
             titulo, nivel, cuerpo = texto_titulo, nivel_titulo, [resto] if resto else []
         else:
             cuerpo.append(linea)
-    if cuerpo:
+    if cuerpo and not _es_indice_o_preambulo(titulo, "\n".join(cuerpo)):
         secciones.append((titulo, nivel, "\n".join(cuerpo).strip()))
     return [seccion for seccion in secciones if seccion[2]]
 

@@ -15,20 +15,21 @@ PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 
 # ollama -> limites de tokens de salida por esquema (equivalente a max_tokens)
 OUTPUT_LIMITS = {
-    "RefinedContent": 4000,
+    # salida -> limites segun contrato
+    "RefinedContent": 2200,
     "ActivityBankOutput": 4000,
-    "ActivityBatchOutput": 4000,
+    "ActivityBatchOutput": 1400,
     "ContentEvaluation": 1000,
-    "ActivitySet": 4000,
+    "ActivitySet": 1800,
     "GamifiedQuizOutput": 6144,
-    "PersonalizedLearningContent": 2600,
+    "PersonalizedLearningContent": 480,
+    "PersonalizedLearningDraft": 480,
     "StudentLearningAnalysis": 1400,
     "QuizQualityFeedback": 220,
 }
 
 # ollama -> esquemas grandes sin reintento por limite de salida
 SIN_REINTENTO = {
-    "RefinedContent",
     "ActivityBankOutput",
     "ActivityBatchOutput",
     "ContentEvaluation",
@@ -81,6 +82,27 @@ def _matching_tag(configured: str, installed: set[str]) -> str | None:
     return None
 
 
+# ollama -> truncar contexto si excede la ventana del modelo
+def _truncate_context(context: str, max_chars: int) -> str:
+    if len(context) <= max_chars:
+        return context
+    # Mantener solo las primeras y ultimas partes, removiendo el medio
+    keep_chars = max_chars // 2
+    return context[:keep_chars] + "\n\n... [contexto truncado] ...\n\n" + context[-keep_chars:]
+
+
+# ollama -> normalizar tiempo de permanencia
+def _normalize_keep_alive(raw: Any) -> str | int:
+    if raw is None:
+        return "30m"
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    val = str(raw).strip().strip('"').strip("'")
+    if val in ("-1", "-1s", "-1m", "-1h"):
+        return -1
+    return val or "30m"
+
+
 # ollama -> cliente unico con salida estructurada y embeddings
 class OllamaClient:
     def __init__(self) -> None:
@@ -89,7 +111,7 @@ class OllamaClient:
             timeout=settings.llm_request_timeout,
             connect=settings.llm_connect_timeout,
         )
-        self.keep_alive = settings.ollama_keep_alive
+        self.keep_alive = _normalize_keep_alive(settings.ollama_keep_alive)
         self.client = AsyncClient(host=self.base_url, timeout=self.timeout)
 
     async def close(self) -> None:
@@ -187,11 +209,14 @@ class OllamaClient:
         return results
 
     # ollama -> opciones de muestreo y contexto por solicitud
-    def _options(self, max_tokens: int, temperature: float) -> dict[str, Any]:
+    def _options(self, max_tokens: int, temperature: float, prompt_chars: int = 0) -> dict[str, Any]:
+        prompt_estimate = int(prompt_chars / 2.6) + 256
+        total_estimate = prompt_estimate + max_tokens + 256
+        ventana = min(settings.ollama_num_ctx, max(2048, ((total_estimate + 255) // 256) * 256))
         return {
             "temperature": temperature,
             "num_predict": max_tokens,
-            "num_ctx": settings.ollama_num_ctx,
+            "num_ctx": ventana,
             "top_p": 0.9,
             "repeat_penalty": 1.05,
         }
@@ -227,11 +252,18 @@ class OllamaClient:
         max_tokens: int = 1600,
         temperature: float = 0.2,
     ) -> tuple[str, str | None, dict[str, Any], dict[str, Any]]:
+        prompt_chars = len(prompt)
+        total_estimate = prompt_chars + max_tokens + 256
+        ventana_deseada = min(settings.ollama_num_ctx, max(2048, ((total_estimate + 255) // 256) * 256))
+
+        if ventana_deseada > settings.ollama_num_ctx:
+            prompt = _truncate_context(prompt, settings.ollama_num_ctx - max_tokens - 256)
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
             "stream": False,
-            "options": self._options(max_tokens, temperature),
+            "options": self._options(max_tokens, temperature, len(prompt)),
             "keep_alive": self.keep_alive,
         }
         if schema:
@@ -274,22 +306,28 @@ class OllamaClient:
         return str(content), str(finish_reason), usage, stats
 
     # ollama -> salida estructurada validada con reintento correctivo
-    async def structured(self, model: str, prompt_name: str, context: str, schema: type[T]) -> T:
+    async def structured(self, model: str, prompt_name: str, context: str, schema: type[T], max_tokens_override: int | None = None) -> T:
         prompt = (PROMPTS / prompt_name).read_text(encoding="utf-8")
         prompt = prompt.replace("{{context}}", context)
         errors = ""
-        limite = OUTPUT_LIMITS.get(schema.__name__, 1600)
-        max_attempts = 1 if schema.__name__ in SIN_REINTENTO else 2
+        limite_base = max_tokens_override if max_tokens_override is not None else OUTPUT_LIMITS.get(schema.__name__, 1600)
+        limite = limite_base
+        max_attempts = 1 if schema.__name__ in SIN_REINTENTO else 3
         last_error = "respuesta vacía"
         for attempt in range(max_attempts):
             strict = "\nDevuelve únicamente JSON válido que cumpla exactamente el esquema solicitado. No uses Markdown."
             full_prompt = prompt + errors + (strict if attempt else "")
+            prompt_chars = len(full_prompt)
+            full_prompt_estimate = prompt_chars + limite + 256
+            ventana = min(settings.ollama_num_ctx, max(2048, ((full_prompt_estimate + 255) // 256) * 256))
             logger.info(
-                "Solicitando salida estructurada model=%s schema=%s prompt_chars=%s max_tokens=%s",
+                "Solicitando salida estructurada model=%s schema=%s prompt_chars=%s max_tokens=%s ctx_est=%s intento=%s",
                 model,
                 schema.__name__,
-                len(full_prompt),
+                prompt_chars,
                 limite,
+                ventana,
+                attempt + 1,
             )
             raw, finish_reason, usage, _stats = await self._chat_completion(
                 model=model,
@@ -305,6 +343,19 @@ class OllamaClient:
                 if completo is not None:
                     logger.warning("Ollama alcanzó el límite de salida pero el JSON es válido model=%s schema=%s", model, schema.__name__)
                     return completo
+                # Si es truncado y no parsea, intentar con mayor presupuesto si aún hay intentos
+                if attempt < max_attempts - 1:
+                    # Aumentar tokens con factor conservador para documentos grandes
+                    limite = int(limite * 1.5) + 300
+                    # Ajustar contexto para caber en ventana del modelo
+                    limite = min(limite, settings.ollama_num_ctx - ventana + limite)
+                    logger.warning(
+                        "Salida truncada sin JSON válido para %s; aumentando max_tokens a %s e intentando nuevamente",
+                        schema.__name__,
+                        limite,
+                    )
+                    last_error = f"truncado sin JSON válido con num_predict={limite_base}"
+                    continue
                 raise StructuredOutputError(
                     f"La respuesta de {model} alcanzó num_predict={limite} "
                     f"(completion_tokens={usage.get('completion_tokens', '?')})"

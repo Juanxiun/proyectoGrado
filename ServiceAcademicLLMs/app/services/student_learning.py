@@ -1,10 +1,12 @@
+import asyncio
 import json
 import logging
 
 from app.config import settings
 from app.ollama_client import OllamaClient
 from app.RAG.repository import RAGRepository
-from app.schemas import ExplainSectionRequest, PersonalizedLearningContent, StudentLearningAnalysis, StudentLearningOverview
+from app.pipeline import _svg_pedagogico_nativo
+from app.schemas import ExplainSectionRequest, PersonalizedLearningContent, PersonalizedLearningDraft, StudentLearningAnalysis, StudentLearningOverview
 
 logger = logging.getLogger(__name__)
 DIFFICULTIES = ["inicial", "intermedia", "avanzada"]
@@ -15,46 +17,29 @@ async def explain_section(student_id: str, content_id: str, request: ExplainSect
     if not content:
         raise LookupError("No existe contenido aprobado para explicar")
     profile = await repo.get_student_profile(student_id, content_id)
-    overview = await repo.get_student_learning_overview(student_id)
-    query_text = " ".join((request.title, request.explanation, request.example)).strip()
-    async with semaphore:
-        query_vector = await llm.embed(query_text)
-    evidence_chunks = await repo.vector_search(
-        query_vector,
-        limit=3,  # Reducido de 5 a 3
-        filters={"content_id": content_id, "record_type": "theory_context"},
-    )
-    # Truncar texto de chunks para evitar exceso de contexto
-    for chunk in evidence_chunks:
-        if "text" in chunk and len(chunk["text"]) > 400:
-            chunk["text"] = chunk["text"][:400] + "..."
-    
-    # Truncar perfil si es muy grande
-    perfil_truncado = profile or {"difficulty_level": "inicial", "instruction": "Explicación clara y gradual; todavía no hay suficiente historial individual."}
-    if isinstance(perfil_truncado, dict):
-        for key, value in perfil_truncado.items():
-            if isinstance(value, str) and len(value) > 500:
-                perfil_truncado[key] = value[:500] + "..."
-            elif isinstance(value, list) and len(value) > 5:
-                perfil_truncado[key] = value[:5]
-    
     evidence = json.dumps({
-        "material_validado": {
-            "title": content.get("title"),
-            "summary": content.get("summary", "")[:500],
-            "concepts": content.get("key_concepts", [])[:10],
-            "microlearning_units": content.get("microlearning_units", [])[:4],
-            "inquiry_questions": content.get("inquiry_questions", [])[:5],
-        },
-        "fragmentos_relevantes_del_tema": evidence_chunks,
-        "seccion_solicitada": request.model_dump(),
-        "perfil_de_avance": perfil_truncado,
-        "perfil_general_de_aprendizaje": overview,
-        "formatos_alternativos": ["analogía", "paso_a_paso", "ejemplo", "preguntas"],
+        "titulo_carta": request.title,
+        "contexto_estricto": request.explanation[:900],
+        "ejemplo_referencia": (request.example or "")[:500],
+        "formato_solicitado": request.format,
+        "materia": content.get("subject") or "",
+        "resumen_tema": str(content.get("summary") or "")[:280],
     }, ensure_ascii=False)
-    async with semaphore:
-        generated = await llm.structured(settings.ollama_mistral_model, "mistral/explain_section.txt", evidence, PersonalizedLearningContent)
-    return {**generated.model_dump(), "title": request.title, "format": request.format, "profile_available": bool(profile), "content_id": content_id}
+    try:
+        async with asyncio.timeout(50):
+            async with semaphore:
+                generated = await llm.structured(
+                    settings.ollama_gemma_model,
+                    "gemma/explain_section.txt",
+                    evidence,
+                    PersonalizedLearningDraft,
+                )
+    except TimeoutError:
+        raise RuntimeError("La explicación tardó demasiado. Inténtalo de nuevo en unos segundos.")
+    data = generated.model_dump()
+    ejemplos = data.get("examples") or ([request.example] if request.example else [])
+    data["explanation_svg"] = _svg_pedagogico_nativo(request.title, ejemplos, data.get("explanation") or request.explanation)
+    return {**data, "title": request.title, "format": request.format, "profile_available": bool(profile), "content_id": content_id}
 
 
 # feedback -> solo fallidas microlearning + pizarra

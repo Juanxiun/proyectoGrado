@@ -66,9 +66,10 @@ async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict 
     }, ensure_ascii=False)
     fallback = {
         "feedback": f"Respondiste correctamente {resultado.get('correct', 0)} de {resultado.get('total', len(evaluacion))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
-        "next_step": "Repite el reto para practicar los conceptos que te costaron.",
-        "points": max(5, min(10, 5 + round(5 * float(resultado.get("score", 0))))),
+        "next_step": "Revisa la respuesta correcta, compara el dato con el material y vuelve a intentarlo.",
+        "points": int(resultado.get("correct", 0)),
         "model": "fallback",
+        "pending": False,
     }
     try:
         # semaphore -> esperar turno fuera del presupuesto de generacion
@@ -77,6 +78,7 @@ async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict 
                 review = await llm.structured(settings.ollama_mistral_model, "mistral/quiz_feedback.txt", context, QuizQualityFeedback)
         salida = review.model_dump()
         salida["explanation_svg"] = _svg_seguro(review.explanation_svg)
+        salida["pending"] = False
         return {**salida, "model": settings.ollama_mistral_model}
     except Exception:
         logger.exception("No se pudo generar retroalimentacion Mistral student_id=%s content_id=%s", event.student_id, event.content_id)
@@ -90,10 +92,13 @@ async def lifespan(app: FastAPI):
     llm = OllamaClient()
     stop = asyncio.Event()
     semaphore = asyncio.Semaphore(max(1, settings.llm_max_concurrency))
+    # semaphore -> slot exclusivo para peticiones de estudiante (explain, personalized) sin bloquear el pipeline
+    student_semaphore = asyncio.Semaphore(1)
     app.state.rag = rag
     app.state.notify_redis = notify_redis
     app.state.llm = llm
     app.state.semaphore = semaphore
+    app.state.student_semaphore = student_semaphore
     app.state.llm_self_test = {"status": "pending", "models": {}}
     # tareas -> referencias a los trabajos en segundo plano (feedback del reto)
     app.state.background_tasks = set()
@@ -317,11 +322,12 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
         # feedback -> en segundo plano para no bloquear la entrega del resultado
         feedback_pendiente = {
             "feedback": f"Respondiste correctamente {result.get('correct', 0)} de {result.get('total', len(result.get('answers', [])))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
-            "next_step": "Repite el reto para practicar los conceptos que te costaron.",
-            "points": max(5, min(10, 5 + round(5 * float(result.get("score", 0))))),
+            "next_step": "Revisa la respuesta correcta, compara el dato con el material y vuelve a intentarlo.",
+            "points": int(result.get("correct", 0)),
             "model": "fallback",
             "pending": True,
         }
+        await request.app.state.rag.set_quiz_feedback(event.student_id, event.content_id, event.attempt_id, feedback_pendiente)
         result["learning_feedback"] = feedback_pendiente
         tarea = asyncio.create_task(_generar_feedback_en_segundo_plano(
             event, result, quiz, request.app.state.llm, request.app.state.semaphore, request.app.state.rag,
@@ -348,7 +354,14 @@ async def get_student_quiz_feedback(student_id: str, content_id: str, attempt_id
     require_internal_secret(x_webhook_secret)
     feedback = await request.app.state.rag.get_quiz_feedback(student_id, content_id, attempt_id)
     if feedback is None:
-        raise HTTPException(status_code=404, detail="La retroalimentacion aun no esta lista")
+        # feedback -> mientras Mistral genera, responder 200 con pending: true para no saturar con 404
+        return {
+            "feedback": "Analizando tu desempeño...",
+            "next_step": "Estamos evaluando tus respuestas para darte recomendaciones.",
+            "points": 0,
+            "pending": True,
+            "model": "pending",
+        }
     return feedback
 
 
@@ -377,6 +390,17 @@ async def check_student_match(student_id: str, content_id: str, quiz_id: str, bo
     require_internal_secret(x_webhook_secret)
     try:
         return await request.app.state.rag.check_match_pair(student_id, content_id, quiz_id, body.activity_id, body.left, body.right)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/students/{student_id}/contents/{content_id}/quizzes/{quiz_id}/check-activity")
+async def check_student_activity(student_id: str, content_id: str, quiz_id: str, body: dict, request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    try:
+        return await request.app.state.rag.check_quiz_activity(student_id, content_id, quiz_id, str(body.get("activity_id", "")), str(body.get("response", "")))
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ValueError as exc:
@@ -448,7 +472,8 @@ async def personalized_content(student_id: str, content_id: str, request: Reques
 async def explain_student_section(student_id: str, content_id: str, body: ExplainSectionRequest, request: Request, x_webhook_secret: str | None = Header(default=None)):
     require_internal_secret(x_webhook_secret)
     try:
-        return await explain_section(student_id, content_id, body, request.app.state.rag, request.app.state.llm, request.app.state.semaphore)
+        # semaphore -> usa slot exclusivo de estudiante para no bloquear con el pipeline
+        return await explain_section(student_id, content_id, body, request.app.state.rag, request.app.state.llm, request.app.state.student_semaphore)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:

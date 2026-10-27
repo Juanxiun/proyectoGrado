@@ -171,6 +171,17 @@ export async function validarEmparejamiento(ctx: Context): Promise<void> {
   }));
 }
 
+// quiz -> comprobar actividad y actualizar puntos visibles
+export async function comprobarActividad(ctx: Context): Promise<void> {
+  const body = await ctx.request.body.json().catch(() => ({}));
+  const contenido = await llamarServicioLlm(`/documents/${encodeURIComponent(routeParam(ctx, "id") ?? "")}/learning`);
+  if (contenido.status !== 200) return respond(ctx, contenido.status, contenido.data);
+  const contentId = String((contenido.data as Record<string, unknown>).content_id);
+  return responder(ctx, llamarServicioLlm(`/students/${encodeURIComponent(claims(ctx).sub)}/contents/${encodeURIComponent(contentId)}/quizzes/${encodeURIComponent(routeParam(ctx, "quizId") ?? "")}/check-activity`, "POST", {
+    activity_id: String(body.activity_id ?? ""), response: String(body.response ?? ""),
+  }, 15_000));
+}
+
 // pdf -> enviar el archivo al servicio LLM para vista previa
 async function llamarVistaPreviaPdf(path: string, bytes: Uint8Array): Promise<Response> {
   return await fetch(`${urlServicioLlm()}${path}`, {

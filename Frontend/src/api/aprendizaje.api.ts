@@ -46,6 +46,12 @@ export interface ContenidoAprendizaje {
     checkpoint: string;
     svg_inline: string;
     preguntas_indagacion?: string[];
+    carta_6_esquema?: {
+      titulo?: string;
+      nodes?: Array<{ id?: string; label?: string; detail?: string; mini_example?: string }>;
+      edges?: Array<{ source?: string; target?: string; label?: string }>;
+      svg_inline?: string;
+    };
     conexiones?: Array<{ tema: string; relacion: string; conceptos: string[] }>;
   }>;
 }
@@ -84,7 +90,7 @@ export interface ExplicacionSeccion {
 
 export interface ActividadAprendizaje {
   activity_id: string;
-  tipo: 'SELECCION_MULTIPLE' | 'CUESTIONARIO' | 'FLASHCARD' | 'VERDADERO_FALSO' | 'CONECTAR_FRASES' | 'DRAG_AND_DROP';
+  tipo: 'SELECCION_MULTIPLE' | 'COMPLETAR' | 'CONECTAR_FRASES' | 'DRAG_AND_DROP';
   activity_mode?: 'concepto' | 'practica';
   question?: string;
   options?: string[];
@@ -97,6 +103,7 @@ export interface ActividadAprendizaje {
   items?: string[];
   difficulty?: string;
   learning_objective?: string;
+  exercise_svg?: string;
 }
 
 export interface RetoAprendizaje {
@@ -164,6 +171,7 @@ export const aprendizajeApi = {
   explicarSeccion: (materialId: string, section: { title: string; explanation: string; example?: string; format: ExplicacionSeccion['format'] }) => solicitarConReintento(() => apiRequest<ExplicacionSeccion>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/explicar-seccion`, { method: 'POST', body: section, signal: AbortSignal.timeout(300000) }), 0),
   reto: (materialId: string, cantidad = 5, sectionId?: string) => apiRequest<RetoAprendizaje>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto?cantidad=${cantidad}${sectionId ? `&seccion=${encodeURIComponent(sectionId)}` : ''}`, { method: 'POST', signal: AbortSignal.timeout(30000) }),
   validarEmparejamiento: (materialId: string, quizId: string, activityId: string, left: string, right: string) => apiRequest<ResultadoEmparejamiento>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/comprobar-pareja`, { method: 'POST', body: { activity_id: activityId, left, right }, signal: AbortSignal.timeout(30000) }),
+  comprobarActividad: (materialId: string, quizId: string, activityId: string, response: string) => apiRequest<{ correct: boolean }>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/comprobar`, { method: 'POST', body: { activity_id: activityId, response }, signal: AbortSignal.timeout(15000) }),
   vistaPreviaPdf: (materialId: string) => apiRequest<VistaPreviaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/vista-previa`, { signal: AbortSignal.timeout(90000) }),
   paginaPdf: (materialId: string, numero: number) => apiRequest<PaginaPdf>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/pagina/${numero}`, { signal: AbortSignal.timeout(120000) }),
   completarReto: (materialId: string, quizId: string, answers: Array<{ activity_id: string; response: string }>, elapsedMs = 0) => apiRequest<ResultadoReto>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/completar`, { method: 'POST', body: { answers, elapsed_ms: elapsedMs }, signal: AbortSignal.timeout(90000) }),
