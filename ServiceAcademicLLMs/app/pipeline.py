@@ -647,7 +647,7 @@ async def process_content(content_id: str, raw_event: dict[str, Any], repo: RAGR
     # Gemma -> finalizar y guardar la ruta antes de iniciar Mistral
     await repo.update_job(content_id, status="GEMMA_PARALLEL_GENERATION", progress="20", total_chunks=str(total_chunks), current_chunk="0")
     embed_task = asyncio.create_task(_embed_pending())
-    gemma_key = f"{repo.prefix}:content:{content_id}:stage:gemma-v2"
+    gemma_key = f"{repo.prefix}:content:{content_id}:stage:gemma-v3"
     saved_gemma = await repo.get_cache(gemma_key)
     if saved_gemma:
         checkpoint = json.loads(saved_gemma)

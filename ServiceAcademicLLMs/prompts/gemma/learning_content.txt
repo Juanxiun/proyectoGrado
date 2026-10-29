@@ -12,6 +12,7 @@ FORMATO PEDAGOGICO (ciencias exactas):
 - Toda ecuacion con fracciones o raices se escribe en un bloque de ecuacion centrado en LaTeX con "$$" (por ejemplo: $$x^2 + 2x = 8$$) para que las fracciones y raices se vean verticales, claras y profesionales.
 - Cada operacion va en una linea propia. Nunca escribir la ecuacion completa en una sola linea.
 - Si explicas funciones, vectores o geometria, incluye un ejemplo grafico con plano cartesiano o esquema ASCII/Mermaid bien alineado.
+- Dentro del JSON se usan bloques de ecuacion con "$$" y los saltos de linea se expresan con la secuencia de escape; no se usan bloques de codigo Markdown ni fences; los diagramas se expresan como texto plano (ASCII o sintaxis Mermaid).
 
 EJEMPLOS (materia practica: matematicas, fisica, quimica, contabilidad):
 - examples_blackboard DEBE mostrar un ejercicio resuelto con datos pequenos y pasos numerados.
