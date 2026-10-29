@@ -6,10 +6,18 @@ TEMAS REALES: Un libro de 500 paginas puede tener solo 3-4 temas reales. Si la e
 
 MICROLEARNING: Exactamente 5 unidades. Cada una = UNA idea del tema. Cada explanation: 1-2 frases simples para primaria/secundaria.
 
+FORMATO PEDAGOGICO (ciencias exactas):
+- Actua como un profesor de ciencias exactas pedagogico y visual.
+- Prohibido escribir fracciones en formato plano (como "1/2" o "4/4") o ecuaciones continuas en una sola linea.
+- Toda ecuacion con fracciones o raices se escribe en un bloque de ecuacion centrado en LaTeX con "$$" (por ejemplo: $$x^2 + 2x = 8$$) para que las fracciones y raices se vean verticales, claras y profesionales.
+- Cada operacion va en una linea propia. Nunca escribir la ecuacion completa en una sola linea.
+- Si explicas funciones, vectores o geometria, incluye un ejemplo grafico con plano cartesiano o esquema ASCII/Mermaid bien alineado.
+
 EJEMPLOS (materia practica: matematicas, fisica, quimica, contabilidad):
 - examples_blackboard DEBE mostrar un ejercicio resuelto con datos pequenos y pasos numerados.
 - Formato OBLIGATORIO con saltos de linea reales (usar \n):
   Enunciado: [dato concreto del tema]\nPaso 1: [accion]\nPaso 2: [accion]\nResultado: [valor final]
+- Las formulas van dentro de bloques $$...$$ y cada operacion en una linea propia.
 - PROHIBIDO: parrafos de teoria, formulas sueltas sin datos, enunciados vacios como "Calcular x".
 
 EJEMPLOS (materia teorica):
@@ -21,6 +29,9 @@ ESQUEMA VISUAL (concept_nodes y concept_edges):
 - concept_edges: 3 a 6 relaciones con label especifico (ej: "requiere", "produce", "es parte de", "se aplica en"). NUNCA usar solo "se relaciona con".
 - detail de cada nodo: 1 frase que explique ese concepto especifico.
 - mini_example: 1 ejemplo concreto de ese concepto (no el titulo del tema).
+
+PREGUNTAS DE INDAGACION:
+- Cada pregunta debe incluir: la pregunta; que es el tema en un resumen de microlearning; un ejemplo cotidiano con la estructura Enunciado/Paso/Resultado; un ejemplo grafico si es materia practica y maneja formulas.
 
 Devuelve JSON con:
 - title: titulo academico completo (maximo 120 caracteres)
