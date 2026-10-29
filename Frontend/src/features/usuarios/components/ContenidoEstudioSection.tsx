@@ -14,6 +14,7 @@ import { DocumentWebView } from './DocumentWebView';
 import { PdfPaginasViewer } from './PdfPaginasViewer';
 import { ResumenInteractivo } from './ResumenInteractivo';
 import { EjemploCanvas } from './EjemploCanvas';
+import { BarraProgresoTema } from '../../../shared/ui/BarraProgresoTema';
 import { API_BASE_URL } from '../../../constants/config';
 
 interface MaterialItem {
@@ -224,6 +225,63 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const zonaActividadRef = useRef<ZonaActividad>({ x: 0, y: 0, width: 0, height: 0 });
   const zonaVisualRef = useRef<any>(null);
   const [temaRutaAbierto, setTemaRutaAbierto] = useState<number | null>(null);
+
+  // Indagación LLM: respuesta del profesor virtual a preguntas de investigación
+  const [indagacionRespuesta, setIndagacionRespuesta] = useState<string | null>(null);
+  const [indagacionCargando, setIndagacionCargando] = useState(false);
+  const [preguntaIndagacionActiva, setPreguntaIndagacionActiva] = useState<string | null>(null);
+
+  const consultarIndagacionLLM = async (pregunta: string, temaId: string) => {
+    setIndagacionCargando(true);
+    setPreguntaIndagacionActiva(pregunta);
+    setIndagacionRespuesta(null);
+    try {
+      const explicacion = await aprendizajeApi.explicarSeccion(temaId, {
+        title: 'Pregunta de investigación',
+        explanation: pregunta,
+        example: '',
+        format: 'preguntas',
+      });
+      setIndagacionRespuesta(explicacion.explanation || explicacion.title);
+    } catch {
+      setIndagacionRespuesta('No pude obtener respuesta ahora. Intenta de nuevo en un momento.');
+    } finally {
+      setIndagacionCargando(false);
+    }
+  };
+
+  // Progreso por tema: clave = numero del tema, valor = { porcentaje, completado, puntos }
+  const [progresoTemas, setProgresoTemas] = useState<Record<string, { porcentaje: number; completado: boolean; puntos: number }>>({});
+
+  const progresoDeTema = (numero: number) => progresoTemas[String(numero)] ?? { porcentaje: 0, completado: false, puntos: 0 };
+
+  const marcarTemaCompletado = (numeroTema: number, puntos: number = 10) => {
+    setProgresoTemas((prev) => ({
+      ...prev,
+      [String(numeroTema)]: { porcentaje: 100, completado: true, puntos },
+    }));
+    if (user?.estudianteId || user?.id) {
+      void gamificacionApi.registrarProgresoEstudio({
+        contentId: tema?.id || '',
+        titulo: `Tema ${numeroTema}`,
+        materiaNombre,
+        completo: true,
+        investigacion: false,
+      }).catch(() => {
+        // gamificacion -> no bloquear la UI si falla el registro de puntos
+      });
+    }
+  };
+
+  const avanzarProgresoTema = (numeroTema: number, incremento: number = 20) => {
+    const actual = progresoDeTema(numeroTema);
+    if (actual.completado) return;
+    const nuevo = Math.min(100, actual.porcentaje + incremento);
+    setProgresoTemas((prev) => ({
+      ...prev,
+      [String(numeroTema)]: { ...prev[String(numeroTema)], porcentaje: nuevo },
+    }));
+  };
 
   useEffect(() => {
     setParteRutaSeleccionada(0);
@@ -554,6 +612,9 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
         console.error('No se pudo registrar puntos de gamificacion:', error);
       }
       setResultadoReto({ puntos, correctas: resultado.correct, total: resultado.total, answers: resultado.answers, feedback: resultado.learning_feedback });
+      if (parteRutaActual) {
+        marcarTemaCompletado(parteRutaActual.numero, puntos * 5);
+      }
       // feedback -> Mistral llega en segundo plano, no bloquea la pantalla de resultados
       if (resultado.learning_feedback?.pending) {
         void esperarRetroalimentacion(tema!.id, reto.quiz_id, (retroalimentacion) => {
@@ -876,6 +937,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   setParteRutaSeleccionada(index);
                   setCartaRutaSeleccionada(0);
                   setTemaRutaAbierto(index);
+                  avanzarProgresoTema(parte.numero, 20);
                 }}
                 className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
               >
@@ -887,6 +949,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 </View>
                 <Text className="mt-2 text-base font-black text-gray-900">{parte.titulo}</Text>
                 <Text className="mt-1 text-xs leading-5 text-gray-600" numberOfLines={2}>{parte.resumen}</Text>
+                <BarraProgresoTema
+                  tema={`Tema ${parte.numero}`}
+                  progreso={progresoDeTema(parte.numero).porcentaje}
+                  completado={progresoDeTema(parte.numero).completado}
+                  puntosAlCompletar={progresoDeTema(parte.numero).puntos}
+                  onCompletado={() => marcarTemaCompletado(parte.numero, progresoDeTema(parte.numero).puntos)}
+                  color="#2563EB"
+                />
                 <View className="mt-3 flex-row flex-wrap gap-1.5">
                   {parte.conceptos.slice(0, 3).map((concepto, cIdx) => (
                     <View key={`${concepto}-${cIdx}`} className="rounded-md bg-slate-100 px-2 py-0.5">
@@ -993,38 +1063,109 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               </TouchableOpacity>
             </View>
 
-            {cartaRutaSeleccionada + 1 === cartasRutaActual.length ? (
+            {/* Último tema: al terminar las cartas, mostrar ejercicios finales + preguntas de indagación */}
+            {cartaRutaSeleccionada + 1 === cartasRutaActual.length && parteRutaSeleccionada === partesRuta.length - 1 ? (
               <BentoCard className="gap-3 border border-emerald-200 bg-emerald-50 p-5 mt-2">
                 <View className="flex-row items-center gap-2">
-                  <Ionicons name="checkmark-circle" size={24} color="#059669" />
-                  <Text className="text-base font-black text-emerald-950">¡Completaste las cartas de este tema!</Text>
+                  <Ionicons name="trophy" size={24} color="#059669" />
+                  <Text className="text-base font-black text-emerald-950">¡Completaste todas las cartas del material!</Text>
                 </View>
-                <Text className="text-xs text-emerald-800 leading-5">Pon a prueba tu comprensión resolviendo cinco actividades prácticas basadas en este tema.</Text>
+                <Text className="text-xs text-emerald-800 leading-5">Has terminado el último tema. Pon a prueba tu comprensión con los ejercicios finales.</Text>
+                {parteRutaActual && !progresoDeTema(parteRutaActual.numero).completado && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      marcarTemaCompletado(parteRutaActual.numero, 5);
+                    }}
+                    className="mt-2 self-start rounded-xl bg-emerald-100 px-3 py-1"
+                  >
+                    <Text className="text-xs font-bold text-emerald-800">Marcar tema como completado</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   disabled={retoLoading}
                   onPress={() => void iniciarReto(String(parteRutaActual.numero))}
                   className="rounded-xl bg-[#801F3F] p-3.5 shadow-sm"
                 >
-                  <Text className="text-center text-sm font-black text-white">🎯 Empezar ejercicios de este tema</Text>
+                  <Text className="text-center text-sm font-black text-white">🎯 Empezar ejercicios finales</Text>
                 </TouchableOpacity>
-                {parteRutaSeleccionada + 1 < partesRuta.length ? (
-                  <TouchableOpacity
-                    onPress={() => {
-                      const siguiente = parteRutaSeleccionada + 1;
-                      setParteRutaSeleccionada(siguiente);
-                      setCartaRutaSeleccionada(0);
-                      setTemaRutaAbierto(siguiente);
-                    }}
-                    className="rounded-xl bg-white border border-emerald-300 p-3"
-                  >
-                    <Text className="text-center text-xs font-bold text-emerald-900">Siguiente tema: {partesRuta[parteRutaSeleccionada + 1].titulo} →</Text>
-                  </TouchableOpacity>
-                ) : null}
-                <TouchableOpacity onPress={() => setTemaRutaAbierto(null)} className="rounded-xl bg-white/70 p-2.5">
-                  <Text className="text-center text-xs font-bold text-gray-600">Volver a la lista de temas</Text>
-                </TouchableOpacity>
+
+                {/* Preguntas de inquiry-based learning para el último tema */}
+                {parteRutaActual?.preguntas_indagacion?.length && (
+                  <View className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                    <View className="flex-row items-center gap-2 mb-2">
+                      <Ionicons name="help-circle-outline" size={18} color="#7C3AED" />
+                      <Text className="text-xs font-bold text-violet-900 uppercase tracking-wider">
+                        Preguntas para investigar más
+                      </Text>
+                    </View>
+                    <View className="gap-2">
+                      {parteRutaActual.preguntas_indagacion.map((preg, pIdx) => (
+                        <TouchableOpacity
+                          key={`indagacion-final-${pIdx}`}
+                          onPress={() => void consultarIndagacionLLM(preg, tema!.id)}
+                          className={`p-3 rounded-xl border flex-row items-center justify-between gap-2 ${
+                            preguntaIndagacionActiva === preg
+                              ? 'bg-violet-100 border-violet-300'
+                              : 'bg-white border-gray-200'
+                          }`}
+                        >
+                          <View className="flex-1">
+                            <Text className="text-xs font-semibold text-violet-800 leading-tight">
+                              {preg}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={preguntaIndagacionActiva === preg ? 'chevron-up' : 'chevron-down-outline'}
+                            size={14}
+                            color="#7C3AED"
+                          />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {/* Respuesta del LLM */}
+                    {indagacionRespuesta && preguntaIndagacionActiva && (
+                      <View className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                        <View className="flex-row items-center gap-2 mb-2">
+                          <Ionicons name="chatbubbles-outline" size={16} color="#D97706" />
+                          <Text className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">
+                            Respuesta del profesor virtual
+                          </Text>
+                        </View>
+                        <Text className="text-sm text-amber-800 leading-relaxed">
+                          {indagacionRespuesta}
+                        </Text>
+                        {indagacionCargando ? (
+                          <View className="mt-2 flex-row items-center gap-2">
+                            <ActivityIndicator size="small" color="#D97706" />
+                            <Text className="text-[10px] text-amber-700 font-medium">Consultando al profesor…</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    )}
+                  </View>
+                )}
               </BentoCard>
             ) : null}
+
+            {/* Botón siguiente tema (solo si no es el último) */}
+            {parteRutaSeleccionada + 1 < partesRuta.length ? (
+              <TouchableOpacity
+                onPress={() => {
+                  const siguiente = parteRutaSeleccionada + 1;
+                  setParteRutaSeleccionada(siguiente);
+                  setCartaRutaSeleccionada(0);
+                  setTemaRutaAbierto(siguiente);
+                }}
+                className="rounded-xl bg-white border border-emerald-300 p-3"
+              >
+                <Text className="text-center text-xs font-bold text-emerald-900">Siguiente tema: {partesRuta[parteRutaSeleccionada + 1].titulo} →</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity onPress={() => setTemaRutaAbierto(null)} className="rounded-xl bg-white/70 p-2.5">
+              <Text className="text-center text-xs font-bold text-gray-600">Volver a la lista de temas</Text>
+            </TouchableOpacity>
           </View>
         )}
       </>}

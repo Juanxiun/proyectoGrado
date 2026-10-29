@@ -1,4 +1,4 @@
-// avatar_usuario -> mostrar foto y nombre del usuario
+// avatar_usuario -> mostrar foto y nombre del usuario con fallback robusto
 import { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
 import { DEFAULT_USER_PHOTO } from '../../constants/config';
@@ -24,28 +24,14 @@ interface UserAvatarProps {
 /**
  * Avatar de usuario con la foto por defecto de MinIO.
  *
- * Antes esto se dibujaba con las iniciales sobre un círculo negro. Ahora:
+ * Flujo de resolucion:
+ *   1. `fotoUrl` propia del usuario (si se pasa y carga);
+ *   2. Foto por defecto de MinIO (`usuarios/default/profil.jpg`);
+ *   3. Iniciales del usuario sobre fondo de color (red de seguridad).
  *
- *   1. la foto del usuario, si tiene `fotoUrl`;
- *   2. si no, o si su foto no carga, la foto por defecto de MinIO
- *      (`usuarios/default/profil.jpg`);
- *   3. y sólo si tampoco esa carga, las iniciales. Ese último paso es una red
- *      de seguridad para que un corte de red no deje un hueco vacío.
- *
- * No se usan `expo-image` ni `Avatar` de librerías: alcanza con `Image`, que ya
- * está en el proyecto.
- *
- * ── Quién pasa fotoUrl y quién no ───────────────────────────────────────────
- * Lo pasan las pantallas de gestión de usuarios y el perfil, que leen de
- * ServiceUser: AppHeader, Sidebar, ProfileScreen, UsuariosDashboard,
- * DocentesManagementScreen, AdministrativoManagementScreen y
- * EstudiantesManagementScreen.
- *
- * Las demás (PanelRiesgo, PanelCursoRendimiento, PanelEstudianteRendimiento,
- * MaestroCursosScreen, EstudianteCursosScreen) todavía no reciben fotoUrl: sus
- * servicios no exponen el campo, así que ahí siempre se ve la foto por defecto.
- * Cuando se agregue a esos responses alcanza con pasarlo como prop, sin tocar
- * el componente.
+ * En dispositivos moviles, si la foto propia no carga (cortes de red o CORS),
+ * se intenta la foto por defecto; si tampoco carga, se muestran iniciales.
+ * Esto evita huecos vacios en el perfil.
  */
 export function UserAvatar({
   nombre,
@@ -56,8 +42,10 @@ export function UserAvatar({
   bordered = false,
   fallbackBgClassName = 'bg-maroon',
 }: UserAvatarProps) {
-  // `default` = se está usando la foto de MinIO, `iniciales` = se agotaron.
-  const [etapa, setEtapa] = useState<'propia' | 'default' | 'iniciales'>(fotoUrl ? 'propia' : 'default');
+  // `propia` = foto del usuario, `default` = foto de MinIO, `iniciales` = red de seguridad.
+  const [etapa, setEtapa] = useState<'propia' | 'default' | 'iniciales'>(
+    fotoUrl ? 'propia' : 'default',
+  );
 
   // Si el usuario cambia de foto se vuelve a intentar la suya.
   useEffect(() => {
@@ -65,6 +53,9 @@ export function UserAvatar({
   }, [fotoUrl]);
 
   const clases = bordered ? `${className} border border-white/40` : className;
+
+  // Si no hay fotoUrl propia, usar directamente la de MinIO sin intentar la propia.
+  const uri = etapa === 'propia' && fotoUrl ? fotoUrl : DEFAULT_USER_PHOTO;
 
   if (etapa === 'iniciales') {
     const iniciales =
@@ -77,14 +68,18 @@ export function UserAvatar({
     );
   }
 
-  const uri = etapa === 'propia' && fotoUrl ? fotoUrl : DEFAULT_USER_PHOTO;
-
   return (
     <Image
       source={{ uri }}
       className={clases}
       resizeMode="cover"
-      onError={() => setEtapa((actual) => (actual === 'propia' ? 'default' : 'iniciales'))}
+      onError={() => {
+        // Si la foto propia falla, probar con la de MinIO; si esa falla, iniciales.
+        setEtapa((actual) => {
+          if (actual === 'propia') return 'default';
+          return 'iniciales';
+        });
+      }}
     />
   );
 }

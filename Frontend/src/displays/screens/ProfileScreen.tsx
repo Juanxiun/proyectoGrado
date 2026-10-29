@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -230,7 +230,11 @@ export function ProfileScreen() {
   const apoderados = usuario?.apoderados ?? [];
 
   return (
-    <View className="gap-4 p-4 pb-8">
+    <ScrollView
+      className={`gap-4 p-4 pb-8 ${isMobile ? 'flex-1' : ''}`}
+      contentContainerClassName={isMobile ? 'gap-4 pb-8' : 'gap-4 p-4 pb-8'}
+      showsVerticalScrollIndicator={false}
+    >
       {showCompleteAlert && canEditDocuments && (
         <BentoCard className="border-l-4 border-amber-400 bg-amber-50">
           <View className="flex-row items-start gap-3">
@@ -267,9 +271,11 @@ export function ProfileScreen() {
 
       <View className="gap-4 md:flex-row md:items-start">
         <View className="gap-4 md:w-[32%] md:self-start">
+          <NotificationsInboxCard />
+
           <BentoCard className={`p-5 bg-maroon ${isMobile ? 'rounded-3xl' : ''}`}>
-          <View className="items-center">
-            <TouchableOpacity onPress={pickImage} disabled={!editMode} className="relative w-full">
+            <View className="items-center">
+              <TouchableOpacity onPress={pickImage} disabled={!editMode} className="relative w-full">
               <UserAvatar
                 nombre={form.nombre || user?.nombre}
                 apellidoPaterno={form.apellidoPaterno || user?.apellidoPaterno}
@@ -295,8 +301,6 @@ export function ProfileScreen() {
             </Text>
           </View>
           </BentoCard>
-
-          <NotificationsInboxCard />
         </View>
 
         <BentoCard className="p-5 md:flex-1">
@@ -551,7 +555,7 @@ export function ProfileScreen() {
         <Ionicons name="log-out-outline" size={18} color="#DC2626" />
         <Text className="text-red-600 font-semibold">Cerrar sesión</Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }
 
