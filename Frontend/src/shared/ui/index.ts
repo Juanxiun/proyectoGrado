@@ -23,4 +23,5 @@ export { SvgInsignia } from './SvgInsignia';
 export { SvgPodio } from './SvgPodio';
 export { SvgLogroCircular } from './SvgLogroCircular';
 export { BarraProgresoTema } from './BarraProgresoTema';
+export { MarkdownContent } from './MarkdownContent';
 export { COLORS, GRAY, SPACING, RADIUS, TONE, CONTROL_HEIGHT, THEME } from '../theme';
