@@ -14,7 +14,7 @@ export interface AuthClaims extends JWTPayload {
   role: AppRole;
 }
 
-// Permite a docentes y a la administración (director, control) gestionar contenido pedagógico y evaluaciones
+// roles -> permitir docentes directivos
 export const ROLES_DOCENTES: AppRole[] = ["profesor", "director", "control"];
 export const ROLES_LECTURA: AppRole[] = ["director", "control", "profesor", "estudiante"];
 

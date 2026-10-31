@@ -42,6 +42,7 @@ export function maskEmail(email: string): string {
   return `${user.slice(0, 2)}***${user.slice(-1)}@${domain}`;
 }
 
+// dosfactores -> generar y enviar codigo
 export async function generateAndSend2FACode(params: {
   userId: string;
   username: string;
@@ -60,7 +61,7 @@ export async function generateAndSend2FACode(params: {
   const redis = getRedis();
   const tempToken = crypto.randomUUID();
   const code = generateCode();
-  const expiresInSeconds = 300; // 5 minutos
+  const expiresInSeconds = 300;
 
   const sessionData: TwoFactorSessionData = {
     ...params,
@@ -69,7 +70,6 @@ export async function generateAndSend2FACode(params: {
     createdAt: new Date().toISOString(),
   };
 
-  // Guardar en Redis
   try {
     const key = `2fa:token:${tempToken}`;
     await redis.set(key, JSON.stringify(sessionData), "EX", expiresInSeconds);
@@ -78,7 +78,6 @@ export async function generateAndSend2FACode(params: {
     console.warn("[2FA] Error guardando código en Redis:", redisErr);
   }
 
-  // Generar HTML Bento Grid
   const fechaHora = new Intl.DateTimeFormat("es-ES", {
     dateStyle: "medium",
     timeStyle: "short",
@@ -99,7 +98,6 @@ export async function generateAndSend2FACode(params: {
     fechaHora,
   });
 
-  // Envío por correo electrónico con Resend
   try {
     const sendResult = await brevo.transactionalEmails.sendTransacEmail({
       sender: { name: "Shalom Edu", email: EMAIL_FROM },
@@ -110,7 +108,6 @@ export async function generateAndSend2FACode(params: {
     console.log(`[2FA] Correo enviado a ${params.email} (Brevo Message ID: ${sendResult.messageId ?? "ok"})`);
   } catch (mailErr) {
     console.error(`[2FA] Error enviando correo a ${params.email}:`, mailErr);
-    // En entornos de desarrollo donde el email no esté verificado o no haya internet, el código también se loguea
     console.log(`[2FA DEV FALLBACK] Código 2FA para @${params.username}: ${code}`);
   }
 
@@ -159,7 +156,7 @@ export async function verify2FACode(
     };
   }
 
-  // Código correcto: eliminar de Redis para evitar reutilización
+  // seguridad -> eliminar codigo usado
   await redis.del(key);
   await redis.del(`2fa:user:${sessionData.userId}`);
 

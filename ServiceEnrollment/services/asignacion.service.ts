@@ -21,16 +21,16 @@ interface AsignacionRow {
   estado: EstadoAsignacion;
   fechaAsignacion: Date | string;
   fechaFinalizacion: Date | string | null;
-  // Maestro info
+  // fila -> datos maestro
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
   especialidad?: string;
-  // Materia info
+  // fila -> datos materia
   materiaCodigo?: string;
   materiaNombre?: string;
-  // Curso Periodo info
+  // fila -> datos curso periodo
   cursoId?: bigint;
   periodoId?: bigint;
   nivel?: string;
@@ -238,9 +238,11 @@ export async function listAsignaciones(
     params.push(parseEstado(filters.estado));
   }
   if (filters.viewerRole === "profesor" && filters.viewerUserId) {
+    conditions.push("ad.estado = 'activo'");
     conditions.push(`m.usuario_id = $${idx++}`);
     params.push(filters.viewerUserId);
   } else if (filters.viewerRole === "estudiante" && filters.viewerUserId) {
+    conditions.push("ad.estado = 'activo'");
     conditions.push(`EXISTS (
       SELECT 1 FROM inscripciones i
       JOIN estudiantes e ON e.id = i.estudiante_id

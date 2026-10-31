@@ -49,6 +49,9 @@ async function getItem(key: string): Promise<string | null> {
 async function removeItem(key: string): Promise<void> {
   if (isWeb) {
     localStorage.removeItem(key);
+    if (typeof document !== 'undefined') {
+      document.cookie = `${key}=; Max-Age=0; path=/; SameSite=Lax`;
+    }
     notifyListeners();
     return;
   }

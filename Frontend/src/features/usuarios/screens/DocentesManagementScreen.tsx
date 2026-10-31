@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -14,7 +14,7 @@ import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { MateriaSelectorModal } from '../components/MateriaSelectorModal';
-import { RemoteImage } from '../../../displays/components/RemoteImage';
+import { UserAvatar } from '../../../shared/ui';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../../shared/validation/credentials';
 import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
@@ -75,6 +75,7 @@ export function DocentesManagementScreen() {
   const [docentesListTab, setDocentesListTab] = useState<'enabled' | 'disabled'>('enabled');
   const [materiasDisponibles, setMateriasDisponibles] = useState<Array<{ id: string; nombre: string; codigo: string }>>([]);
   const [materiasSeleccionadas, setMateriasSeleccionadas] = useState<string[]>([]);
+  const [materiasOriginales, setMateriasOriginales] = useState<string[]>([]);
   const [materiasConfiguradasOriginal, setMateriasConfiguradasOriginal] = useState(false);
 
   const refresh = () => {
@@ -106,6 +107,7 @@ export function DocentesManagementScreen() {
     ]);
     setDocentePhoto(undefined);
     setMateriasSeleccionadas([]);
+    setMateriasOriginales([]);
     setMateriasConfiguradasOriginal(false);
   };
 
@@ -167,6 +169,10 @@ export function DocentesManagementScreen() {
     setFieldErrors({});
     try {
       if (editingDocente) {
+        const materiasOrdenadas = [...new Set(materiasSeleccionadas)].sort();
+        const materiasOriginalesOrdenadas = [...new Set(materiasOriginales)].sort();
+        const materiasCambiaron = materiasOrdenadas.length !== materiasOriginalesOrdenadas.length ||
+          materiasOrdenadas.some((materiaId, index) => materiaId !== materiasOriginalesOrdenadas[index]);
         const updatePayload: UpdateUsuarioPayload = {
           nombre: form.nombre,
           apellidoPaterno: form.apellidoPaterno,
@@ -175,9 +181,7 @@ export function DocentesManagementScreen() {
           genero: form.genero,
           maestro: {
              especialidad: materiasDisponibles.find((materia) => materia.id === materiasSeleccionadas[0])?.nombre ?? form.especialidad,
-             ...(materiasConfiguradasOriginal || materiasSeleccionadas.length > 0
-               ? { materias: materiasSeleccionadas }
-               : {}),
+             ...(materiasCambiaron ? { materias: materiasOrdenadas } : {}),
            },
           documentos: docenteDocs,
           direccion: form.zona ? { zona: form.zona, distrito: form.distrito || undefined, calle: form.calle || undefined, numero: form.numero || undefined } : undefined,
@@ -277,7 +281,9 @@ export function DocentesManagementScreen() {
     // posteriormente desde Construcción de horarios. Un docente legacy sin
     // catálogo explícito no debe perder ese catálogo al editar otros datos.
     setMateriasConfiguradasOriginal(u.materiasConfigurado === true || String(u.materiasConfigurado ?? '').toLowerCase() === 'true');
-    setMateriasSeleccionadas((u.materias ?? []).map((materia) => String(materia.id)));
+    const idsMateria = (u.materias ?? []).map((materia) => String(materia.id));
+    setMateriasSeleccionadas(idsMateria);
+    setMateriasOriginales(idsMateria);
 
     setShowModal(true);
   };
@@ -670,19 +676,13 @@ export function DocentesManagementScreen() {
                     <View>
                       <View className="flex-row items-start justify-between mb-3">
                         <View className="relative">
-                          {doc.fotoUrl ? (
-                            <RemoteImage
-                              uri={doc.fotoUrl}
-                              className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                              fallbackText={`${doc.nombre?.charAt(0) || 'D'}${apPat?.charAt(0) || ''}`}
-                            />
-                          ) : (
-                            <View className="w-20 h-20 rounded-2xl bg-maroon border-2 border-gold/40 items-center justify-center shadow-sm">
-                              <Text className="text-gold font-serif font-bold text-2xl">
-                                {doc.nombre?.charAt(0) || 'D'}{apPat?.charAt(0) || ''}
-                              </Text>
-                            </View>
-                          )}
+                          <UserAvatar
+                            nombre={doc.nombre}
+                            apellidoPaterno={apPat}
+                            fotoUrl={doc.fotoUrl}
+                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                            textoClassName="text-gold font-serif font-bold text-2xl"
+                          />
                           <View
                             className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
                               isOnline ? 'bg-green-500' : 'bg-gray-400'
@@ -829,19 +829,13 @@ export function DocentesManagementScreen() {
                     <View>
                       <View className="flex-row items-start justify-between mb-3">
                         <View className="relative">
-                          {doc.fotoUrl ? (
-                            <RemoteImage
-                              uri={doc.fotoUrl}
-                              className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                              fallbackText={`${doc.nombre?.charAt(0) || 'D'}${apPat?.charAt(0) || ''}`}
-                            />
-                          ) : (
-                            <View className="w-20 h-20 rounded-2xl bg-maroon border-2 border-gold/40 items-center justify-center shadow-sm">
-                              <Text className="text-gold font-serif font-bold text-2xl">
-                                {doc.nombre?.charAt(0) || 'D'}{apPat?.charAt(0) || ''}
-                              </Text>
-                            </View>
-                          )}
+                          <UserAvatar
+                            nombre={doc.nombre}
+                            apellidoPaterno={apPat}
+                            fotoUrl={doc.fotoUrl}
+                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                            textoClassName="text-gold font-serif font-bold text-2xl"
+                          />
                           <View
                             className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
                               isOnline ? 'bg-green-500' : 'bg-gray-400'

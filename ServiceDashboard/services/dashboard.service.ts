@@ -14,13 +14,7 @@ import type {
   TarjetaKpi,
 } from "../models/dashboard.ts";
 
-/**
- * Orquestador del tablero. Compone las cuatro proyecciones y arma las
- * tarjetas de resumen.
- *
- * Sólo lee. Ninguna regla de negocio se decide acá: los umbrales de riesgo
- * vienen de ServiceAcademic y las cifras salen de la base compartida.
- */
+// servicio -> orquesta tablero solo lectura
 
 async function rangoTrimestre(
   periodoId: string,
@@ -32,7 +26,7 @@ async function rangoTrimestre(
   );
 
   if (res.rows.length === 0) {
-    // Sin trimestres cargados, se usa la ventana de la gestión completa.
+    // caso -> fallback gestion completa
     const periodo = await query<{ inicio_gestion: Date; fin_gestion: Date }>(
       `SELECT inicio_gestion, fin_gestion FROM periodos_academicos WHERE id = $1`,
       [periodoId],
@@ -66,9 +60,7 @@ export async function dashboardCompleto(
     ? await rangoTrimestre(periodoId, trimestre)
     : { desde: "1900-01-01", hasta: "2999-12-31" };
 
-  // El económico es lo único restringido a la institución: un docente no ve
-  // cifras de cobranza. Se resuelve con `visible` en vez de con un 403 para que
-  // el resto del tablero siga funcionando para su rol.
+  // regla -> economico solo institucion
   const verEconomico = ROLES_INSTITUCION.includes(rol);
 
   const claveExtra = `t${trimestre}`;
@@ -169,8 +161,7 @@ function tarjetas(
     });
   }
 
-  // Si el docente no tiene ficha de maestro, se avisa en vez de mostrar ceros
-  // que podrían confundirse con "no hay estudiantes".
+  // caso -> docente sin carga
   if (contexto.alcance === "docente" && !contexto.maestroId) {
     lista.unshift({
       clave: "sin_carga",

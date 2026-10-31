@@ -31,7 +31,7 @@ export function AppLayout({
   const { isMobile } = useResponsive();
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-100" edges={['top']}>
+    <SafeAreaView className="flex-1 bg-[#F4F5F7]" edges={isMobile ? ['top', 'bottom'] : ['top']}>
       <View className="flex-1 flex-row">
         {!isMobile && (
           <Sidebar items={navItems} activeRoute={activeRoute} onNavigate={onNavigate} />
@@ -48,7 +48,7 @@ export function AppLayout({
 
           <ScrollView
             className="flex-1"
-            contentContainerClassName="p-4 pb-8"
+            contentContainerClassName={isMobile ? 'px-3 pt-3 pb-5' : 'p-4 pb-8'}
             showsVerticalScrollIndicator={false}
           >
             {children}

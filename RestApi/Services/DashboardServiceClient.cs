@@ -1,8 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP gateway hacia ServiceDashboard (tablero de inicio, sólo lectura).
-/// </summary>
+// cliente -> reenviar servicio tablero
 public sealed class DashboardServiceClient
 {
     private readonly HttpClient _http;
@@ -14,8 +12,7 @@ public sealed class DashboardServiceClient
             ?? throw new InvalidOperationException("Services:DashboardService no configurado en appsettings.json");
 
         _http.BaseAddress = new Uri(baseUrl);
-        // Las agregaciones del tablero son pesadas y se cachean unos segundos;
-        // un timeout corto evita que la página de inicio se quede colgada.
+        // cache -> timeout corto tablero
         _http.Timeout = TimeSpan.FromSeconds(20);
     }
 

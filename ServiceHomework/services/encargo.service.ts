@@ -25,7 +25,7 @@ interface EncargoRow {
   estado: string;
   fechaCreacion: Date | string;
   fechaActualizacion: Date | string;
-  // Asignacion info
+  // fila -> datos asignacion
   maestroId?: bigint;
   materiaId?: bigint;
   cursoPeriodoId?: bigint;

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
+import { confirmLogout } from '../../../utils/confirmLogout';
 import { authApi } from '../../../api/auth.api';
 import { useAuth } from '../../../context/AuthContext';
 import { PASSWORD_MAX, sanitizePassword } from '../../../shared/validation/credentials';
@@ -230,7 +231,7 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => logout()}
+              onPress={() => confirmLogout(logout)}
               disabled={loading}
               className="py-2.5 rounded-xl items-center flex-row justify-center gap-2"
             >

@@ -3,10 +3,7 @@ import { query } from "../../connects/Database/transaction.ts";
 import { broadcastUserEvent } from "../../services/websocket.service.ts";
 import { publicarEventoAsync } from "../../utils/events.ts";
 
-/**
- * PATCH /usuarios/:id/baja
- * Baja lógica: estado = 'inactivo'. No elimina filas ni objetos en MinIO.
- */
+// ruta -> baja logica usuario
 export async function bajaUsuario(
   ctx: RouterContext<"/usuarios/:id/baja">,
 ): Promise<void> {

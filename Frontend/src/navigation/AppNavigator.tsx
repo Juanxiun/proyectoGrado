@@ -1,3 +1,4 @@
+// navegacion_principal -> configurar rutas y navegación de la app
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ActivityIndicator, View } from 'react-native';
@@ -63,8 +64,9 @@ function AppNavigator() {
     : 'Login';
 
   return (
-    <NavigationContainer key={activeScreen}>
+    <NavigationContainer>
       <Stack.Navigator
+        key={`${isAuthenticated ? user?.rol ?? 'authenticated' : 'anonymous'}-${pending2FA ? '2fa' : 'session'}`}
         initialRouteName={activeScreen}
         screenOptions={{ headerShown: false, animation: 'fade' }}
       >

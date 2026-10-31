@@ -36,7 +36,9 @@ export function useAuthActions(): UseAuthReturn {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await authApi.logout(); } finally { await storage.clear(); }
+    const request = authApi.logout().catch(() => undefined);
+    await storage.clear();
+    void request;
   }, []);
 
   const verify2FA = useCallback(async (tempToken: string, code: string) => {

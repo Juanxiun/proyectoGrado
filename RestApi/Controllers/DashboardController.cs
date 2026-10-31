@@ -3,11 +3,7 @@ using RestApi.Services;
 
 namespace RestApi.Controllers;
 
-/// <summary>
-/// Tablero de inicio. Sólo lectura: todas las rutas son GET salvo la
-/// invalidación de caché, que es una acción de administración.
-/// El recorte por rol lo aplica ServiceDashboard a partir del JWT.
-/// </summary>
+/// <summary>Tablero de inicio solo lectura.</summary>
 [ApiController]
 [Route("api/dashboard")]
 [Produces("application/json")]

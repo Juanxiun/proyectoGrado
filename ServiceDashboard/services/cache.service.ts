@@ -1,15 +1,7 @@
 import { getRedis } from "../connects/Redis/redis.ts";
 import { dashboardConfig } from "../config/dashboard.config.ts";
 
-/**
- * Caché de corta duración para las proyecciones.
- *
- * El dashboard se refresca seguido y las agregaciones son caras, así que se
- * tolera una ventana de desactualización. La clave incluye el alcance y el
- * período, de modo que dos roles o dos períodos nunca comparten datos.
- *
- * Si Redis no está disponible el dashboard NO falla: recalcula y sigue.
- */
+// cache -> proyecciones corta duracion
 
 function clave(seccion: string, alcance: string, periodoId: string, extra = ""): string {
   return `dashboard:${seccion}:${alcance}:${periodoId}${extra ? `:${extra}` : ""}`;

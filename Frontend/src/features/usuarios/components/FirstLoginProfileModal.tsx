@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { usuariosApi } from '../../../api/usuarios.api';
 import { useAuth } from '../../../context/AuthContext';
 import { BentoCard } from '../../../displays/components/BentoCard';
+import { confirmLogout } from '../../../utils/confirmLogout';
 
 export function FirstLoginProfileModal({ visible }: { visible: boolean }) {
   const { user, updateLocalUser, logout } = useAuth();
@@ -63,7 +64,7 @@ export function FirstLoginProfileModal({ visible }: { visible: boolean }) {
           <TouchableOpacity onPress={save} disabled={saving} className="bg-maroon rounded-xl py-3.5 items-center mt-4">
             {saving ? <ActivityIndicator color="#fff" /> : <Text className="text-white font-bold">Guardar y continuar</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => logout()} className="py-3 items-center">
+          <TouchableOpacity onPress={() => confirmLogout(logout)} className="py-3 items-center">
             <Text className="text-xs text-gray-500 font-semibold">Cerrar sesión</Text>
           </TouchableOpacity>
         </BentoCard>

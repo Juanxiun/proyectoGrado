@@ -58,7 +58,7 @@ function minutesToTime(value: number): string {
   return `${hours}:${minutes}`;
 }
 
-/** Genera sólo bloques completos; los restos menores que la duración se omiten. */
+// algoritmo -> solo bloques completos
 export function buildShiftSlots(
   turno: CodigoTurno,
   duracionPeriodoMinutos: 45 | 50,
@@ -92,12 +92,7 @@ function overlaps(a: HorarioSlot, b: HorarioSlot): boolean {
   return a.diaSemana === b.diaSemana && a.horaInicio < b.horaFin && b.horaInicio < a.horaFin;
 }
 
-/**
- * Genera una grilla voraz determinista. Primero intenta distribuir las
- * sesiones en el día con menor carga; luego prueba los bloques de ese día y
- * los demás como respaldo. No devuelve una grilla que violate una restricción
- * dura: si no encuentra espacio, falla para que la gestión no pueda activarse.
- */
+// algoritmo -> grilla voraz determinista
 export function generateSchedule(
   courses: ScheduleCourse[],
   classrooms: ScheduleClassroom[],
@@ -195,7 +190,7 @@ export function generateSchedule(
     }
   }
 
-  // Verificación defensiva de traslapes y del límite de materias pesadas.
+  // valida -> traslapes materias pesadas
   for (let index = 0; index < entries.length; index++) {
     for (let other = index + 1; other < entries.length; other++) {
       const left = entries[index];

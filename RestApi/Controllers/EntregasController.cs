@@ -21,7 +21,7 @@ public sealed class EntregasController : ControllerBase
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/entregas/{id}", Request));
 
     [HttpPost]
-    [RequestSizeLimit(167_772_160)] // 160 MB para adjuntos de tareas (PDF, Word, Excel)
+    [RequestSizeLimit(167_772_160)] // limite -> adjuntos tareas
     public Task<IActionResult> Create()
         => Proxy(_client.ForwardAsync(HttpMethod.Post, "/entregas", Request));
 

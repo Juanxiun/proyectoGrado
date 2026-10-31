@@ -3,10 +3,7 @@ using RestApi.Services;
 
 namespace RestApi.Controllers;
 
-/// <summary>
-/// Bandeja de notificaciones. Toda la gestión vive en ServiceNotification; este
-/// controlador sólo traduce /api → rutas del servicio.
-/// </summary>
+/// <summary>Bandeja de notificaciones vía ServiceNotification.</summary>
 [ApiController]
 [Route("api/notificaciones")]
 [Produces("application/json")]
@@ -28,7 +25,7 @@ public sealed class NotificacionesController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>GET /api/notificaciones/conteo — alimenta el badge del encabezado.</summary>
+    /// <summary>Conteo de notificaciones para el badge.</summary>
     [HttpGet("conteo")]
     public async Task<IActionResult> Count()
     {
@@ -37,7 +34,7 @@ public sealed class NotificacionesController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>GET /api/notificaciones/reglas — catálogo de eventos notificados.</summary>
+    /// <summary>Catálogo de reglas de eventos.</summary>
     [HttpGet("reglas")]
     public async Task<IActionResult> Rules()
     {
@@ -78,7 +75,7 @@ public sealed class NotificacionesController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>POST /api/notificaciones/emitir — disparo puntual (uso de dirección/control).</summary>
+    /// <summary>Emisión puntual de notificación.</summary>
     [HttpPost("emitir")]
     public async Task<IActionResult> Emit()
     {
@@ -87,7 +84,7 @@ public sealed class NotificacionesController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>GET /api/notificaciones/estado — estado del bus de eventos.</summary>
+    /// <summary>Estado del bus de eventos.</summary>
     [HttpGet("estado")]
     public async Task<IActionResult> Status()
     {

@@ -11,6 +11,7 @@ interface KpiCardProps {
   iconColor?: string;
 }
 
+// kpi -> mostrar indicadores clave
 export function KpiCard({ label, value, trend, trendUp = true, icon, iconColor = '#801529' }: KpiCardProps) {
   return (
     <BentoCard className="p-4 flex-1 min-w-[140px]">

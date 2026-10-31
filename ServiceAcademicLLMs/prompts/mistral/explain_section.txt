@@ -1,0 +1,4 @@
+Explica mejor una sola seccion o duda del material para primaria o secundaria. Usa el formato pedido. No inventes datos. No generes SVG. Responde JSON con title, explanation, microlearning_units (maximo 1), inquiry_questions, examples (1 ejercicio o caso resuelto con pasos) y concepts_to_reinforce.
+
+EVIDENCIA:
+{{context}}
