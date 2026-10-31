@@ -57,16 +57,16 @@ export function SvgRangoMedalla({
         {rango}
       </Text>
 
-      {/* Nivel debajo del rango, dentro del círculo */}
+      {/* Etiqueta Rango debajo de la letra */}
       <Text
         x={cx}
         y={cy + radioInterno * 0.55}
         textAnchor="middle"
         fill="rgba(255,255,255,0.9)"
-        fontSize={tamano * 0.11}
+        fontSize={tamano * 0.09}
         fontWeight="800"
       >
-        Nivel {nivel}
+        Rango {rango}
       </Text>
     </Svg>
   );

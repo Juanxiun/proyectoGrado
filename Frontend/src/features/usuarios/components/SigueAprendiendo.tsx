@@ -3,6 +3,7 @@ import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { ExplicacionSeccion } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
+import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
 import { EjemploCanvas } from './EjemploCanvas';
 
 interface UnidadMicrolearning {
@@ -50,11 +51,15 @@ export function SigueAprendiendo({ unidades, preguntas, preguntaActiva, explicac
         {mostrar ? <BentoCard className="gap-3 border border-violet-200 bg-violet-50 p-4">
           <Text className="text-base font-black text-violet-950">{explicacionActual.title}</Text>
           <Text className="text-sm leading-6 text-violet-950">{explicacionActual.explanation}</Text>
+          <MarkdownContent texto={explicacionActual.explanation} />
           {explicacionActual.microlearning_units?.length ? <View className="gap-2">
             <Text className="text-xs font-black uppercase text-violet-800">Explicación por partes</Text>
             {explicacionActual.microlearning_units.map((paso, pasoIndex) => <View key={`${pasoIndex}-${paso.title}`} className="rounded-xl bg-white p-3">
               <Text className="text-sm font-bold text-gray-900">{pasoIndex + 1}. {paso.title}</Text>
               <Text className="mt-1 text-sm leading-5 text-gray-700">{paso.explanation}</Text>
+              <View className="mt-1">
+                <MarkdownContent texto={paso.explanation} />
+              </View>
               <Text className="mt-2 text-xs font-semibold text-violet-800">{paso.objective}</Text>
             </View>)}
           </View> : null}

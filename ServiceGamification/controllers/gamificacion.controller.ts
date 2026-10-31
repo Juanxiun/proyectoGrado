@@ -69,6 +69,7 @@ export async function completarActividad(ctx: Context): Promise<void> {
       tiempoTotalMs: body.tiempoTotalMs,
       fechaInicio: body.fechaInicio,
       fechaFin: body.fechaFin,
+      contexto: body.contexto,
     });
 
     respond(ctx, 201, resultado);
@@ -84,10 +85,20 @@ export async function registrarProgresoEstudioController(ctx: Context): Promise<
     const body = await ctx.request.body.json();
     const resultado = await registrarProgresoEstudio(claims.sub, {
       contentId: String(body.contentId ?? ""),
+      materialId: String(body.materialId ?? ""),
+      temaRutaId: String(body.temaRutaId ?? ""),
+      numeroTema: Number(body.numeroTema ?? 0),
+      tituloTema: String(body.tituloTema ?? ""),
+      sesionId: String(body.sesionId ?? ""),
+      partesExplicadas: Array.isArray(body.partesExplicadas) ? body.partesExplicadas.map(String) : [],
+      tiempoLecturaMs: Number(body.tiempoLecturaMs ?? 0),
+      preguntaIndagacion: String(body.preguntaIndagacion ?? ""),
       titulo: String(body.titulo ?? ""),
       materiaNombre: String(body.materiaNombre ?? ""),
       formato: body.formato,
       completo: Boolean(body.completo),
+      cartaActual: Number(body.cartaActual ?? 0),
+      totalCartas: Number(body.totalCartas ?? 0),
       investigacion: Boolean(body.investigacion),
     });
     respond(ctx, 201, resultado);

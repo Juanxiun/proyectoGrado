@@ -45,6 +45,8 @@ export interface InsigniaEstudiante {
   insigniaId: string;
   fechaObtencion: string;
   metadata?: Record<string, unknown>;
+  codigo?: string;
+  nombre?: string;
 }
 
 export interface Trofeo {
@@ -190,6 +192,7 @@ export interface CompletarActividadPayload {
   tiempoTotalMs: number;
   fechaInicio: string;
   fechaFin: string;
+  contexto?: { materialId: string; temaRutaId?: string; numeroTema?: number; tituloTema?: string };
 }
 
 export interface ResultadoActividad {
@@ -203,6 +206,8 @@ export interface ResultadoActividad {
   };
   racha: RachasDiarias;
   puntosGanados: number;
+  bonusSpeedrun?: number;
+  speedrun?: boolean;
   insigniasNuevas: InsigniaEstudiante[];
   trofeosNuevos: TrofeoEstudiante[];
   bonoDesafios?: number;
@@ -210,16 +215,27 @@ export interface ResultadoActividad {
 
 export interface ProgresoEstudioPayload {
   contentId: string;
+  materialId?: string;
+  temaRutaId?: string;
+  numeroTema?: number;
+  tituloTema?: string;
+  sesionId?: string;
+  partesExplicadas?: string[];
+  tiempoLecturaMs?: number;
+  preguntaIndagacion?: string;
   titulo?: string;
   materiaNombre?: string;
   formato?: 'CARTAS_EXPLICATIVAS' | 'ESQUEMA_GEMMA';
   completo?: boolean;
+  cartaActual?: number;
+  totalCartas?: number;
   investigacion?: boolean;
 }
 
 export interface EvidenciaAprendizaje {
-  actividades: Array<{ titulo: string; tipo: string; porcentaje: number; duracionMs: number; fecha: string | null }>;
-  eventosEstudio: Array<{ tipo: string; tema: string; contentId: string; formato: string | null; fecha: string | null }>;
+  actividades: Array<{ titulo: string; tipo: string; porcentaje: number; duracionMs: number; preguntasTotal?: number; tiempoPorPreguntaMs?: number; fecha: string | null; materialId?: string; temaRutaId?: string; numeroTema?: number; tituloTema?: string; respuestas?: unknown[]; preguntas?: unknown[] }>;
+  eventosEstudio: Array<{ tipo: string; tema: string; contentId: string; materialId?: string; temaRutaId?: string; numeroTema?: number; tituloTema?: string; vecesRepetido?: number; tiempoLecturaMs?: number; partesExplicadas?: string[]; preguntaIndagacion?: string; formato: string | null; fecha: string | null }>;
+  progresosTemas?: Array<{ materialId: string; temaRutaId: string; numeroTema: number; tituloTema: string; cartaActual: number; totalCartas: number; sesionId: string; tiempoLecturaMs: number; partesExplicadas: string[]; actualizadoEn: string }>;
   totalActividades: number;
   totalInvestigaciones: number;
   temasIndagados: string[];

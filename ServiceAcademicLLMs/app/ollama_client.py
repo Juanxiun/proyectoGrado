@@ -26,6 +26,7 @@ OUTPUT_LIMITS = {
     "PersonalizedLearningDraft": 480,
     "StudentLearningAnalysis": 1400,
     "QuizQualityFeedback": 220,
+    "StudentLearningOverview": 450,
 }
 
 # ollama -> esquemas grandes sin reintento por limite de salida

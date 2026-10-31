@@ -1,7 +1,9 @@
 // avatar_usuario -> mostrar foto y nombre del usuario con fallback robusto
 import { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
-import { DEFAULT_USER_PHOTO } from '../../constants/config';
+import { Canvas, Image as SkiaImage, useImage } from '@shopify/react-native-skia';
+import { Platform } from 'react-native';
+import { DEFAULT_USER_PHOTO, resolveMediaUrl } from '../../constants/config';
 
 interface UserAvatarProps {
   nombre?: string | null;
@@ -42,6 +44,7 @@ export function UserAvatar({
   bordered = false,
   fallbackBgClassName = 'bg-maroon',
 }: UserAvatarProps) {
+  const [medidas, setMedidas] = useState({ width: 64, height: 64 });
   // `propia` = foto del usuario, `default` = foto de MinIO, `iniciales` = red de seguridad.
   const [etapa, setEtapa] = useState<'propia' | 'default' | 'iniciales'>(
     fotoUrl ? 'propia' : 'default',
@@ -55,7 +58,8 @@ export function UserAvatar({
   const clases = bordered ? `${className} border border-white/40` : className;
 
   // Si no hay fotoUrl propia, usar directamente la de MinIO sin intentar la propia.
-  const uri = etapa === 'propia' && fotoUrl ? fotoUrl : DEFAULT_USER_PHOTO;
+  const uri = resolveMediaUrl(etapa === 'propia' && fotoUrl ? fotoUrl : DEFAULT_USER_PHOTO);
+  const skiaImage = useImage(uri);
 
   if (etapa === 'iniciales') {
     const iniciales =
@@ -66,6 +70,10 @@ export function UserAvatar({
         <Text className={textoClassName}>{iniciales}</Text>
       </View>
     );
+  }
+
+  if (Platform.OS !== 'web' && skiaImage) {
+    return <View className={`${clases} overflow-hidden`} onLayout={(event) => setMedidas({ width: event.nativeEvent.layout.width, height: event.nativeEvent.layout.height })}><Canvas style={{ width: '100%', height: '100%' }}><SkiaImage image={skiaImage} x={0} y={0} width={medidas.width} height={medidas.height} fit="cover" /></Canvas></View>;
   }
 
   return (

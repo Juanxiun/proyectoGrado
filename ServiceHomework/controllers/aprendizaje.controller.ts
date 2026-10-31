@@ -58,6 +58,31 @@ export function getContenidoAprendizaje(ctx: Context): Promise<void> {
   return responder(ctx, llamarServicioLlm(`/documents/${encodeURIComponent(routeParam(ctx, "id") ?? "")}/learning`));
 }
 
+// aprendizaje -> indexar finalizacion de tema en rag
+export async function registrarProgresoTema(ctx: Context): Promise<void> {
+  const body = await ctx.request.body.json().catch(() => ({}));
+  const materialId = routeParam(ctx, "id") ?? "";
+  const contenido = await llamarServicioLlm(`/documents/${encodeURIComponent(materialId)}/learning`);
+  if (contenido.status !== 200) {
+    respond(ctx, contenido.status, contenido.data);
+    return;
+  }
+  const contentId = String((contenido.data as Record<string, unknown>).content_id);
+  return responder(ctx, llamarServicioLlm("/webhooks/study-topic-completed", "POST", {
+    student_id: claims(ctx).sub,
+    material_id: materialId,
+    content_id: contentId,
+    topic_id: String(body.temaRutaId ?? ""),
+    topic_number: Number(body.numeroTema ?? 0),
+    topic_title: String(body.tituloTema ?? ""),
+    session_id: String(body.sesionId ?? ""),
+    reading_time_ms: Number(body.tiempoLecturaMs ?? 0),
+    explained_sections: Array.isArray(body.partesExplicadas) ? body.partesExplicadas.map(String) : [],
+    cards_completed: Number(body.cartaActual ?? 0),
+    total_cards: Number(body.totalCartas ?? 0),
+  }));
+}
+
 export async function crearResumen(ctx: Context): Promise<void> {
   const body = await ctx.request.body.json().catch(() => ({}));
   const contenido = await llamarServicioLlm(`/documents/${encodeURIComponent(routeParam(ctx, "id") ?? "")}/learning`);
@@ -139,6 +164,10 @@ export async function completarReto(ctx: Context): Promise<void> {
     attempt_id: routeParam(ctx, "quizId") ?? "",
     answers: body.answers,
     elapsed_ms: Number.isFinite(Number(body.elapsed_ms)) ? Math.max(0, Math.min(3_600_000, Number(body.elapsed_ms))) : 0,
+    material_id: routeParam(ctx, "id") ?? "",
+    topic_id: body.contexto?.topic_id ? String(body.contexto.topic_id) : undefined,
+    topic_number: body.contexto?.topic_number ? Number(body.contexto.topic_number) : undefined,
+    topic_title: body.contexto?.topic_title ? String(body.contexto.topic_title) : undefined,
   }));
 }
 

@@ -554,7 +554,7 @@ class RAGRepository:
             raise
 
     # quiz -> corrige la entrega segun el tipo de cada actividad
-    async def record_quiz_attempt(self, student_id: str, content_id: str, attempt_id: str, answers: list[dict[str, str]], elapsed_ms: int = 0) -> dict[str, Any]:
+    async def record_quiz_attempt(self, student_id: str, content_id: str, attempt_id: str, answers: list[dict[str, str]], elapsed_ms: int = 0, topic_id: str | None = None, material_id: str | None = None) -> dict[str, Any]:
         quiz = await self.get_quiz(student_id, content_id, attempt_id)
         if not quiz:
             raise LookupError("No existe un cuestionario emitido para este estudiante y contenido")
@@ -574,17 +574,22 @@ class RAGRepository:
             correct = score_activity(activity, answer["response"])
             tipo_visible = activity.get("tipo") or ("CUESTIONARIO" if activity.get("type") in ("THEORETICAL", "PRACTICAL") else "")
             evaluation.append({"activity_id": answer["activity_id"], "tipo": tipo_visible, "correct": correct,
+                               "response": answer["response"][:500],
                                "concept": activity.get("learning_objective", ""),
                                "difficulty": activity.get("difficulty", "inicial"),
                                "feedback": remediation(activity, correct)})
         correct_count = sum(1 for answer in evaluation if answer["correct"])
         attempt = {"attempt_id": attempt_id, "student_id": student_id, "content_id": content_id,
+                   "material_id": material_id, "topic_id": topic_id,
                    "score": correct_count / len(evaluation), "correct": correct_count, "total": len(evaluation),
                    "answers": evaluation, "elapsed_ms": elapsed_ms, "completed_at": utcnow()}
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:attempts"
+        recent_key = f"{self.prefix}:student:{student_id}:topic:{topic_id}:attempts:recent" if topic_id else f"{key}:recent"
         script = """
         if redis.call('SADD', KEYS[1], ARGV[1]) == 0 then return {-1, 0} end
         redis.call('RPUSH', KEYS[2], ARGV[2])
+        redis.call('RPUSH', KEYS[4], ARGV[2])
+        redis.call('LTRIM', KEYS[4], -5, -1)
         local total = redis.call('LLEN', KEYS[2])
         if total % 4 == 0 then
           local batch = total / 4
@@ -596,7 +601,7 @@ class RAGRepository:
         return {total, 0}
         """
         attempt_count, batch_number = await self._redis.eval(
-            script, 3, f"{key}:ids", key, self.profile_stream,
+            script, 4, f"{key}:ids", key, self.profile_stream, recent_key,
             attempt_id, json.dumps(attempt, ensure_ascii=False), student_id, content_id,
             f"{self.prefix}:student:{student_id}:content:{content_id}:profile-batch:", utcnow(),
         )
@@ -617,6 +622,32 @@ class RAGRepository:
             "time_comparison": time_comparison,
             "time_ratio": time_ratio,
         }
+
+    async def recent_quiz_attempts(self, student_id: str, content_id: str, topic_id: str | None = None) -> list[dict[str, Any]]:
+        key = f"{self.prefix}:student:{student_id}:topic:{topic_id}:attempts:recent" if topic_id else f"{self.prefix}:student:{student_id}:content:{content_id}:attempts:recent"
+        values = await self._redis.lrange(key, 0, 4)
+        return [json.loads(value) for value in values]
+
+    # tema -> conservar cinco sesiones recientes
+    async def record_topic_study_event(self, student_id: str, event: dict[str, Any]) -> bool:
+        topic_id = str(event["topic_id"])
+        base = f"{self.prefix}:student:{student_id}:topic:{topic_id}:sessions"
+        script = """
+        if redis.call('SADD', KEYS[2], ARGV[1]) == 0 then return 0 end
+        redis.call('LPUSH', KEYS[1], ARGV[2])
+        redis.call('LTRIM', KEYS[1], 0, 4)
+        return 1
+        """
+        saved = await self._redis.eval(
+            script, 2, base, f"{base}:ids", str(event["session_id"]),
+            json.dumps(event, ensure_ascii=False),
+        )
+        return bool(saved)
+
+    async def recent_topic_study_events(self, student_id: str, topic_id: str) -> list[dict[str, Any]]:
+        key = f"{self.prefix}:student:{student_id}:topic:{topic_id}:sessions"
+        values = await self._redis.lrange(key, 0, 4)
+        return [json.loads(value) for value in values]
 
     async def profile_attempt_batch(self, student_id: str, content_id: str, batch_number: int) -> list[dict[str, Any]]:
         key = f"{self.prefix}:student:{student_id}:content:{content_id}:attempts"

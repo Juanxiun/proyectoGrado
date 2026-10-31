@@ -275,6 +275,24 @@ class QuizCompletedEvent(BaseModel):
     attempt_id: str = Field(min_length=1, max_length=200)
     answers: list[QuizAnswer] = Field(min_length=1, max_length=8)
     elapsed_ms: int = Field(default=0, ge=0, le=3_600_000)
+    material_id: str | None = Field(default=None, max_length=200)
+    topic_id: str | None = Field(default=None, max_length=240)
+    topic_number: int | None = Field(default=None, ge=1, le=500)
+    topic_title: str | None = Field(default=None, max_length=200)
+
+
+class StudyTopicCompletedEvent(BaseModel):
+    student_id: str = Field(min_length=1, max_length=100)
+    material_id: str = Field(min_length=1, max_length=200)
+    content_id: str = Field(min_length=1, max_length=200)
+    topic_id: str = Field(min_length=1, max_length=240)
+    topic_number: int = Field(ge=1, le=500)
+    topic_title: str = Field(min_length=1, max_length=200)
+    session_id: str = Field(min_length=1, max_length=100)
+    reading_time_ms: int = Field(ge=0, le=86_400_000)
+    explained_sections: list[str] = Field(default_factory=list, max_length=100)
+    cards_completed: int = Field(ge=0, le=100)
+    total_cards: int = Field(ge=0, le=100)
 
 
 class QuizQualityFeedback(BaseModel):

@@ -24,6 +24,10 @@ public sealed class AprendizajeController : ControllerBase
     public Task<IActionResult> ExplainSection(long id)
         => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/aprendizaje/materiales/{id}/explicar-seccion", Request));
 
+    [HttpPost("materiales/{id:long}/progreso-tema")]
+    public Task<IActionResult> RegisterTopicProgress(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/aprendizaje/materiales/{id}/progreso-tema", Request));
+
     [HttpPost("materiales/{id:long}/reto")]
     public Task<IActionResult> CreateChallenge(long id)
         => Proxy(_client.ForwardAsync(HttpMethod.Post, $"/aprendizaje/materiales/{id}/reto{HomeworkServiceClient.ForwardQueryString(Request)}", Request));

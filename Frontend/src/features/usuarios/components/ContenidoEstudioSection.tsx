@@ -14,6 +14,7 @@ import { DocumentWebView } from './DocumentWebView';
 import { PdfPaginasViewer } from './PdfPaginasViewer';
 import { ResumenInteractivo } from './ResumenInteractivo';
 import { EjemploCanvas } from './EjemploCanvas';
+import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
 import { BarraProgresoTema } from '../../../shared/ui/BarraProgresoTema';
 import { API_BASE_URL } from '../../../constants/config';
 
@@ -133,21 +134,80 @@ function normalizarUrlMovil(rawUrl: string): string {
   }
 }
 
+// tiempo -> mostrar duración total de la prueba
+function formatearDuracion(ms: number): string {
+  const segundos = Math.max(0, Math.floor(ms / 1000));
+  const minutos = Math.floor(segundos / 60);
+  return `${minutos}:${String(segundos % 60).padStart(2, '0')}`;
+}
+
+function expandirFrecuenciasExplicacion(frecuencias: Map<string, number>): string[] {
+  return [...frecuencias.entries()].flatMap(([seccion, cantidad]) => Array(cantidad).fill(seccion));
+}
+
+// feedback -> comparar el resultado actual con intentos anteriores del estudiante
+function crearFeedbackComparativo(input: {
+  correctas: number;
+  total: number;
+  tiempoTotalMs: number;
+  answers: ResultadoReto['answers'];
+  materialId?: string;
+  temaRutaId?: string;
+  evidencia: Awaited<ReturnType<typeof gamificacionApi.getEvidenciaAprendizaje>> | null;
+}) {
+  const porcentajeActual = input.total > 0 ? input.correctas / input.total : 0;
+  const anteriores = (input.evidencia?.actividades ?? []).filter((actividad) =>
+    actividad.tipo === 'cuestionario' && Number.isFinite(actividad.porcentaje) && actividad.porcentaje >= 0 &&
+    (input.temaRutaId ? actividad.temaRutaId === input.temaRutaId : actividad.materialId === input.materialId),
+  );
+  const promedioAnterior = anteriores.length
+    ? anteriores.reduce((suma, actividad) => suma + actividad.porcentaje, 0) / anteriores.length
+    : null;
+  const tiemposAnteriores = anteriores.map((actividad) => actividad.duracionMs).filter((duracion) => duracion > 0);
+  const tiempoEstimado = tiemposAnteriores.length
+    ? tiemposAnteriores.reduce((suma, duracion) => suma + duracion, 0) / tiemposAnteriores.length
+    : null;
+  const porcentajeTexto = Math.round(porcentajeActual * 100);
+  const comparacionNota = promedioAnterior === null
+    ? 'Aún no hay intentos anteriores para comparar; esta nota queda como tu referencia inicial.'
+    : `Tu promedio anterior era ${Math.round(promedioAnterior * 100)}%; ${porcentajeActual >= promedioAnterior ? `mejoraste ${Math.round((porcentajeActual - promedioAnterior) * 100)} puntos porcentuales` : `esta vez bajaste ${Math.round((promedioAnterior - porcentajeActual) * 100)} puntos porcentuales`}.`;
+  const comparacionTiempo = tiempoEstimado === null
+    ? `Terminaste en ${formatearDuracion(input.tiempoTotalMs)}; aún no hay suficiente historial para estimar tu tiempo habitual.`
+    : `Terminaste en ${formatearDuracion(input.tiempoTotalMs)}; tu tiempo estimado según intentos previos era ${formatearDuracion(tiempoEstimado)}.`;
+  const conceptos = [...new Set(input.answers.filter((respuesta) => !respuesta.correct).map((respuesta) => respuesta.concept).filter(Boolean))];
+  const consejo = conceptos.length
+    ? `repasa ${conceptos.slice(0, 2).join(' y ')} y practica una pregunta de cada concepto`
+    : 'mantén este ritmo y avanza al siguiente tema';
+
+  return {
+    feedback: `${porcentajeTexto === 100 ? '¡Excelente trabajo!' : 'Vas por buen camino.'} Lograste ${input.correctas} de ${input.total} respuestas correctas (${porcentajeTexto}%). ${comparacionNota} ${comparacionTiempo}`,
+    next_step: `Para seguir avanzando, ${consejo}.`,
+    points: input.correctas,
+    explanation_svg: '',
+    model: 'seguimiento_comparativo',
+    pending: false,
+  };
+}
+
 type ParteRuta = NonNullable<ContenidoAprendizaje['learning_sections']>[number];
 type CartaRuta = { titulo: string; explicacion: string; ejemplo: string; svg?: string; indagacion?: string; esEsquema?: boolean };
 
 // ruta -> cinco cartas de microlearning y una carta final con el mapa de conexiones
 function crearCartasRuta(parte: ParteRuta): CartaRuta[] {
-  const unidades = parte.microlearning || [];
-  const cartas: CartaRuta[] = unidades.slice(0, 5).map((unidad, indice) => ({
-    titulo: unidad.title || parte.conceptos[indice] || `Idea clave ${indice + 1}`,
-    explicacion: unidad.explanation || parte.resumen,
-    ejemplo: unidad.examples_blackboard?.find((ejemplo) => ejemplo && ejemplo.trim()) || parte.resumen,
-    indagacion: unidad.inquiry_question,
-  }));
+  const unidades = Array.isArray(parte.microlearning) ? parte.microlearning : [];
+  const conceptos = Array.isArray(parte.conceptos) ? parte.conceptos : [];
+  const cartas: CartaRuta[] = unidades.slice(0, 5).map((unidad, indice) => {
+    const ejemplos = Array.isArray(unidad.examples_blackboard) ? unidad.examples_blackboard : [];
+    return {
+      titulo: unidad.title || conceptos[indice] || `Idea clave ${indice + 1}`,
+      explicacion: unidad.explanation || parte.resumen || '',
+      ejemplo: ejemplos.find((ejemplo) => typeof ejemplo === 'string' && ejemplo.trim()) || parte.resumen || '',
+      indagacion: unidad.inquiry_question,
+    };
+  });
   while (cartas.length < 5) {
     const idx = cartas.length;
-    const concepto = parte.conceptos[idx] || `Concepto clave ${idx + 1}`;
+    const concepto = conceptos[idx] || `Concepto clave ${idx + 1}`;
     cartas.push({
       titulo: concepto,
       explicacion: `Idea esencial sobre ${concepto} abordada en ${parte.titulo}.`,
@@ -156,11 +216,12 @@ function crearCartasRuta(parte: ParteRuta): CartaRuta[] {
     });
   }
   const esquema = parte.carta_6_esquema;
-  const detalleNodos = (esquema?.nodes || []).slice(0, 4).map((nodo) => nodo.detail || nodo.label).filter(Boolean).join(' ');
+  const nodos = Array.isArray(esquema?.nodes) ? esquema.nodes : [];
+  const detalleNodos = nodos.slice(0, 4).map((nodo) => nodo.detail || nodo.label).filter(Boolean).join(' ');
   cartas.push({
     titulo: esquema?.titulo || `Conexiones de ${parte.titulo}`,
     explicacion: detalleNodos || `Este esquema muestra cómo se relacionan las ideas de ${parte.titulo}.`,
-    ejemplo: (esquema?.nodes || []).map((nodo) => nodo.mini_example).find((item) => item && item.trim()) || '',
+    ejemplo: nodos.map((nodo) => nodo.mini_example).find((item) => typeof item === 'string' && item.trim()) || '',
     svg: esquema?.svg_inline || parte.svg_inline,
     esEsquema: true,
   });
@@ -210,17 +271,24 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const [opcionSeleccionada, setOpcionSeleccionada] = useState<string | null>(null);
   const [parejaSeleccionada, setParejaSeleccionada] = useState<string | null>(null);
   const [parejas, setParejas] = useState<Record<string, string>>({});
+  const [conexiones, setConexiones] = useState<Record<string, string>>({});
   const [resultadoParejas, setResultadoParejas] = useState<Record<string, { correct: boolean; expected?: string; explanation?: string }>>({});
   const [textoLibre, setTextoLibre] = useState('');
   const [posicion, setPosicion] = useState(0);
-  const [resultadoReto, setResultadoReto] = useState<{ puntos: number; correctas: number; total: number; answers: ResultadoReto['answers']; feedback?: ResultadoReto['learning_feedback'] } | null>(null);
+  const [resultadoReto, setResultadoReto] = useState<{ puntosGanados: number; bonusSpeedrun: number; speedrun: boolean; tiempoTotalMs: number; correctas: number; total: number; answers: ResultadoReto['answers']; feedback?: ResultadoReto['learning_feedback'] } | null>(null);
   const [retoSubmitting, setRetoSubmitting] = useState(false);
   const [explicacion, setExplicacion] = useState<ExplicacionSeccion | null>(null);
   const [seccionExplicada, setSeccionExplicada] = useState<string | null>(null);
   const [explicacionLoading, setExplicacionLoading] = useState<string | null>(null);
   const [modalExplicacionVisible, setModalExplicacionVisible] = useState(false);
-  const [puntosEnReto, setPuntosEnReto] = useState(0);
   const inicioRetoRef = useRef(0);
+  const inicioLecturaTemaRef = useRef(0);
+  const sesionTemaRef = useRef('');
+  const partesExplicadasRef = useRef<Map<string, number>>(new Map());
+  const inicioLecturaMaterialRef = useRef(0);
+  const sesionResumenRef = useRef('');
+  const partesExplicadasMaterialRef = useRef<Map<string, number>>(new Map());
+  const sesionesTemaRegistradasRef = useRef<Set<string>>(new Set());
   const feedbackVivoRef = useRef(true);
   const zonaActividadRef = useRef<ZonaActividad>({ x: 0, y: 0, width: 0, height: 0 });
   const zonaVisualRef = useRef<any>(null);
@@ -235,6 +303,17 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     setIndagacionCargando(true);
     setPreguntaIndagacionActiva(pregunta);
     setIndagacionRespuesta(null);
+    const parte = parteRutaActual;
+    void gamificacionApi.registrarProgresoEstudio({
+      contentId: temaId,
+      titulo: parte?.titulo || pregunta,
+      tituloTema: parte?.titulo,
+      numeroTema: parte?.numero,
+      materiaNombre,
+      investigacion: true,
+      preguntaIndagacion: pregunta,
+      sesionId: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    }).catch(() => undefined);
     try {
       const explicacion = await aprendizajeApi.explicarSeccion(temaId, {
         title: 'Pregunta de investigación',
@@ -253,33 +332,13 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   // Progreso por tema: clave = numero del tema, valor = { porcentaje, completado, puntos }
   const [progresoTemas, setProgresoTemas] = useState<Record<string, { porcentaje: number; completado: boolean; puntos: number }>>({});
 
-  const progresoDeTema = (numero: number) => progresoTemas[String(numero)] ?? { porcentaje: 0, completado: false, puntos: 0 };
+  const claveProgresoTema = (numero: number) => `${tema?.id ?? 'tema'}:${numero}`;
+  const progresoDeTema = (numero: number) => progresoTemas[claveProgresoTema(numero)] ?? { porcentaje: 0, completado: false, puntos: 0 };
 
   const marcarTemaCompletado = (numeroTema: number, puntos: number = 10) => {
     setProgresoTemas((prev) => ({
       ...prev,
-      [String(numeroTema)]: { porcentaje: 100, completado: true, puntos },
-    }));
-    if (user?.estudianteId || user?.id) {
-      void gamificacionApi.registrarProgresoEstudio({
-        contentId: tema?.id || '',
-        titulo: `Tema ${numeroTema}`,
-        materiaNombre,
-        completo: true,
-        investigacion: false,
-      }).catch(() => {
-        // gamificacion -> no bloquear la UI si falla el registro de puntos
-      });
-    }
-  };
-
-  const avanzarProgresoTema = (numeroTema: number, incremento: number = 20) => {
-    const actual = progresoDeTema(numeroTema);
-    if (actual.completado) return;
-    const nuevo = Math.min(100, actual.porcentaje + incremento);
-    setProgresoTemas((prev) => ({
-      ...prev,
-      [String(numeroTema)]: { ...prev[String(numeroTema)], porcentaje: nuevo },
+      [claveProgresoTema(numeroTema)]: { porcentaje: 100, completado: true, puntos },
     }));
   };
 
@@ -385,7 +444,30 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   }, [asignacionId, nivel, grado, materiaId]);
 
   const abrirTema = async (material: MaterialItem) => {
+    inicioLecturaMaterialRef.current = Date.now();
+    sesionResumenRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    partesExplicadasMaterialRef.current = new Map();
     setTema(material);
+    setProgresoTemas({});
+    void gamificacionApi.getEvidenciaAprendizaje().then((evidencia) => {
+      const progreso: Record<string, { porcentaje: number; completado: boolean; puntos: number }> = {};
+      for (const evento of evidencia.eventosEstudio) {
+        if (evento.tipo !== 'tema_completado' || evento.materialId !== material.id || !evento.numeroTema) continue;
+        progreso[`${material.id}:${evento.numeroTema}`] = { porcentaje: 100, completado: true, puntos: 5 };
+      }
+      for (const parcial of evidencia.progresosTemas ?? []) {
+        if (parcial.materialId !== material.id || !parcial.numeroTema) continue;
+        const clave = `${material.id}:${parcial.numeroTema}`;
+        if (!progreso[clave]) {
+          progreso[clave] = {
+            porcentaje: parcial.totalCartas > 0 ? Math.floor((parcial.cartaActual / parcial.totalCartas) * 100) : 0,
+            completado: false,
+            puntos: 0,
+          };
+        }
+      }
+      setProgresoTemas(progreso);
+    }).catch(() => undefined);
     setContenido(null);
     setRutaIniciada(false);
     setTemaRutaAbierto(null);
@@ -420,6 +502,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     if (!tema) return;
     setResumenLoading(true);
     setResumen(null);
+    sesionResumenRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     try {
       setResumen(await aprendizajeApi.resumen(tema.id, formato));
       setPantallaResumen(true);
@@ -451,14 +534,35 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
 
   const explicarMejor = async (section: { title: string; explanation: string; example?: string }, format: ExplicacionSeccion['format']) => {
     if (!tema) return;
+    if (format !== 'preguntas') {
+      partesExplicadasMaterialRef.current.set(section.title, (partesExplicadasMaterialRef.current.get(section.title) ?? 0) + 1);
+    }
+    if (format !== 'preguntas' && temaRutaAbierto !== null) {
+      partesExplicadasRef.current.set(section.title, (partesExplicadasRef.current.get(section.title) ?? 0) + 1);
+    }
     const key = `${section.title}-${format}`;
     setModalExplicacionVisible(true);
     setExplicacionLoading(key);
     try {
       setExplicacion(await aprendizajeApi.explicarSeccion(tema.id, { ...section, format }));
       setSeccionExplicada(section.title);
-      if (format === 'preguntas') {
-        await gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: section.title, materiaNombre, investigacion: true });
+      if (format !== 'preguntas' && temaRutaAbierto !== null && parteRutaActual) {
+        void gamificacionApi.registrarProgresoEstudio({
+          contentId: tema.id,
+          materialId: tema.id,
+          temaRutaId: `${tema.id}:tema:${parteRutaActual.numero}`,
+          numeroTema: parteRutaActual.numero,
+          tituloTema: parteRutaActual.titulo,
+          sesionId: sesionTemaRef.current,
+          partesExplicadas: expandirFrecuenciasExplicacion(partesExplicadasRef.current),
+          tiempoLecturaMs: Math.max(0, Date.now() - inicioLecturaTemaRef.current),
+          titulo: parteRutaActual.titulo,
+          materiaNombre,
+          formato: 'CARTAS_EXPLICATIVAS',
+          completo: false,
+          cartaActual: cartaRutaSeleccionada + 1,
+          totalCartas: cartasRutaActual.length,
+        }).catch(() => undefined);
       }
     } catch {
       Alert.alert('No se pudo generar la explicación', 'Comprueba tu conexión e inténtalo de nuevo.');
@@ -473,13 +577,26 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     setRetoLoading(true);
     setRespuestas({});
     setParejas({});
+    setConexiones({});
+    setParejaSeleccionada(null);
     setResultadoParejas({});
-    setPuntosEnReto(0);
     setPosicion(0);
     setResultadoReto(null);
     try {
       setReto(await aprendizajeApi.reto(tema.id, 5, sectionId));
       inicioRetoRef.current = Date.now();
+      // gamificacion -> iniciar racha diaria al comenzar una actividad (no bloquea la UI)
+      if (user?.estudianteId || user?.id) {
+        void gamificacionApi.registrarProgresoEstudio({
+          contentId: tema.id,
+          titulo: `Actividad: ${contenido?.title || tema.titulo || materiaNombre}`,
+          materiaNombre,
+          completo: false,
+          investigacion: false,
+        }).catch(() => {
+          // no bloquear la UI si falla el registro de racha/puntos
+        });
+      }
     } catch (error) {
       const detalle = error instanceof ApiClientError ? error.message : 'Comprueba tu conexión e inténtalo de nuevo.';
       Alert.alert('No se pudo preparar el reto', detalle);
@@ -490,7 +607,13 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
 
   const actividadActual = reto?.activities[posicion];
   const totalActividades = reto?.activities.length ?? 0;
-  const partesRuta: ParteRuta[] = contenido?.learning_sections?.length ? contenido.learning_sections : contenido ? [{
+  const falladasReto = (resultadoReto?.answers ?? []).filter((a) => !a.correct);
+  const acertadasReto = (resultadoReto?.answers ?? []).filter((a) => a.correct);
+  const feedbackCargando = retoSubmitting || (resultadoReto?.feedback?.pending ?? !resultadoReto?.feedback);
+  const tiempoTotalReto = Date.now() - inicioRetoRef.current;
+  const totalReto = resultadoReto?.total ?? 0;
+  const respondioRapidoReto = totalReto > 0 ? tiempoTotalReto / totalReto < 15000 : false;
+  const partesRuta: ParteRuta[] = Array.isArray(contenido?.learning_sections) && contenido.learning_sections.length ? contenido.learning_sections : contenido ? [{
     numero: 1,
     titulo: contenido.title,
     texto_plano: contenido.summary,
@@ -503,32 +626,103 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const parteRutaActual = partesRuta[parteRutaSeleccionada];
   const cartasRutaActual = parteRutaActual ? crearCartasRuta(parteRutaActual) : [];
   const cartaRutaActual = cartasRutaActual[cartaRutaSeleccionada];
+
+  const abrirTemaRuta = (indice: number) => {
+    setParteRutaSeleccionada(indice);
+    setCartaRutaSeleccionada(0);
+    setTemaRutaAbierto(indice);
+    inicioLecturaTemaRef.current = Date.now();
+    sesionTemaRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    partesExplicadasRef.current = new Map();
+  };
+
+  const completarTemaRuta = async () => {
+    if (!tema || !parteRutaActual || !sesionTemaRef.current) return false;
+    const sesionId = sesionTemaRef.current;
+    if (sesionesTemaRegistradasRef.current.has(sesionId)) return true;
+    const payload = {
+      contentId: tema.id,
+      materialId: tema.id,
+      temaRutaId: `${tema.id}:tema:${parteRutaActual.numero}`,
+      numeroTema: parteRutaActual.numero,
+      tituloTema: parteRutaActual.titulo,
+      sesionId,
+      partesExplicadas: expandirFrecuenciasExplicacion(partesExplicadasRef.current),
+      tiempoLecturaMs: Math.max(0, Date.now() - inicioLecturaTemaRef.current),
+      titulo: parteRutaActual.titulo,
+      materiaNombre,
+      formato: 'CARTAS_EXPLICATIVAS' as const,
+      completo: true,
+      cartaActual: cartasRutaActual.length,
+      totalCartas: cartasRutaActual.length,
+    };
+    try {
+      const resultado = await gamificacionApi.registrarProgresoEstudio(payload);
+      sesionesTemaRegistradasRef.current.add(sesionId);
+      marcarTemaCompletado(parteRutaActual.numero, 5);
+      void aprendizajeApi.registrarProgresoTema(tema.id, payload).catch((error) => {
+        console.warn('No se pudo indexar la sesión del tema en RAG:', error);
+      });
+      if (resultado.bonoDesafios > 0) Alert.alert('¡Desafíos completados!', `Ganaste ${resultado.bonoDesafios} puntos de bono.`);
+      return true;
+    } catch {
+      Alert.alert('No se guardó el progreso', 'No se pudo registrar el tema completado. Vuelve a intentarlo.');
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    if (!rutaIniciada || temaRutaAbierto === null || !tema || !parteRutaActual || !cartasRutaActual.length || !sesionTemaRef.current) return;
+    void gamificacionApi.registrarProgresoEstudio({
+      contentId: tema.id,
+      materialId: tema.id,
+      temaRutaId: `${tema.id}:tema:${parteRutaActual.numero}`,
+      numeroTema: parteRutaActual.numero,
+      tituloTema: parteRutaActual.titulo,
+      sesionId: sesionTemaRef.current,
+      partesExplicadas: expandirFrecuenciasExplicacion(partesExplicadasRef.current),
+      tiempoLecturaMs: Math.max(0, Date.now() - inicioLecturaTemaRef.current),
+      titulo: parteRutaActual.titulo,
+      materiaNombre,
+      formato: 'CARTAS_EXPLICATIVAS',
+      completo: false,
+      cartaActual: cartaRutaSeleccionada + 1,
+      totalCartas: cartasRutaActual.length,
+    }).catch(() => undefined);
+  }, [rutaIniciada, temaRutaAbierto, tema?.id, parteRutaSeleccionada, cartaRutaSeleccionada, cartasRutaActual.length, parteRutaActual?.numero]);
   const responderSeleccion = (activity: ActividadAprendizaje, answer: string) => {
     setRespuestas((previous) => ({ ...previous, [activity.activity_id]: answer }));
     setOpcionSeleccionada(answer);
   };
 
   const seleccionarConcepto = (left: string) => {
-    setParejaSeleccionada(left);
+    setParejaSeleccionada(parejaSeleccionada === left ? null : left);
   };
 
-  const asignarConcepto = async (right: string) => {
-    if (!parejaSeleccionada || !tema || !reto || !actividadActual || actividadActual.tipo !== 'CONECTAR_FRASES') return;
-    try {
-      const resultado = await aprendizajeApi.validarEmparejamiento(tema.id, reto.quiz_id, actividadActual.activity_id, parejaSeleccionada, right);
-      setParejas((previous) => ({ ...previous, [parejaSeleccionada]: right }));
-      setResultadoParejas((previous) => ({ ...previous, [parejaSeleccionada]: { correct: resultado.correct, expected: resultado.expected, explanation: resultado.feedback?.explanation } }));
-    } catch (error) {
-      const detalle = error instanceof ApiClientError ? error.message : 'No se pudo validar esta relacion. Intenta de nuevo.';
-      Alert.alert('No se pudo validar la conexion', detalle);
-      return;
-    }
+  const conectarConcepto = (right: string) => {
+    if (!parejaSeleccionada || !actividadActual || actividadActual.tipo !== 'CONECTAR_FRASES') return;
+    setConexiones((previous) => {
+      const siguiente = { ...previous };
+      for (const [left, valor] of Object.entries(siguiente)) {
+        if (valor === right) delete siguiente[left];
+      }
+      siguiente[parejaSeleccionada] = right;
+      return siguiente;
+    });
     setParejaSeleccionada(null);
+  };
+
+  const quitarConexion = (left: string) => {
+    setConexiones((previous) => {
+      const siguiente = { ...previous };
+      delete siguiente[left];
+      return siguiente;
+    });
   };
 
   const respuestaActual = actividadActual ? (respuestas[actividadActual.activity_id] ?? '') : '';
   const puedeContinuar = !actividadActual ? false : actividadActual.tipo === 'CONECTAR_FRASES'
-    ? Object.keys(parejas).length === (actividadActual.left_items?.length ?? 0)
+    ? Object.keys(conexiones).length === (actividadActual.left_items?.length ?? 0)
     : actividadActual.tipo === 'DRAG_AND_DROP'
     ? respuestaActual.split(';').filter(Boolean).length === (actividadActual.items?.length ?? 0)
     : Boolean(respuestaActual || textoLibre.trim());
@@ -536,25 +730,15 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const avanzarReto = async () => {
     if (!actividadActual || !reto) return;
     const respuestaActualPregunta = actividadActual.tipo === 'COMPLETAR' ? (respuestaActual || textoLibre.trim()) : '';
-    if (actividadActual.tipo === 'CONECTAR_FRASES') {
-      const answer = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
-      setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: answer }));
-    }
     if (posicion + 1 < totalActividades) {
       const respuestaParaComprobar = actividadActual.tipo === 'CONECTAR_FRASES'
-        ? Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';')
+        ? JSON.stringify(conexiones)
         : actividadActual.tipo === 'COMPLETAR' ? respuestaActualPregunta : respuestaActual;
       setRespuestas((previous) => ({ ...previous, [actividadActual.activity_id]: respuestaParaComprobar }));
-      try {
-        const comprobacion = await aprendizajeApi.comprobarActividad(tema!.id, reto.quiz_id, actividadActual.activity_id, respuestaParaComprobar);
-        if (comprobacion.correct) setPuntosEnReto((actual) => actual + 1);
-      } catch {
-        Alert.alert('No se pudo comprobar la respuesta', 'Puedes continuar; se revisará al terminar el reto.');
-      }
       setPosicion((previous) => previous + 1);
       setOpcionSeleccionada(null);
       setTextoLibre('');
-      setParejas({});
+      setConexiones({});
       setResultadoParejas({});
       setParejaSeleccionada(null);
       return;
@@ -562,7 +746,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
 
     const respuestasFinales = { ...respuestas };
     if (actividadActual.tipo === 'CONECTAR_FRASES') {
-      respuestasFinales[actividadActual.activity_id] = Object.entries(parejas).map(([left, right]) => `${left} => ${right}`).join(';');
+      respuestasFinales[actividadActual.activity_id] = JSON.stringify(conexiones);
     }
     if (actividadActual.tipo === 'COMPLETAR') respuestasFinales[actividadActual.activity_id] = respuestaActualPregunta || respuestasFinales[actividadActual.activity_id];
     const answers = reto.activities.map((activity) => ({ activity_id: activity.activity_id, response: respuestasFinales[activity.activity_id] || '' }));
@@ -572,9 +756,24 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     }
     setRetoSubmitting(true);
     try {
-      const resultado = await aprendizajeApi.completarReto(tema!.id, reto.quiz_id, answers, Date.now() - inicioRetoRef.current);
-      const puntos = resultado.correct;
-      setPuntosEnReto(puntos);
+      const tiempoTotalMs = Date.now() - inicioRetoRef.current;
+      const evidenciaAnteriorPromise = gamificacionApi.getEvidenciaAprendizaje().catch(() => null);
+      const resultado = await aprendizajeApi.completarReto(tema!.id, reto.quiz_id, answers, tiempoTotalMs, temaRutaAbierto !== null && parteRutaActual ? {
+        topic_id: `${tema!.id}:tema:${parteRutaActual.numero}`,
+        topic_number: parteRutaActual.numero,
+        topic_title: parteRutaActual.titulo,
+      } : undefined);
+      const evidenciaAnterior = await Promise.race([
+        evidenciaAnteriorPromise,
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]);
+      const porcentajeAcierto = resultado.total > 0 ? resultado.correct / resultado.total : 0;
+      const feedbackComparativo = porcentajeAcierto >= 0.8
+        ? crearFeedbackComparativo({ correctas: resultado.correct, total: resultado.total, tiempoTotalMs, answers: resultado.answers, materialId: tema!.id, temaRutaId: temaRutaAbierto !== null && parteRutaActual ? `${tema!.id}:tema:${parteRutaActual.numero}` : undefined, evidencia: evidenciaAnterior })
+        : resultado.learning_feedback;
+      let puntosGanados = 0;
+      let bonusSpeedrun = 0;
+      let speedrun = false;
       try {
         const preguntas: PreguntaActividad[] = reto.activities.map((activity, index) => ({
           id: activity.activity_id,
@@ -590,8 +789,8 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           preguntaId: answer.activity_id,
           respuesta: answers[index]?.response ?? '',
           correcta: answer.correct,
-          tiempoMs: Math.round((Date.now() - inicioRetoRef.current) / Math.max(1, totalActividades)),
-          feedback: resultado.learning_feedback?.feedback,
+          tiempoMs: Math.round(tiempoTotalMs / Math.max(1, totalActividades)),
+          feedback: answer.feedback ? JSON.stringify(answer.feedback) : feedbackComparativo?.feedback,
         }));
         const reward = await gamificacionApi.completarActividad({
           estudianteId: user?.estudianteId || user?.id || '',
@@ -603,20 +802,28 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           titulo: `Reto: ${contenido?.title || tema?.titulo || materiaNombre}`,
           preguntas,
           respuestas: respuestasGamificacion,
-          tiempoTotalMs: Date.now() - inicioRetoRef.current,
+          tiempoTotalMs,
           fechaInicio: new Date(inicioRetoRef.current).toISOString(),
           fechaFin: new Date().toISOString(),
+          contexto: {
+            materialId: tema!.id,
+            temaRutaId: temaRutaAbierto !== null && parteRutaActual ? `${tema!.id}:tema:${parteRutaActual.numero}` : undefined,
+            numeroTema: temaRutaAbierto !== null ? parteRutaActual?.numero : undefined,
+            tituloTema: temaRutaAbierto !== null ? parteRutaActual?.titulo : undefined,
+          },
         });
-        void reward;
+        puntosGanados = reward.puntosGanados;
+        bonusSpeedrun = reward.bonusSpeedrun ?? 0;
+        speedrun = reward.speedrun ?? false;
       } catch (error) {
         console.error('No se pudo registrar puntos de gamificacion:', error);
       }
-      setResultadoReto({ puntos, correctas: resultado.correct, total: resultado.total, answers: resultado.answers, feedback: resultado.learning_feedback });
+      setResultadoReto({ puntosGanados, bonusSpeedrun, speedrun, tiempoTotalMs, correctas: resultado.correct, total: resultado.total, answers: resultado.answers, feedback: feedbackComparativo });
       if (parteRutaActual) {
-        marcarTemaCompletado(parteRutaActual.numero, puntos * 5);
+        marcarTemaCompletado(parteRutaActual.numero, puntosGanados);
       }
-      // feedback -> Mistral llega en segundo plano, no bloquea la pantalla de resultados
-      if (resultado.learning_feedback?.pending) {
+      // feedback -> siempre obtener la retroalimentacion del LLM con pantalla de carga destacada
+      if (porcentajeAcierto < 0.8) {
         void esperarRetroalimentacion(tema!.id, reto.quiz_id, (retroalimentacion) => {
           if (!feedbackVivoRef.current) return;
           setResultadoReto((previo) => (previo ? { ...previo, feedback: retroalimentacion } : previo));
@@ -786,7 +993,92 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
       );
     }
 
-    if (activity.tipo === 'CONECTAR_FRASES') return <View className="gap-3"><Text className="text-xs text-gray-500">Toca un concepto y luego su pareja. Cada conexion se valida al instante.</Text><View className="flex-row gap-2"><View className="flex-1 gap-2">{activity.left_items?.map((left) => <TouchableOpacity key={left} onPress={() => seleccionarConcepto(left)} className={`p-3 rounded-xl ${parejaSeleccionada === left ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={parejaSeleccionada === left ? 'text-white text-xs font-bold' : 'text-gray-800 text-xs font-semibold'}>{left}</Text></TouchableOpacity>)}</View><View className="flex-1 gap-2">{activity.right_items?.map((right) => <TouchableOpacity key={right} onPress={() => void asignarConcepto(right)} className="p-3 rounded-xl bg-sky-50"><Text className="text-sky-900 text-xs font-semibold">{right}</Text></TouchableOpacity>)}</View></View>{Object.entries(parejas).map(([left, right]) => { const evaluacion = resultadoParejas[left]; return <View key={left} className={`rounded-xl p-3 ${evaluacion?.correct ? 'bg-emerald-50' : 'bg-rose-50'}`}><Text className="text-xs font-semibold text-gray-800">{left} → {right}</Text><Text className={`text-xs font-bold mt-1 ${evaluacion?.correct ? 'text-emerald-800' : 'text-rose-800'}`}>{evaluacion?.correct ? 'Relacion correcta' : `Vuelve a intentarlo. Relacion correcta: ${evaluacion?.expected || ''}`}</Text>{evaluacion?.explanation ? <Text className="text-xs text-gray-700 mt-1">{evaluacion.explanation}</Text> : null}</View>; })}</View>;
+    if (activity.tipo === 'CONECTAR_FRASES') {
+      const izquierda = activity.left_items || [];
+      const derecha = activity.right_items || [];
+      const conectadoIzq = Object.keys(conexiones);
+      const conectadoDer = Object.values(conexiones);
+      return (
+        <View className="gap-3">
+          <Text className="text-xs text-gray-500">
+            Toca un concepto a la izquierda y luego su pareja a la derecha para unirlos con una flecha.
+          </Text>
+          <View className="flex-row gap-2">
+            <View className="flex-1 gap-2">
+              {izquierda.map((left) => {
+                const conectado = conexiones[left];
+                const seleccionado = parejaSeleccionada === left;
+                return (
+                  <TouchableOpacity
+                    key={left}
+                    onPress={() => seleccionarConcepto(left)}
+                    className={`p-3 rounded-xl text-center border-2 ${
+                      seleccionado
+                        ? 'bg-maroon border-maroon'
+                        : conectado
+                        ? 'bg-indigo-50 border-indigo-200'
+                        : 'bg-gray-100 border-transparent'
+                    }`}
+                  >
+                    <Text className={`text-xs font-semibold ${seleccionado ? 'text-white' : conectado ? 'text-indigo-900' : 'text-gray-800'}`}>
+                      {seleccionado ? '⬤ ' : ''}{left}{conectado ? ' ✓' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View className="flex-1 gap-2">
+              {derecha.map((right) => {
+                const conectado = conectadoDer.includes(right);
+                return (
+                  <TouchableOpacity
+                    key={right}
+                    onPress={() => (parejaSeleccionada ? conectarConcepto(right) : null)}
+                    disabled={!parejaSeleccionada}
+                    className={`p-3 rounded-xl text-center border-2 ${
+                      conectado
+                        ? 'bg-indigo-50 border-indigo-200'
+                        : parejaSeleccionada
+                        ? 'bg-indigo-100 border-indigo-300'
+                        : 'bg-gray-100 border-transparent'
+                    }`}
+                  >
+                    <Text className={`text-xs font-semibold ${conectado ? 'text-indigo-900' : parejaSeleccionada ? 'text-indigo-800' : 'text-gray-700'}`}>
+                      {right}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+          {conectadoIzq.length > 0 ? (
+            <View className="mt-2 gap-1">
+              <Text className="text-[10px] font-black uppercase text-indigo-900">Conexiones hechas</Text>
+              {conectadoIzq.map((left) => {
+                const right = conexiones[left];
+                return (
+                  <View
+                    key={left}
+                    className="flex-row items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 p-2"
+                  >
+                    <Text className="text-xs font-semibold text-indigo-900">
+                      {left} <Text className="text-indigo-500">→</Text> {right}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => quitarConexion(left)}
+                      className="p-1"
+                      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                    >
+                      <Ionicons name="close" size={14} color="#6B7280" />
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+        </View>
+      );
+    }
 
     // COMPLETAR -> seleccion grafica con opciones en fichas y hueco visual interactivo
     const pregunta = activity.question || '';
@@ -934,10 +1226,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 key={`${parte.numero}-${parte.titulo}-${index}`}
                 activeOpacity={0.85}
                 onPress={() => {
-                  setParteRutaSeleccionada(index);
-                  setCartaRutaSeleccionada(0);
-                  setTemaRutaAbierto(index);
-                  avanzarProgresoTema(parte.numero, 20);
+                  abrirTemaRuta(index);
                 }}
                 className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
               >
@@ -954,9 +1243,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   progreso={progresoDeTema(parte.numero).porcentaje}
                   completado={progresoDeTema(parte.numero).completado}
                   puntosAlCompletar={progresoDeTema(parte.numero).puntos}
-                  onCompletado={() => marcarTemaCompletado(parte.numero, progresoDeTema(parte.numero).puntos)}
                   color="#2563EB"
                 />
+                {progresoDeTema(parte.numero).completado ? (
+                  <View className="mt-2 self-start flex-row items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1">
+                    <Ionicons name="ribbon" size={13} color="#047857" />
+                    <Text className="text-[10px] font-black text-emerald-800">Tema completado</Text>
+                  </View>
+                ) : null}
                 <View className="mt-3 flex-row flex-wrap gap-1.5">
                   {parte.conceptos.slice(0, 3).map((concepto, cIdx) => (
                     <View key={`${concepto}-${cIdx}`} className="rounded-md bg-slate-100 px-2 py-0.5">
@@ -971,9 +1265,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               </TouchableOpacity>
             ))}
 
-            <TouchableOpacity onPress={() => setRutaIniciada(false)} className="rounded-xl border border-gray-300 bg-white p-3">
-              <Text className="text-center text-xs font-bold text-gray-700">← Volver a lectura del documento</Text>
-            </TouchableOpacity>
           </View>
         )}
 
@@ -1014,25 +1305,52 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 </View>
                 <Text className="text-xl font-black text-gray-900">{cartaRutaActual.titulo}</Text>
                 <Text className="text-sm leading-6 text-gray-800">{cartaRutaActual.explicacion}</Text>
+                <View className="mt-1">
+                  <MarkdownContent texto={cartaRutaActual.explicacion} />
+                </View>
                 {cartaRutaActual.indagacion ? (
-                  <View className="mt-1 rounded-xl border border-violet-100 bg-violet-50 p-3">
+                  <View className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <Text className="text-[10px] font-black uppercase text-violet-800">Pregunta de indagación</Text>
                     <Text className="mt-1 text-sm font-semibold text-violet-950">{cartaRutaActual.indagacion}</Text>
+                    <View className="mt-1">
+                      <MarkdownContent texto={cartaRutaActual.indagacion} />
+                    </View>
                   </View>
                 ) : null}
 
-                {!cartaRutaActual.esEsquema ? (
+                {cartaRutaActual.esEsquema ? (
+                  <View className="mt-3 gap-2">
+                    {cartaRutaActual.svg ? (
+                      <View className="rounded-xl bg-white p-3 border border-amber-200">
+                        <MarkdownContent texto={cartaRutaActual.svg} />
+                      </View>
+                    ) : null}
+                    {parteRutaActual.carta_6_esquema?.nodes?.length ? (
+                      <View className="gap-2">
+                        {parteRutaActual.carta_6_esquema.nodes.map((nodo, nIdx) => (
+                          <View key={`${nodo.id || nIdx}`} className="rounded-xl border border-amber-200 bg-white p-3">
+                            <Text className="text-xs font-black text-amber-900">{nodo.label}</Text>
+                            {nodo.detail ? (
+                              <View className="mt-1">
+                                <MarkdownContent texto={nodo.detail} />
+                              </View>
+                            ) : null}
+                            {nodo.mini_example ? (
+                              <View className="mt-2 rounded-lg bg-amber-50 p-2">
+                                <Text className="text-[10px] font-bold text-amber-800 uppercase mb-1">Ejemplo:</Text>
+                                <MarkdownContent texto={nodo.mini_example} />
+                              </View>
+                            ) : null}
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </View>
+                ) : (
                   <View className="mt-2">
                     <EjemploCanvas ejemplos={[cartaRutaActual.ejemplo]} etiqueta="Ejercicio / Ejemplo resuelto" />
                   </View>
-                ) : null}
-
-                {cartaRutaActual.esEsquema && cartaRutaActual.svg ? (
-                  <View className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2">
-                    <Text className="text-[10px] font-black uppercase text-slate-500 mb-1 px-1">Mapa de conexiones</Text>
-                    <SvgXml xml={cartaRutaActual.svg} width="100%" height={260} />
-                  </View>
-                ) : null}
+                )}
 
                 <TouchableOpacity
                   disabled={Boolean(explicacionLoading)}
@@ -1071,25 +1389,8 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   <Text className="text-base font-black text-emerald-950">¡Completaste todas las cartas del material!</Text>
                 </View>
                 <Text className="text-xs text-emerald-800 leading-5">Has terminado el último tema. Pon a prueba tu comprensión con los ejercicios finales.</Text>
-                {parteRutaActual && !progresoDeTema(parteRutaActual.numero).completado && (
-                  <TouchableOpacity
-                    onPress={() => {
-                      marcarTemaCompletado(parteRutaActual.numero, 5);
-                    }}
-                    className="mt-2 self-start rounded-xl bg-emerald-100 px-3 py-1"
-                  >
-                    <Text className="text-xs font-bold text-emerald-800">Marcar tema como completado</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  disabled={retoLoading}
-                  onPress={() => void iniciarReto(String(parteRutaActual.numero))}
-                  className="rounded-xl bg-[#801F3F] p-3.5 shadow-sm"
-                >
-                  <Text className="text-center text-sm font-black text-white">🎯 Empezar ejercicios finales</Text>
-                </TouchableOpacity>
 
-                {/* Preguntas de inquiry-based learning para el último tema */}
+                {/* Preguntas de inquiry-based learning (POR ENCIMA del botón de actividades) */}
                 {parteRutaActual?.preguntas_indagacion?.length && (
                   <View className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
                     <View className="flex-row items-center gap-2 mb-2">
@@ -1102,7 +1403,10 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                       {parteRutaActual.preguntas_indagacion.map((preg, pIdx) => (
                         <TouchableOpacity
                           key={`indagacion-final-${pIdx}`}
-                          onPress={() => void consultarIndagacionLLM(preg, tema!.id)}
+                          onPress={() => {
+                            setIndagacionCargando(true);
+                            void consultarIndagacionLLM(preg, tema!.id);
+                          }}
                           className={`p-3 rounded-xl border flex-row items-center justify-between gap-2 ${
                             preguntaIndagacionActiva === preg
                               ? 'bg-violet-100 border-violet-300'
@@ -1114,11 +1418,15 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                               {preg}
                             </Text>
                           </View>
-                          <Ionicons
-                            name={preguntaIndagacionActiva === preg ? 'chevron-up' : 'chevron-down-outline'}
-                            size={14}
-                            color="#7C3AED"
-                          />
+                          {indagacionCargando && preguntaIndagacionActiva === preg ? (
+                            <ActivityIndicator size={14} color="#7C3AED" />
+                          ) : (
+                            <Ionicons
+                              name={preguntaIndagacionActiva === preg ? 'chevron-up' : 'chevron-down-outline'}
+                              size={14}
+                              color="#7C3AED"
+                            />
+                          )}
                         </TouchableOpacity>
                       ))}
                     </View>
@@ -1145,21 +1453,27 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     )}
                   </View>
                 )}
+
+                <TouchableOpacity
+                  disabled={retoLoading}
+                  onPress={() => void completarTemaRuta().then((guardado) => { if (guardado) void iniciarReto(String(parteRutaActual.numero)); })}
+                  className="rounded-xl bg-[#801F3F] p-3.5 shadow-sm"
+                >
+                  <Text className="text-center text-sm font-black text-white">🎯 Empezar ejercicios finales</Text>
+                </TouchableOpacity>
               </BentoCard>
             ) : null}
 
-            {/* Botón siguiente tema (solo si no es el último) */}
-            {parteRutaSeleccionada + 1 < partesRuta.length ? (
+            {/* Botón siguiente tema (al final de CADA tema, excepto el último) */}
+            {parteRutaSeleccionada + 1 < partesRuta.length && cartaRutaSeleccionada + 1 === cartasRutaActual.length ? (
               <TouchableOpacity
                 onPress={() => {
                   const siguiente = parteRutaSeleccionada + 1;
-                  setParteRutaSeleccionada(siguiente);
-                  setCartaRutaSeleccionada(0);
-                  setTemaRutaAbierto(siguiente);
+                  void completarTemaRuta().then((guardado) => { if (guardado) abrirTemaRuta(siguiente); });
                 }}
-                className="rounded-xl bg-white border border-emerald-300 p-3"
+                className="rounded-xl bg-[#801F3F] p-3 shadow-sm"
               >
-                <Text className="text-center text-xs font-bold text-emerald-900">Siguiente tema: {partesRuta[parteRutaSeleccionada + 1].titulo} →</Text>
+                <Text className="text-center text-xs font-bold text-white">Siguiente tema →</Text>
               </TouchableOpacity>
             ) : null}
 
@@ -1169,13 +1483,246 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           </View>
         )}
       </>}
-      {pantallaResumen && resumen && !reto && <><View className="flex-row items-center justify-between"><Text className="text-xl font-black text-gray-900">{(resumen.data as any)?.title || (resumen as any)?.title || 'Tu resumen'}</Text><StatusBadge label={(resumen.formato || 'ESQUEMA_GEMMA').replaceAll('_', ' ')} variant="brand"/></View><ResumenInteractivo key={`${resumen.content_id}-${resumen.formato}`} formato={(resumen.formato === 'CARTAS_EXPLICATIVAS' ? 'CARTAS_EXPLICATIVAS' : 'ESQUEMA_GEMMA') as FormatoResumen} data={(resumen.data || resumen) as any} explicacion={explicacion && seccionExplicada ? explicacion : null} explicacionLoading={Boolean(explicacionLoading)} onExplain={(section) => void explicarMejor(section, 'paso_a_paso')} onCompleteStudy={(formato) => { void gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: (resumen.data as any)?.title || tema.titulo, materiaNombre, formato, completo: true }).then((resultado) => { if (resultado.bonoDesafios > 0) Alert.alert('¡Desafíos completados!', `Ganaste ${resultado.bonoDesafios} puntos de bono.`); }).catch(() => Alert.alert('No se registró el logro', 'Comprueba tu conexión e inténtalo de nuevo.')); }} onAlternateSummary={(formato) => void generarResumen(formato)} onStartActivity={() => void iniciarReto()}/></>}
-      {reto && !resultadoReto && actividadActual && <View className="gap-4"><View className="flex-row items-center justify-between"><StatusBadge label={`RETO ${posicion + 1} / ${totalActividades}`} variant="brand"/><Text className="text-xs font-bold text-amber-700">⭐ Puntos: {puntosEnReto}</Text></View><BentoCard className="p-4 bg-indigo-50"><Text className="text-xs font-bold text-indigo-700">{actividadActual.tipo === 'SELECCION_MULTIPLE' ? 'SELECCIÓN MÚLTIPLE' : actividadActual.tipo === 'COMPLETAR' ? 'COMPLETA LA RESPUESTA' : actividadActual.tipo.replaceAll('_', ' ')}</Text>{actividadActual.learning_objective ? <Text className="mt-1 text-xs text-indigo-900">Concepto: {actividadActual.learning_objective}</Text> : null}</BentoCard>{actividadActual.exercise_svg ? <BentoCard className="bg-white p-2"><SvgXml xml={actividadActual.exercise_svg} width="100%" height={210}/></BentoCard> : null}<BentoCard className="p-4 bg-indigo-50"><Text className="text-lg font-black text-gray-900">{activityPrompt(actividadActual)}</Text></BentoCard>{renderReto(actividadActual)}<TouchableOpacity disabled={!puedeContinuar || retoSubmitting} onPress={() => void avanzarReto()} className="bg-maroon disabled:opacity-40 rounded-2xl p-4"><Text className="text-center text-white font-black">{retoSubmitting ? 'Analizando respuestas…' : posicion + 1 === totalActividades ? 'Terminar y ver mis puntos' : 'Continuar'}</Text></TouchableOpacity>{retoSubmitting ? <View className="items-center gap-2"><ActivityIndicator color="#801529"/><Text className="text-center text-xs text-gray-600">Estamos preparando tu retroalimentación para que puedas mejorar.</Text></View> : null}</View>}
-      {resultadoReto && <View className="gap-3"><BentoCard className="p-6 items-center bg-amber-50"><Ionicons name="trophy" size={48} color="#D97706"/><Text className="text-2xl font-black text-gray-900 mt-3">Reto completado</Text><Text className="text-base text-gray-700 mt-2">{resultadoReto.correctas} de {resultadoReto.total} correctas</Text><Text className="text-3xl font-black text-maroon mt-2">{resultadoReto.puntos} puntos ganados</Text></BentoCard>{resultadoReto.feedback ? <BentoCard className="gap-2 border border-violet-200 bg-violet-50 p-4"><Text className="font-bold text-violet-950">{resultadoReto.feedback.pending ? 'Analizando tu avance…' : 'Tu retroalimentación'}</Text><Text className="text-sm leading-6 text-violet-900">{resultadoReto.feedback.feedback}</Text><Text className="text-sm font-semibold text-violet-950">Cómo mejorar: {resultadoReto.feedback.next_step}</Text></BentoCard> : null}{resultadoReto.answers.map((answer, index) => { const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id); const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'COMPLETAR' }); const feedback = answer.feedback; const duda = !answer.correct; return <BentoCard key={answer.activity_id} className={`p-4 ${duda ? 'bg-rose-50' : 'bg-emerald-50'}`}><Text className="text-xs font-bold">{duda ? 'A REFORZAR' : 'DOMINADO'} · {answer.tipo.replaceAll('_', ' ')}</Text><Text className="text-sm font-bold text-gray-900 mt-1">{index + 1}. {titulo}</Text><Text className="text-sm text-gray-700 mt-2">{feedback?.where_failed || (duda ? 'Tu respuesta no coincide con la información del material.' : 'Aplicaste correctamente el concepto.')}</Text>{duda ? <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => void explicarMejor({ title: answer.concept || titulo, explanation: feedback?.explanation || answer.concept || titulo, example: feedback?.correct_answer }, 'paso_a_paso')} className="mt-3 self-start rounded-xl bg-white border border-rose-200 px-3 py-2"><Text className="text-xs font-bold text-rose-900">Explicar esta duda</Text></TouchableOpacity> : null}</BentoCard>; })}<TouchableOpacity disabled={retoLoading} onPress={() => void iniciarReto(seccionRetoActual)} className="rounded-xl bg-[#801F3F] px-6 py-3"><Text className="text-center font-bold text-white">Repetir reto para mejorar</Text></TouchableOpacity><TouchableOpacity onPress={() => setTema(null)} className="bg-maroon rounded-xl px-6 py-3"><Text className="text-center text-white font-bold">Volver a temas</Text></TouchableOpacity></View>}
+      {pantallaResumen && resumen && !reto && <><View className="flex-row items-center justify-between"><Text className="text-xl font-black text-gray-900">{(resumen.data as any)?.title || (resumen as any)?.title || 'Tu resumen'}</Text><StatusBadge label={(resumen.formato || 'ESQUEMA_GEMMA').replaceAll('_', ' ')} variant="brand"/></View><ResumenInteractivo key={`${resumen.content_id}-${resumen.formato}`} formato={(resumen.formato === 'CARTAS_EXPLICATIVAS' ? 'CARTAS_EXPLICATIVAS' : 'ESQUEMA_GEMMA') as FormatoResumen} data={(resumen.data || resumen) as any} explicacion={explicacion && seccionExplicada ? explicacion : null} explicacionLoading={Boolean(explicacionLoading)} onExplain={(section) => void explicarMejor(section, 'paso_a_paso')} onCompleteStudy={(formato, progreso) => { void gamificacionApi.registrarProgresoEstudio({ contentId: tema.id, titulo: (resumen.data as any)?.title || tema.titulo, materiaNombre, formato, completo: progreso?.completo ?? true, cartaActual: progreso?.cartaActual, totalCartas: progreso?.totalCartas, sesionId: sesionResumenRef.current, partesExplicadas: expandirFrecuenciasExplicacion(partesExplicadasMaterialRef.current), tiempoLecturaMs: Math.max(0, Date.now() - inicioLecturaMaterialRef.current) }).then((resultado) => { if (resultado.bonoDesafios > 0) Alert.alert('¡Desafíos completados!', `Ganaste ${resultado.bonoDesafios} puntos de bono.`); }).catch(() => Alert.alert('No se registró el avance', 'Comprueba tu conexión e inténtalo de nuevo.')); }} onAlternateSummary={(formato) => void generarResumen(formato)} onStartActivity={() => void iniciarReto()}/></>}
+      {reto && !resultadoReto && actividadActual && (
+        <View className="gap-4">
+          <View className="flex-row items-center justify-between">
+            <StatusBadge label={`RETO ${posicion + 1} / ${totalActividades}`} variant="brand"/>
+          </View>
+          <BentoCard className="p-4 bg-indigo-50">
+            <Text className="text-xs font-bold text-indigo-700">
+              {actividadActual.tipo === 'SELECCION_MULTIPLE' ? 'SELECCIÓN MÚLTIPLE' : actividadActual.tipo === 'COMPLETAR' ? 'COMPLETA LA RESPUESTA' : actividadActual.tipo.replaceAll('_', ' ')}
+            </Text>
+            {actividadActual.learning_objective ? (
+              <Text className="mt-1 text-xs text-indigo-900">Concepto: {actividadActual.learning_objective}</Text>
+            ) : null}
+          </BentoCard>
+          <BentoCard className="p-4 bg-indigo-50">
+            <MarkdownContent texto={activityPrompt(actividadActual)} baseFontSize={16} textColor="#111827" />
+          </BentoCard>
+          {renderReto(actividadActual)}
+          <TouchableOpacity disabled={!puedeContinuar || retoSubmitting} onPress={() => void avanzarReto()} className="bg-maroon disabled:opacity-40 rounded-2xl p-4">
+            <Text className="text-center text-white font-black">{retoSubmitting ? 'Analizando respuestas…' : posicion + 1 === totalActividades ? 'Terminar y ver mis puntos' : 'Continuar'}</Text>
+          </TouchableOpacity>
+          {retoSubmitting ? (
+            <View className="items-center gap-2">
+              <ActivityIndicator color="#801529"/>
+              <Text className="text-center text-xs text-gray-600">Estamos preparando tu retroalimentación para que puedas mejorar.</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+      {resultadoReto && (
+        <View className="gap-4">
+          <BentoCard className={`items-center gap-2 border-2 p-5 ${resultadoReto.total > 0 && resultadoReto.correctas === resultadoReto.total ? 'border-amber-300 bg-amber-50' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total > 0.7 ? 'border-slate-300 bg-slate-50' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total < 0.5 ? 'border-amber-700 bg-orange-50' : 'border-gray-200 bg-white'}`}>
+            <Ionicons name={resultadoReto.total > 0 && resultadoReto.correctas === resultadoReto.total ? 'trophy' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total > 0.7 ? 'medal' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total < 0.5 ? 'medal-outline' : 'ribbon-outline'} size={38} color={resultadoReto.total > 0 && resultadoReto.correctas === resultadoReto.total ? '#D97706' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total > 0.7 ? '#64748B' : '#B45309'} />
+            <Text className="text-lg font-black text-gray-900">{resultadoReto.total > 0 && resultadoReto.correctas === resultadoReto.total ? 'Copa de oro' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total > 0.7 ? 'Copa de plata' : resultadoReto.total > 0 && resultadoReto.correctas / resultadoReto.total < 0.5 ? 'Copa de bronce' : 'Actividad completada'}</Text>
+            <Text className="text-sm text-gray-700">Aciertos: {resultadoReto.correctas}/{resultadoReto.total} · {resultadoReto.total ? Math.round(resultadoReto.correctas / resultadoReto.total * 100) : 0}%</Text>
+            <Text className="font-bold text-[#801F3F]">Puntos obtenidos: {resultadoReto.puntosGanados}</Text>
+            <Text className="text-sm text-gray-700">Tiempo total: {formatearDuracion(resultadoReto.tiempoTotalMs)}</Text>
+            {resultadoReto.speedrun ? <Text className="text-sm font-black text-amber-700">🏆 Logro Speedrun: +{resultadoReto.bonusSpeedrun} puntos{resultadoReto.bonusSpeedrun < 2 ? ' (límite diario aplicado)' : ''}</Text> : null}
+          </BentoCard>
+          {/* 1. RETROALIMENTACION DEL PROFESOR (LLM) */}
+          <BentoCard className="p-5 rounded-2xl border-2 border-maroon bg-maroon/5">
+            <View className="flex-row items-center gap-2 mb-2">
+              <Ionicons name="chatbubbles-outline" size={20} color="#801529" />
+              <Text className="text-base font-black text-maroon uppercase tracking-wider">Retroalimentaci&oacute;n del profesor</Text>
+            </View>
+            {feedbackCargando ? (
+              <View className="items-center gap-3">
+                <ActivityIndicator color="#801529" size="large" />
+                <Text className="text-center text-sm text-gray-600">El profesor est&aacute; analizando tus respuestas, espera un momento…</Text>
+              </View>
+            ) : resultadoReto.correctas === resultadoReto.total ? (
+              <View className="items-center gap-3">
+                <Ionicons name="trophy" size={40} color="#16A34A" />
+                <Text className="text-center text-base font-black text-emerald-900">¡Lo hiciste perfecto!</Text>
+                <Text className="text-center text-[10px] text-gray-600">Dominaste todas las preguntas del tema.</Text>
+                {resultadoReto.feedback?.next_step && (
+                  <View className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    <Text className="text-[10px] font-black text-emerald-900 uppercase tracking-wider mb-1">Siguiente paso</Text>
+                    <Text className="text-xs text-emerald-800 leading-relaxed">{resultadoReto.feedback.next_step}</Text>
+                    <MarkdownContent texto={resultadoReto.feedback.next_step} />
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View className="gap-4">
+                {/* Explicacion general de por que fallo */}
+                <View className="rounded-xl border border-rose-200 bg-rose-50 p-4">
+                  <View className="flex-row items-center gap-2 mb-2">
+                    <Ionicons name="alert-circle" size={18} color="#DC2626" />
+                    <Text className="text-[10px] font-black text-rose-900 uppercase tracking-wider">&iquest;Por qu&eacute; fallaste algunas preguntas?</Text>
+                  </View>
+                  <Text className="text-sm text-rose-900 leading-relaxed">
+                    {resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'}
+                  </Text>
+                  <MarkdownContent texto={resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'} />
+                </View>
+
+                {/* Grafico SVG del LLM si lo hay */}
+                {/* Grafico o diagrama del LLM si lo hay */}
+                {resultadoReto.feedback?.explanation_svg && (
+                  <View className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
+                    <Text className="text-[10px] font-black uppercase text-slate-500 mb-2 px-1">Esquema o gráfico de repaso</Text>
+                    <MarkdownContent texto={resultadoReto.feedback.explanation_svg} />
+                  </View>
+                )}
+
+                {/* Aspectos a mejorar / next_step */}
+                <View className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <View className="flex-row items-center gap-2 mb-2">
+                    <Ionicons name="bulb" size={18} color="#D97706" />
+                    <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Aspectos a mejorar</Text>
+                  </View>
+                  <Text className="text-sm text-amber-900 leading-relaxed">
+                    {resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'}
+                  </Text>
+                  <MarkdownContent texto={resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'} />
+                  {/* Temas para repasar segun conceptos fallados */}
+                  {falladasReto.length > 0 && (
+                    <View className="mt-3 gap-1">
+                      <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Temas que te sugiero repasar:</Text>
+                      {falladasReto.slice(0, 4).map((answer) => (
+                        <View key={answer.activity_id} className="flex-row items-center gap-1.5 rounded-xl bg-white border border-amber-200 p-2">
+                          <Ionicons name="book" size={14} color="#D97706" />
+                          <Text className="text-xs text-amber-800">{answer.concept || 'Concepto del tema'}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              </View>
+            )}
+          </BentoCard>
+
+          {/* 2. Preguntas falladas (en rojo, errores marcados graficamente) */}
+          {falladasReto.length > 0 && (
+            <BentoCard className="border-2 border-rose-500 bg-rose-50 p-4">
+              <View className="flex-row items-center gap-2 mb-3">
+                <Ionicons name="close-circle" size={20} color="#DC2626" />
+                <Text className="text-base font-black text-rose-900 uppercase tracking-wider">Preguntas para reparar ({falladasReto.length})</Text>
+              </View>
+              <View className="gap-2">
+                {falladasReto.map((answer, idx) => {
+                  const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id);
+                  const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'COMPLETAR' });
+                  return (
+                    <View key={answer.activity_id} className="p-3 rounded-xl bg-white border border-rose-200 shadow-sm">
+                      <View className="flex-row items-center gap-2 mb-1">
+                        <View className="w-2 h-2 rounded-full bg-rose-500" />
+                        <Text className="text-xs font-black text-rose-900">{idx + 1}. {titulo}</Text>
+                      </View>
+                      <View className="gap-1 mt-1">
+                        {answer.feedback?.where_failed && (
+                          <View className="rounded-lg bg-rose-50/60 p-2 border border-rose-100">
+                            <Text className="text-[10px] font-bold text-rose-800 mb-0.5">Tu error:</Text>
+                            <MarkdownContent texto={answer.feedback.where_failed} baseFontSize={11} textColor="#9F1239" />
+                          </View>
+                        )}
+                        {answer.feedback?.correct_answer && (
+                          <View className="rounded-lg bg-emerald-50/60 p-2 border border-emerald-100">
+                            <Text className="text-[10px] font-bold text-emerald-800 mb-0.5">Respuesta correcta:</Text>
+                            <MarkdownContent texto={answer.feedback.correct_answer} baseFontSize={11} textColor="#065F46" />
+                          </View>
+                        )}
+                        {answer.feedback?.explanation && (
+                          <View className="rounded-lg bg-gray-50 p-2 border border-gray-100 mt-0.5">
+                            <Text className="text-[10px] font-bold text-gray-700 mb-0.5">Explicación:</Text>
+                            <MarkdownContent texto={answer.feedback.explanation} baseFontSize={11} textColor="#374151" />
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                onPress={() => void explicarMejor({
+                  title: 'Revisión de respuestas incorrectas',
+                  explanation: falladasReto.map((answer, index) => `${index + 1}. ${answer.concept || 'Pregunta'}\n${answer.feedback?.explanation || answer.feedback?.where_failed || 'Revisa la pregunta y compara tu respuesta con la correcta.'}`).join('\n\n'),
+                }, 'paso_a_paso')}
+                className="mt-3 self-start rounded-xl border border-rose-200 bg-rose-50 px-3 py-2"
+              >
+                <Text className="text-xs font-bold text-rose-700">Explicar por qué fallé</Text>
+              </TouchableOpacity>
+            </BentoCard>
+          )}
+
+          {/* 3. Preguntas acertadas (en verde) */}
+          {acertadasReto.length > 0 && (
+            <BentoCard className="border-2 border-emerald-500 bg-emerald-50 p-4">
+              <View className="flex-row items-center gap-2 mb-3">
+                <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
+                <Text className="text-base font-black text-emerald-900 uppercase tracking-wider">Preguntas acertadas ({acertadasReto.length})</Text>
+              </View>
+              <View className="gap-2">
+                {acertadasReto.map((answer, idx) => (
+                  <View key={`correct-${answer.activity_id}`} className="p-3 rounded-xl bg-white border border-emerald-200 flex-row items-center gap-2">
+                    <View className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <View className="flex-1">
+                      <Text className="text-xs font-bold text-emerald-900">{idx + 1}. {answer.concept || 'Pregunta completada'}</Text>
+                      <Text className="text-[10px] text-emerald-700">¡Bien! Dominaste esta parte del tema.</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </BentoCard>
+          )}
+
+          {/* Botones de acción */}
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => void iniciarReto(seccionRetoActual)}
+              className="flex-1 rounded-xl bg-[#801F3F] px-6 py-3 shadow-sm"
+            >
+              <Text className="text-center text-xs font-bold text-white">Repetir prueba</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              disabled
+              onPress={() => setTema(null)}
+              className="flex-1 rounded-xl bg-gray-200 px-6 py-3"
+            >
+              <Text className="text-center text-xs font-bold text-gray-400">Volver a temas</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
     </ScrollView>
+
     </View>
     <Modal visible={modalExplicacionVisible} animationType="fade" transparent onRequestClose={() => setModalExplicacionVisible(false)}>
-      <View className="flex-1 justify-end bg-black/40"><View className="max-h-[85%] rounded-t-3xl bg-white p-6 gap-4">{explicacionLoading ? <View className="items-center gap-3 py-8"><ActivityIndicator color="#801529" size="large"/><Text className="text-center text-lg font-black text-gray-900">Analizando y preparando contenido</Text><Text className="text-center text-sm text-gray-600">Estamos construyendo una explicación clara para tu duda.</Text></View> : explicacion ? <><Text className="text-xl font-black text-gray-900">{explicacion.title}</Text><ScrollView><Text className="text-sm leading-6 text-gray-700">{explicacion.explanation}</Text>{explicacion.explanation_svg ? <SvgXml xml={explicacion.explanation_svg} width="100%" height={210}/> : null}<Text className="mt-3 text-sm font-bold text-gray-900">Respuesta correcta y ejemplo</Text><EjemploCanvas ejemplos={explicacion.examples || []}/></ScrollView><TouchableOpacity onPress={() => setModalExplicacionVisible(false)} className="rounded-xl bg-maroon p-3"><Text className="text-center font-bold text-white">Entendido</Text></TouchableOpacity></> : null}</View></View>
+      <View className="flex-1 justify-end bg-black/40">
+        <View className="max-h-[85%] rounded-t-3xl bg-white p-6 gap-4">
+          {explicacionLoading ? (
+            <View className="items-center gap-3 py-8">
+              <ActivityIndicator color="#801529" size="large"/>
+              <Text className="text-center text-lg font-black text-gray-900">Analizando y preparando contenido</Text>
+              <Text className="text-center text-sm text-gray-600">Estamos construyendo una explicación clara para tu duda.</Text>
+            </View>
+          ) : explicacion ? (
+            <>
+              <Text className="text-xl font-black text-gray-900">{explicacion.title}</Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View className="my-1">
+                  <MarkdownContent texto={explicacion.explanation} />
+                </View>
+                {explicacion.explanation_svg ? (
+                  <View className="my-2 rounded-xl bg-white p-2 border border-gray-100">
+                    <MarkdownContent texto={explicacion.explanation_svg} />
+                  </View>
+                ) : null}
+                <Text className="mt-3 text-sm font-bold text-gray-900 mb-2">Respuesta correcta y ejemplo</Text>
+                <EjemploCanvas ejemplos={explicacion.examples || []}/>
+              </ScrollView>
+              <TouchableOpacity onPress={() => setModalExplicacionVisible(false)} className="rounded-xl bg-maroon p-3">
+                <Text className="text-center font-bold text-white">Entendido</Text>
+              </TouchableOpacity>
+            </>
+          ) : null}
+        </View>
+      </View>
     </Modal>
     <Modal visible={retoLoading} animationType="fade" presentationStyle="fullScreen" statusBarTranslucent onRequestClose={() => undefined}>
       <View className="flex-1 items-center justify-center bg-[#F8F7F6] px-7">

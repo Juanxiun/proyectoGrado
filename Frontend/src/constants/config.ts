@@ -16,6 +16,19 @@ export const MEDIA_BASE_URL =
   process.env.EXPO_PUBLIC_MEDIA_URL || `http://${DEFAULT_API_HOST}:9000`;
 export const MEDIA_BUCKET = 'usuarios';
 
+// media -> reemplazar hosts locales por el host accesible del gateway en dispositivos
+export function resolveMediaUrl(rawUrl: string): string {
+  try {
+    const media = new URL(rawUrl);
+    if (['localhost', '127.0.0.1', 'host.docker.internal'].includes(media.hostname)) {
+      media.hostname = new URL(API_BASE_URL).hostname;
+    }
+    return media.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
 /**
  * Foto de perfil por defecto de cualquier usuario sin `fotoUrl`.
  * Vive en MinIO como `usuarios/default/profil.jpg`.

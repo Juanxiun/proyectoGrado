@@ -67,6 +67,8 @@ export interface InsigniaEstudiante {
   insigniaId: string;
   fechaObtencion: string;
   metadata?: Record<string, unknown>;
+  codigo?: string;
+  nombre?: string;
 }
 
 export interface Trofeo {
@@ -138,6 +140,7 @@ export interface ActividadGamificada {
   completada: boolean;
   fechaInicio: string;
   fechaFin?: string;
+  contexto?: { materialId?: string; temaRutaId?: string; numeroTema?: number; tituloTema?: string };
 }
 
 export interface PreguntaGamificada {

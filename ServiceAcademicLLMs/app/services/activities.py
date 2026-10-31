@@ -1,4 +1,5 @@
 import hashlib
+import json
 import random
 import re
 import unicodedata
@@ -139,6 +140,12 @@ def normalize_activity(activity: dict, content_id: str, index: int, chunk_ids: l
 # activities -> pares de conectar frases desde texto libre (LEGACY)
 def _parse_pares(response: str) -> dict[str, str]:
     pares: dict[str, str] = {}
+    try:
+        pares_json = json.loads(response)
+        if isinstance(pares_json, dict):
+            return {_norm(lado): _norm(derecha) for lado, derecha in pares_json.items() if str(lado).strip() and str(derecha).strip()}
+    except (json.JSONDecodeError, TypeError):
+        pass
     for trozo in [item.strip() for item in response.split(";") if item.strip()]:
         separado = re.split(r"(?:=>|->|→|=)", trozo, maxsplit=1)
         if len(separado) != 2 or not separado[0].strip() or not separado[1].strip():

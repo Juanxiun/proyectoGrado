@@ -13,7 +13,7 @@ from app.ollama_client import OllamaClient
 from app.pipeline import _resumen_conceptual
 from app.RAG.connection import create_redis_connection, create_notify_redis_connection
 from app.RAG.repository import RAGRepository
-from app.schemas import ContentCreatedEvent, ExplainSectionRequest, LearningSummaryRequest, MatchCheckRequest, QuizCompletedEvent, QuizQualityFeedback, QuizRequest, StudentLearningOverviewRequest
+from app.schemas import ContentCreatedEvent, ExplainSectionRequest, LearningSummaryRequest, MatchCheckRequest, QuizCompletedEvent, QuizQualityFeedback, QuizRequest, StudentLearningOverviewRequest, StudyTopicCompletedEvent
 from app.services.learning_summaries import generate_learning_summary
 from app.services.quiz_service import issue_quiz
 from app.services.student_learning import create_personalized_content, evaluate_student_learning_overview, explain_section
@@ -44,7 +44,7 @@ def _svg_seguro(valor: str) -> str:
     return ET.tostring(raiz, encoding="unicode")[:5000]
 
 
-async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, llm, semaphore) -> dict:
+async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, historial: list[dict], llm, semaphore) -> dict:
     activities = {str(item.get("activity_id")): item for item in (quiz or {}).get("activities", [])}
     responses = {answer.activity_id: answer.response[:300] for answer in event.answers}
     evaluacion = []
@@ -59,10 +59,14 @@ async def _feedback_reto(event: QuizCompletedEvent, resultado: dict, quiz: dict 
         })
     context = json.dumps({
         "subject_content": event.content_id,
+        "material_id": event.material_id,
+        "topic_id": event.topic_id,
+        "topic_title": event.topic_title,
         "correct": resultado.get("correct", 0),
         "total": resultado.get("total", len(evaluacion)),
         "elapsed_ms": event.elapsed_ms,
         "answers": evaluacion,
+        "last_five_attempts": historial[-5:],
     }, ensure_ascii=False)
     fallback = {
         "feedback": f"Respondiste correctamente {resultado.get('correct', 0)} de {resultado.get('total', len(evaluacion))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
@@ -292,14 +296,17 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
         result = await request.app.state.rag.record_quiz_attempt(
             event.student_id, event.content_id, event.attempt_id,
             [answer.model_dump() for answer in event.answers],
-            event.elapsed_ms,
+            event.elapsed_ms, event.topic_id, event.material_id,
         )
         if not result.get("duplicate"):
             learning = [
                 f"{'Dominado' if answer['correct'] else 'Reforzar'}: {answer['concept']} ({answer['difficulty']})."
                 for answer in result.get("answers", [])
             ]
-            interaction_text = "Progreso del estudiante en el contenido: " + " ".join(learning)
+            interaction_text = (
+                f"Progreso del estudiante en el tema {event.topic_title or event.content_id}: "
+                + " ".join(learning)
+            )
             try:
                 async with request.app.state.semaphore:
                     embedding = await request.app.state.llm.embed(interaction_text)
@@ -312,6 +319,8 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
                         "record_type": "student_interaction",
                         "branch": "students",
                         "student_id": event.student_id,
+                        "material_id": event.material_id,
+                        "topic_id": event.topic_id,
                         "attempt_id": event.attempt_id,
                         "score": str(result.get("score", 0)),
                         "source": "completed_quiz",
@@ -319,6 +328,7 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
                 )
             except Exception:
                 logger.exception("No se pudo indexar el hito de aprendizaje student_id=%s content_id=%s", event.student_id, event.content_id)
+        historial = await request.app.state.rag.recent_quiz_attempts(event.student_id, event.content_id, event.topic_id)
         # feedback -> en segundo plano para no bloquear la entrega del resultado
         feedback_pendiente = {
             "feedback": f"Respondiste correctamente {result.get('correct', 0)} de {result.get('total', len(result.get('answers', [])))} actividades en {round(event.elapsed_ms / 1000)} segundos.",
@@ -330,7 +340,7 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
         await request.app.state.rag.set_quiz_feedback(event.student_id, event.content_id, event.attempt_id, feedback_pendiente)
         result["learning_feedback"] = feedback_pendiente
         tarea = asyncio.create_task(_generar_feedback_en_segundo_plano(
-            event, result, quiz, request.app.state.llm, request.app.state.semaphore, request.app.state.rag,
+            event, result, quiz, historial, request.app.state.llm, request.app.state.semaphore, request.app.state.rag,
         ))
         request.app.state.background_tasks.add(tarea)
         tarea.add_done_callback(request.app.state.background_tasks.discard)
@@ -341,9 +351,47 @@ async def quiz_completed(event: QuizCompletedEvent, request: Request, x_webhook_
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-async def _generar_feedback_en_segundo_plano(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, llm, semaphore, rag) -> None:
+@app.post("/webhooks/study-topic-completed", status_code=202)
+async def study_topic_completed(event: StudyTopicCompletedEvent, request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    session = event.model_dump()
     try:
-        feedback = await _feedback_reto(event, resultado, quiz, llm, semaphore)
+        saved = await request.app.state.rag.record_topic_study_event(event.student_id, session)
+        text = (
+            f"Tema completado: {event.topic_title}. Carta {event.cards_completed} de {event.total_cards}. "
+            f"Tiempo de lectura: {event.reading_time_ms} ms. "
+            f"El estudiante solicitó más explicación en: {', '.join(event.explained_sections) or 'ninguna sección'}."
+        )
+        try:
+            async with asyncio.timeout(20):
+                async with request.app.state.semaphore:
+                    embedding = await request.app.state.llm.embed(text)
+            await request.app.state.rag.save_vector(
+                content_id=event.content_id,
+                chunk_id=f"student-topic-{event.topic_id}-{event.session_id}",
+                text=text,
+                embedding=embedding,
+                metadata={
+                    "record_type": "student_interaction",
+                    "branch": "students",
+                    "student_id": event.student_id,
+                    "material_id": event.material_id,
+                    "topic_id": event.topic_id,
+                    "topic_number": str(event.topic_number),
+                    "source": "completed_learning_topic",
+                },
+            )
+        except Exception:
+            logger.exception("No se pudo vectorizar la sesión student_id=%s topic_id=%s", event.student_id, event.topic_id)
+        return {"indexed": saved}
+    except Exception as exc:
+        logger.exception("No se pudo indexar el tema completado student_id=%s topic_id=%s", event.student_id, event.topic_id)
+        raise HTTPException(status_code=503, detail="No se pudo indexar el avance del tema") from exc
+
+
+async def _generar_feedback_en_segundo_plano(event: QuizCompletedEvent, resultado: dict, quiz: dict | None, historial: list[dict], llm, semaphore, rag) -> None:
+    try:
+        feedback = await _feedback_reto(event, resultado, quiz, historial, llm, semaphore)
         await rag.set_quiz_feedback(event.student_id, event.content_id, event.attempt_id, feedback)
     except Exception:
         logger.exception("No se pudo publicar la retroalimentacion del reto student_id=%s content_id=%s", event.student_id, event.content_id)

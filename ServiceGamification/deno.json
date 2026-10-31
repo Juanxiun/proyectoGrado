@@ -12,7 +12,6 @@
     "@std/dotenv": "jsr:@std/dotenv@^0.225.8",
     "@tajpouria/cors": "jsr:@tajpouria/cors@^1.2.1",
     "ioredis": "npm:ioredis@^5.4.1",
-    "jose": "npm:jose@^5.9.6",
-    "ws": "npm:ws@^8.16.0"
+    "jose": "npm:jose@^5.9.6"
   }
 }

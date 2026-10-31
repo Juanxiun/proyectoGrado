@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import type { FormatoResumen } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
+import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
 import { EjemploCanvas } from './EjemploCanvas';
 import { EsquemaSkia } from './EsquemaSkia';
 
@@ -12,7 +13,7 @@ interface ResumenInteractivoProps {
   explicacionLoading?: boolean;
   onExplain: (section: { title: string; explanation: string }) => void;
   onStartActivity: () => void;
-  onCompleteStudy?: (formato: FormatoResumen) => void;
+  onCompleteStudy?: (formato: FormatoResumen, progreso?: { cartaActual: number; totalCartas: number; completo: boolean }) => void;
   onAlternateSummary?: (formato: FormatoResumen) => void;
 }
 
@@ -105,6 +106,9 @@ export function ResumenInteractivo({ formato, data: dataEntrada, explicacion, ex
         <Text className="text-xs font-bold text-amber-700">¿QUÉ ES?</Text>
         <Text className="text-xl font-black text-gray-900 mt-2">{carta.concept}</Text>
         <Text className="text-sm leading-6 text-gray-700 mt-4">{carta.definition}</Text>
+        <View className="mt-3">
+          <MarkdownContent texto={carta.definition} />
+        </View>
         {carta.key_points.map((point, index) => <Text key={`${index}-${point}`} className="text-sm text-gray-600 mt-2">• {point}</Text>)}
       </BentoCard>
       <View className="flex-row gap-2">
@@ -114,10 +118,13 @@ export function ResumenInteractivo({ formato, data: dataEntrada, explicacion, ex
         <TouchableOpacity onPress={() => {
           if (indiceCarta + 1 === cartas.length) {
             setCartasFinalizadas(true);
-            if (!estudioCompletado) onCompleteStudy?.(formato);
+            if (!estudioCompletado) onCompleteStudy?.(formato, { cartaActual: cartas.length, totalCartas: cartas.length, completo: true });
             setEstudioCompletado(true);
             setFeedbackVisible(true);
-          } else setIndiceCarta((previous) => previous + 1);
+          } else {
+            onCompleteStudy?.(formato, { cartaActual: indiceCarta + 1, totalCartas: cartas.length, completo: false });
+            setIndiceCarta((previous) => previous + 1);
+          }
         }} className="flex-1 rounded-xl bg-[#801F3F] p-3">
           <Text className="text-center text-xs font-bold text-white">{indiceCarta + 1 === cartas.length ? 'Terminar' : 'Siguiente'}</Text>
         </TouchableOpacity>
@@ -126,6 +133,9 @@ export function ResumenInteractivo({ formato, data: dataEntrada, explicacion, ex
         <BentoCard className="gap-3 p-4 bg-violet-50">
           <Text className="font-bold text-violet-950">{aTexto(explicacionCarta.title, carta.concept)}</Text>
           <Text className="text-sm leading-6 text-violet-900">{aTexto(explicacionCarta.explanation, carta.definition)}</Text>
+          <View>
+            <MarkdownContent texto={aTexto(explicacionCarta.explanation, carta.definition)} />
+          </View>
           <EjemploCanvas ejemplos={aTextos(explicacionCarta.examples)} />
         </BentoCard>
       ) : null}

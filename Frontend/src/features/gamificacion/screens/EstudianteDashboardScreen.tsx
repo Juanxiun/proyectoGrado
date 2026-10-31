@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -46,22 +47,22 @@ const INSIGNIAS_CATALOGO = [
     color: '#F59E0B',
   },
   {
-    codigo: 'aprendiendo_nuevas_cosas',
-    nombre: 'Nuevos Horizontes',
+    codigo: 'nuevo_aprendizaje',
+    nombre: 'Primer tema',
     descripcion: 'Explorar y repasar contenido didáctico nuevo de la semana.',
     icono: 'planet' as const,
     color: '#3B82F6',
   },
   {
     codigo: 'repaso_masivo',
-    nombre: 'Repaso Masivo',
+    nombre: 'Gran Repaso',
     descripcion: 'Superar la marca límite de aprendizaje diario.',
     icono: 'rocket' as const,
     color: '#8B5CF6',
   },
   {
-    codigo: 'volver_donde_empece',
-    nombre: 'Volver Donde Empecé',
+    codigo: 'reincorporacion',
+    nombre: 'De regreso',
     descripcion: 'Reincorporarse al estudio tras un período inactivo.',
     icono: 'refresh' as const,
     color: '#10B981',
@@ -102,19 +103,19 @@ function InformeAprendizajeModal({
     <View className="flex-1 bg-black/60 justify-center p-4">
       <View className="max-h-[90%] rounded-3xl bg-white overflow-hidden">
         <View className="bg-[#801F3F] p-5 flex-row items-center justify-between">
-          <View className="flex-1"><Text className="text-white text-lg font-black">Tu forma de aprender</Text><Text className="text-white/80 text-xs mt-1">Evaluación de Mistral basada en tu historial</Text></View>
+          <View className="flex-1"><Text className="text-white text-lg font-black">Cómo vas en tu aprendizaje</Text><Text className="text-white/80 text-xs mt-1">Resumen de tus resultados, tiempos y repasos</Text></View>
           <TouchableOpacity onPress={onClose} className="w-9 h-9 rounded-full bg-white/15 items-center justify-center"><Ionicons name="close" size={20} color="white"/></TouchableOpacity>
         </View>
         <ScrollView contentContainerClassName="p-4 gap-3">
-          {loading ? <View className="items-center py-10"><ActivityIndicator size="large" color="#801F3F"/><Text className="text-sm text-gray-600 mt-3">Mistral está analizando tu ritmo y tus actividades...</Text></View> : null}
+          {loading ? <View className="items-center py-10"><ActivityIndicator size="large" color="#801F3F"/><Text className="text-sm text-gray-600 mt-3">Estamos comparando tus resultados, tiempos y repasos...</Text></View> : null}
           {!loading && error ? <View className="rounded-2xl bg-rose-50 p-4 gap-3"><Text className="text-sm text-rose-900">{error}</Text><TouchableOpacity onPress={onRetry} className="self-start rounded-xl bg-[#801F3F] px-4 py-2"><Text className="text-xs font-bold text-white">Volver a intentar</Text></TouchableOpacity></View> : null}
           {!loading && !error && perfil ? <>
             <View className="rounded-2xl bg-violet-50 p-4"><Text className="text-xs font-bold text-violet-900">RITMO DE APRENDIZAJE</Text><Text className="text-sm leading-6 text-gray-800 mt-1">{perfil.learning_rhythm}</Text></View>
-            <View className="rounded-2xl bg-emerald-50 p-4"><Text className="text-xs font-bold text-emerald-900">FORTALEZAS</Text>{perfil.strengths.length ? perfil.strengths.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-800 mt-1">• {item}</Text>) : <Text className="text-sm text-gray-600 mt-1">Todavía se necesita más historial.</Text>}</View>
+            <View className="rounded-2xl bg-emerald-50 p-4"><Text className="text-xs font-bold text-emerald-900">FORTALEZAS</Text>{perfil.strengths.length ? perfil.strengths.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-800 mt-1">• {item}</Text>) : <Text className="text-sm text-gray-600 mt-1">Sigue practicando; tus próximos intentos ayudarán a reconocer tus avances.</Text>}</View>
             <View className="rounded-2xl bg-amber-50 p-4"><Text className="text-xs font-bold text-amber-900">CÓMO APRENDES MEJOR</Text><Text className="text-sm text-gray-800 mt-1">Enfoque: {perfil.learning_orientation.replaceAll('_', ' ')}</Text><Text className="text-sm text-gray-800 mt-1">Formatos: {perfil.preferred_formats.map((item) => etiquetasFormato[item] || item).join(', ') || 'Aún no hay una preferencia clara'}</Text></View>
-            <View className="rounded-2xl bg-sky-50 p-4"><Text className="text-xs font-bold text-sky-900">INVESTIGACIÓN E INDAGACIÓN</Text><Text className="text-sm text-gray-800 mt-1">Temas explorados a profundidad: {perfil.investigated_topics_count}</Text>{perfil.deep_inquiry_topics.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-700 mt-1">• {item}</Text>)}</View>
+            <View className="rounded-2xl bg-sky-50 p-4"><Text className="text-xs font-bold text-sky-900">INVESTIGACIÓN E INDAGACIÓN</Text><Text className="text-sm text-gray-800 mt-1">Indagaciones realizadas: {perfil.investigations_count ?? 0} · Temas explorados: {perfil.investigated_topics_count}</Text>{perfil.deep_inquiry_topics.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-700 mt-1">• {item}</Text>)}</View>
             <View className="rounded-2xl bg-gray-50 p-4"><Text className="text-xs font-bold text-gray-800">POSIBLES ÁREAS DE INTERÉS</Text><Text className="text-[10px] text-gray-500 mt-1">Son ideas exploratorias, no una decisión vocacional.</Text>{perfil.possible_ambitions.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-800 mt-1">• {item}</Text>)}</View>
-            <View className="rounded-2xl border border-[#E3C8D1] p-4"><Text className="text-xs font-bold text-[#801F3F]">ASÍ PERSONALIZAREMOS TU CONTENIDO</Text><Text className="text-sm leading-6 text-gray-800 mt-1">{perfil.personalization_recommendation}</Text><Text className="text-[10px] text-gray-500 mt-2">Evidencia: {perfil.evidence_activity_count} actividades y {perfil.completed_summaries} resúmenes · Confianza {perfil.confidence}</Text></View>
+            <View className="rounded-2xl border border-[#E3C8D1] p-4"><Text className="text-xs font-bold text-[#801F3F]">ASÍ PERSONALIZAREMOS TU CONTENIDO</Text><Text className="text-sm leading-6 text-gray-800 mt-1">{perfil.personalization_recommendation}</Text><Text className="text-[10px] text-gray-500 mt-2">Evidencia: {perfil.completed_topics ?? 0} temas, {perfil.evidence_activity_count} actividades y {perfil.completed_summaries} resúmenes · Confianza {perfil.confidence}</Text></View>
           </> : null}
         </ScrollView>
       </View>
@@ -161,6 +162,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
 
   // Modal de recompensas
   const [tiendaModalOpen, setTiendaModalOpen] = useState(false);
+  const [rangosModalOpen, setRangosModalOpen] = useState(false);
   const [recompensas, setRecompensas] = useState<RecompensaTienda[]>([]);
   const [comprando, setComprando] = useState(false);
   const [perfilOpen, setPerfilOpen] = useState(false);
@@ -228,9 +230,9 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [cursoPeriodoId]);
+  useFocusEffect(useCallback(() => {
+    void fetchData();
+  }, [cursoPeriodoId]));
 
   useEffect(() => {
     let temporizador: ReturnType<typeof setTimeout>;
@@ -300,26 +302,34 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
 
   const handleOpenTienda = async () => {
     setTiendaModalOpen(true);
-    // Opciones por defecto si la API no responde
-    setRecompensas([
-      { id: 'recuperar-racha', nombre: 'Recuperar Racha Diaria', descripcion: 'Rescata tu racha consecutiva perdida', costoPuntosIndividuales: 50, tipo: 'salvar_racha' as const, stock: null, activa: true },
-      { id: 'aumentar-puntos', nombre: 'Aumentar Puntos Obtenido', descripcion: 'Multiplica los puntos de tu próxima actividad', costoPuntosIndividuales: 30, tipo: 'pista_examen' as const, stock: null, activa: true },
-    ]);
+    setRecompensas([]);
     try {
       const items = await gamificacionApi.getTienda();
       setRecompensas(items);
     } catch {
-      Alert.alert('Tienda no disponible', 'Se usaron las opciones predeterminadas. Inténtalo de nuevo más tarde.');
+      Alert.alert('Tienda no disponible', 'No se pudo cargar el catálogo. Comprueba tu conexión e inténtalo de nuevo.');
     }
   };
 
   const handleOpenPerfil = async () => {
-    setPerfilOpen(true);
     setPerfilLoading(true);
     setPerfilError(null);
+    setPerfil(null);
     try {
       const evidencia = await gamificacionApi.getEvidenciaAprendizaje();
-      setPerfil(await aprendizajeApi.evaluarPerfilAprendizaje(evidencia));
+      if (evidencia.resumenesCompletados < 1 || evidencia.totalActividades < 1) {
+        Alert.alert('Aún no hay análisis', 'Completa al menos un resumen y una actividad. Después verás cómo vas y qué puedes mejorar.');
+        return;
+      }
+      setPerfilOpen(true);
+      const resultado = await aprendizajeApi.evaluarPerfilAprendizaje(evidencia);
+      if (resultado.ready === false) {
+        setPerfil(null);
+        Alert.alert('Aún no hay análisis', resultado.message || 'Completa un resumen y una actividad para ver tu avance.');
+        setPerfilOpen(false);
+        return;
+      }
+      setPerfil(resultado);
     } catch (error) {
       setPerfilError(error instanceof Error ? error.message : 'No se pudo generar el informe. Inténtalo de nuevo.');
     } finally {
@@ -404,7 +414,19 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   // --- Insignias obtenidas vs catálogo ---
   const insigniasObtenidas = resumen?.insignias ?? [];
   const insigniaPorCodigo = (codigo: string) =>
-    insigniasObtenidas.some((ins) => String(ins.metadata?.contentId ?? ins.id) === codigo);
+    insigniasObtenidas.some((ins) => ins.codigo === codigo);
+
+  // Desafíos diarios (máximo 3)
+  const desafiosDiarios = resumen?.desafiosDiarios?.slice(0, 3) ?? [];
+
+  const NOMBRE_DESAFIO: Record<string, string> = {
+    resumen: 'Ver un tema (resumen)',
+    actividad: 'Resolver una actividad',
+    puntos: 'Sumar puntos',
+    cartas: 'Repasar con cartas',
+    esquema: 'Estudiar esquema',
+    indagacion: 'Ver pregunta de indagación',
+  };
 
   if (isMobile) return (
     <ScrollView className="flex-1" contentContainerClassName="gap-3 pb-6">
@@ -417,7 +439,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <View className="flex-1">
             <Text className="text-white/80 text-[10px] font-bold uppercase tracking-wider">Tu perfil estudiantil</Text>
             <Text className="text-white text-2xl font-black mt-0.5">¡Hola, {user?.nombre || 'Estudiante'}!</Text>
-            <Text className="text-white/70 text-[10px] mt-1">Nivel {nivel} · Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
+            <Text className="text-white/70 text-[10px] mt-1">Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
           </View>
           <UserAvatar
             nombre={user?.nombre}
@@ -430,12 +452,14 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
         {/* Rango enorme y resaltado (SVG animado) */}
         <View className="px-5 pb-5 flex-row items-center gap-4">
+          <TouchableOpacity onPress={() => setRangosModalOpen(true)}>
           <SvgRangoMedalla
             rango={rango}
             nivel={nivel}
             colorRango={colorRango}
             tamano={130}
           />
+          </TouchableOpacity>
           <View className="flex-1">
             <Text className="text-[#F3D9B7] text-[11px] font-bold uppercase tracking-wider">Rango actual</Text>
             <Text className="text-white text-lg font-black mt-0.5">Nivel {nivel} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
@@ -460,7 +484,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           </Animated.View>
           <Text className="text-[#801F3F] text-3xl font-black mt-1">{loading ? '…' : racha?.rachaActual ?? 0}</Text>
           <Text className="text-[#9C5367] text-[9px] font-bold">DÍAS DE RACHA</Text>
-          <Text className="text-[#9C5367] text-[9px] mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
+          <Text className="text-[#9C5367] text-[11px] font-bold mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
         </View>
         <View className="flex-1 rounded-3xl bg-white p-4 items-center justify-center min-h-44 border border-gray-200">
           <View className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
@@ -484,7 +508,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             <SvgInsignia
               key={insignia.codigo}
               nombre={insignia.nombre}
-              color={insignia.color}
+              icono={insignia.icono}
+              criterio={insignia.descripcion}
               obtenida={insigniaPorCodigo(insignia.codigo)}
               tamano={56}
             />
@@ -492,7 +517,44 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 4. QUÉ APRENDÍ HOY como resumen narrativo */}
+      {/* 4. DESAFÍOS DIARIOS (3 retos) */}
+      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
+          <Text className="text-[10px] text-gray-500 font-medium">Gana hasta 20 pts hoy</Text>
+        </View>
+        <View className="flex-row gap-2 px-1">
+          {desafiosDiarios.map((reto) => (
+            <TouchableOpacity
+              key={reto.codigo}
+              className={`flex-1 p-3 rounded-2xl border flex-col items-center gap-1 ${
+                reto.completado
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-white border-gray-200'
+              }`}
+            >
+              <Ionicons
+                name={reto.completado ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={reto.completado ? '#16A34A' : '#9CA3AF'}
+              />
+              <Text className="text-[9px] font-bold text-center leading-tight text-gray-700">
+                {NOMBRE_DESAFIO[reto.codigo] ?? reto.nombre}
+              </Text>
+              {reto.completado && (
+                <Text className="text-[10px] font-bold text-emerald-600">✓ Completado</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+        {resumen?.bonoDesafiosOtorgado && (
+          <Text className="text-[10px] font-bold text-emerald-700 text-center">
+            ¡Bono semanal de hasta 20 puntos obtenido!
+          </Text>
+        )}
+      </View>
+
+      {/* 5. QUÉ APRENDÍ HOY como resumen narrativo */}
       <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
@@ -509,7 +571,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             {totalTemasHoy > 0 ? `Promedio de acierto hoy: ${Math.round(promedioAciertoHoy * 100)}% · ${totalTemasHoy} actividad${totalTemasHoy > 1 ? 'es' : ''} completada${totalTemasHoy > 1 ? 's' : ''}.` : 'Completa tu primera actividad para generar tu resumen.'}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Revisar mi forma de aprender</Text></TouchableOpacity>
+        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
       </BentoCard>
 
       {/* 5. ACCESOS RÁPIDOS (tienda + perfil) */}
@@ -524,11 +586,9 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       </View>
 
       {/* 6. PROGRESO */}
-      <View className="flex-row items-center justify-between px-1 mt-1"><Text className="text-[#801F3F] font-bold text-sm">Tu progreso</Text><StatusBadge label="Ciclo actual" variant="neutral" /></View>
-      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3"><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos individuales</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosInd.toLocaleString('es-BO')} XP</Text></View><View className="h-px bg-gray-100"/><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos del curso y paralelo</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosCurso.toLocaleString('es-BO')} XP</Text></View></View>
 
       {/* 7. RANKING COMO PODIO */}
-      <View className="gap-3">
+      <View className="gap-5 mt-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
         </View>
@@ -537,12 +597,15 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </Animated.View>
       </View>
 
-      {/* 8. DESAFÍOS DIARIOS */}
-      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-2">
-        <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
-        <ListaDesafiosDiarios desafios={resumen?.desafiosDiarios?.slice(0, 2) ?? []} bonoOtorgado={Boolean(resumen?.bonoDesafiosOtorgado)} insignias={resumen?.insignias ?? []} />
-      </View>
-
+      <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>
+        <View className="flex-1 bg-black/60 justify-center p-4"><View className="max-h-[85%] rounded-3xl bg-white overflow-hidden">
+          <View className="bg-amber-600 p-5 flex-row items-center justify-between"><View><Text className="font-black text-white">Tienda de recompensas</Text><Text className="text-xs text-white/80">Tus puntos: {puntosInd}</Text></View><TouchableOpacity onPress={() => setTiendaModalOpen(false)}><Ionicons name="close" size={22} color="white"/></TouchableOpacity></View>
+          <ScrollView contentContainerClassName="gap-3 p-4">{recompensas.length === 0 ? <Text className="py-8 text-center text-sm text-gray-500">No hay artículos disponibles.</Text> : recompensas.map((rec) => <View key={rec.id} className="flex-row items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 p-4"><View className="flex-1 pr-3"><Text className="font-bold text-gray-900">{rec.nombre}</Text><Text className="text-xs text-gray-600">{rec.descripcion}</Text><Text className="mt-1 font-black text-amber-700">{rec.costoPuntosIndividuales} pts</Text></View><TouchableOpacity onPress={() => void handleComprarRecompensa(rec)} disabled={comprando || puntosInd < rec.costoPuntosIndividuales} className="rounded-xl bg-amber-600 px-3 py-2 disabled:bg-gray-300"><Text className="font-bold text-white">Canjear</Text></TouchableOpacity></View>)}</ScrollView>
+        </View></View>
+      </Modal>
+      <Modal visible={rangosModalOpen} transparent animationType="fade" onRequestClose={() => setRangosModalOpen(false)}>
+        <View className="flex-1 bg-black/60 justify-center p-4"><View className="rounded-3xl bg-white p-5"><Text className="mb-3 text-lg font-black text-gray-900">Rangos y XP</Text>{[{ id: 'D', nombre: 'Explorador', desde: 0 }, { id: 'C', nombre: 'Aprendiz', desde: 1000 }, { id: 'B', nombre: 'Avanzado', desde: 2000 }, { id: 'A', nombre: 'Experto', desde: 4500 }, { id: 'S', nombre: 'Maestro', desde: 6000 }].map((item) => <View key={item.id} className={`mb-2 rounded-xl border p-3 ${rango === item.id ? 'border-[#801F3F] bg-rose-50' : 'border-gray-200'}`}><Text className="font-bold">{item.id} · {item.nombre}{rango === item.id ? ' (actual)' : ''}</Text><Text className="text-xs text-gray-600">Alcanza {item.desde} XP para subir de rango.</Text></View>)}<TouchableOpacity onPress={() => setRangosModalOpen(false)} className="mt-2 rounded-xl bg-[#801F3F] p-3"><Text className="text-center font-bold text-white">Cerrar</Text></TouchableOpacity></View></View>
+      </Modal>
       <InformeAprendizajeModal visible={perfilOpen} loading={perfilLoading} error={perfilError} perfil={perfil} onClose={() => setPerfilOpen(false)} onRetry={handleOpenPerfil} />
       <ModalRespuestaPregunta visible={respuestaModalOpen} {...(respuestaPregunta ?? { pregunta: '', respuestaEstudiante: '', respuestaCorrecta: '' })} onClose={() => setRespuestaModalOpen(false)} />
     </ScrollView>
@@ -557,7 +620,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <View className="flex-1">
             <Text className="text-white/80 text-[10px] font-bold uppercase tracking-wider">Tu perfil estudiantil</Text>
             <Text className="text-white text-2xl font-black mt-0.5">¡Hola, {user?.nombre || 'Estudiante'}!</Text>
-            <Text className="text-white/70 text-[10px] mt-1">Nivel {nivel} · Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
+            <Text className="text-white/70 text-[10px] mt-1">Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
           </View>
           <UserAvatar
             nombre={user?.nombre}
@@ -569,12 +632,14 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           />
         </View>
         <View className="px-5 pb-5 flex-row items-center gap-4">
+          <TouchableOpacity onPress={() => setRangosModalOpen(true)}>
           <SvgRangoMedalla
             rango={rango}
             nivel={nivel}
             colorRango={colorRango}
             tamano={160}
           />
+          </TouchableOpacity>
           <View className="flex-1">
             <Text className="text-[#F3D9B7] text-[11px] font-bold uppercase tracking-wider">Rango actual</Text>
             <Text className="text-white text-xl font-black mt-0.5">Nivel {nivel} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
@@ -599,7 +664,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           </Animated.View>
           <Text className="text-[#801F3F] text-3xl font-black mt-1">{loading ? '…' : racha?.rachaActual ?? 0}</Text>
           <Text className="text-[#9C5367] text-[9px] font-bold">DÍAS DE RACHA</Text>
-          <Text className="text-[#9C5367] text-[9px] mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
+          <Text className="text-[#9C5367] text-[11px] font-bold mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
         </View>
         <View className="flex-1 rounded-3xl bg-white p-4 items-center justify-center min-h-44 border border-gray-200">
           <View className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
@@ -623,7 +688,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             <SvgInsignia
               key={insignia.codigo}
               nombre={insignia.nombre}
-              color={insignia.color}
+              icono={insignia.icono}
+              criterio={insignia.descripcion}
               obtenida={insigniaPorCodigo(insignia.codigo)}
               tamano={56}
             />
@@ -631,7 +697,44 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 4. QUÉ APRENDÍ HOY (resumen narrativo) */}
+      {/* 4. DESAFÍOS DIARIOS (3 retos) */}
+      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
+          <Text className="text-[10px] text-gray-500 font-medium">Gana hasta 20 pts hoy</Text>
+        </View>
+        <View className="flex-row gap-2 px-1">
+          {desafiosDiarios.map((reto) => (
+            <TouchableOpacity
+              key={reto.codigo}
+              className={`flex-1 p-3 rounded-2xl border flex-col items-center gap-1 ${
+                reto.completado
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-white border-gray-200'
+              }`}
+            >
+              <Ionicons
+                name={reto.completado ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={reto.completado ? '#16A34A' : '#9CA3AF'}
+              />
+              <Text className="text-[9px] font-bold text-center leading-tight text-gray-700">
+                {NOMBRE_DESAFIO[reto.codigo] ?? reto.nombre}
+              </Text>
+              {reto.completado && (
+                <Text className="text-[10px] font-bold text-emerald-600">✓ Completado</Text>
+              )}
+            </TouchableOpacity>
+          ))}
+        </View>
+        {resumen?.bonoDesafiosOtorgado && (
+          <Text className="text-[10px] font-bold text-emerald-700 text-center">
+            ¡Bono semanal de hasta 20 puntos obtenido!
+          </Text>
+        )}
+      </View>
+
+      {/* 5. QUÉ APRENDÍ HOY (resumen narrativo) */}
       <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
@@ -648,7 +751,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             {totalTemasHoy > 0 ? `Promedio de acierto hoy: ${Math.round(promedioAciertoHoy * 100)}% · ${totalTemasHoy} actividad${totalTemasHoy > 1 ? 'es' : ''} completada${totalTemasHoy > 1 ? 's' : ''}.` : 'Completa tu primera actividad para generar tu resumen.'}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Revisar mi forma de aprender</Text></TouchableOpacity>
+        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
       </BentoCard>
 
       {/* 5. ACCESOS RÁPIDOS */}
@@ -663,23 +766,15 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       </View>
 
       {/* 6. PROGRESO */}
-      <View className="flex-row items-center justify-between px-1 mt-1"><Text className="text-[#801F3F] font-bold text-sm">Tu progreso</Text><StatusBadge label="Ciclo actual" variant="neutral" /></View>
-      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3"><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos individuales</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosInd.toLocaleString('es-BO')} XP</Text></View><View className="h-px bg-gray-100"/><View className="flex-row justify-between"><Text className="text-gray-600 text-xs">Puntos del curso y paralelo</Text><Text className="text-[#801F3F] text-xs font-bold">{puntosCurso.toLocaleString('es-BO')} XP</Text></View></View>
 
       {/* 7. RANKING COMO PODIO */}
-      <View className="gap-3">
+      <View className="gap-5 mt-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
         </View>
         <Animated.View style={{ opacity: rankingOpacity, transform: [{ translateY: rankingTranslateY }] }}>
           <SvgPodio estudiantes={estudiantesPodio} />
         </Animated.View>
-      </View>
-
-      {/* 8. DESAFÍOS DIARIOS */}
-      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-2">
-        <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
-        <ListaDesafiosDiarios desafios={resumen?.desafiosDiarios?.slice(0, 2) ?? []} bonoOtorgado={Boolean(resumen?.bonoDesafiosOtorgado)} insignias={resumen?.insignias ?? []} />
       </View>
 
       {/* MODAL: TIENDA DE RECOMPENSAS */}
@@ -712,6 +807,15 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      <Modal visible={rangosModalOpen} transparent animationType="fade" onRequestClose={() => setRangosModalOpen(false)}>
+        <View className="flex-1 bg-black/60 justify-center p-4"><View className="max-h-[85%] rounded-3xl bg-white p-5">
+          <View className="mb-3 flex-row items-center justify-between"><Text className="text-lg font-black text-gray-900">Rangos y XP</Text><TouchableOpacity onPress={() => setRangosModalOpen(false)}><Ionicons name="close" size={22} color="#374151"/></TouchableOpacity></View>
+          <ScrollView contentContainerClassName="gap-2">
+            {[{ id: 'D', nombre: 'Explorador', desde: 0, hasta: 999 }, { id: 'C', nombre: 'Aprendiz', desde: 1000, hasta: 1999 }, { id: 'B', nombre: 'Avanzado', desde: 2000, hasta: 4499 }, { id: 'A', nombre: 'Experto', desde: 4500, hasta: 5999 }, { id: 'S', nombre: 'Maestro', desde: 6000, hasta: 6700 }].map((item) => <View key={item.id} className={`rounded-xl border p-3 ${rango === item.id ? 'border-[#801F3F] bg-rose-50' : 'border-gray-200'}`}><Text className="font-black text-gray-900">{item.id} · {item.nombre}{rango === item.id ? ' (actual)' : ''}</Text><Text className="mt-1 text-xs text-gray-600">{item.desde}–{item.hasta} XP · Sube al alcanzar {item.desde} XP</Text></View>)}
+          </ScrollView>
+        </View></View>
       </Modal>
 
       <InformeAprendizajeModal visible={perfilOpen} loading={perfilLoading} error={perfilError} perfil={perfil} onClose={() => setPerfilOpen(false)} onRetry={handleOpenPerfil} />

@@ -3,12 +3,10 @@ import "./config/env.config.ts";
 
 import { Application, Context, Next, Router } from "@oak/oak";
 import { oakCors } from "@tajpouria/cors";
-import { WebSocketServer } from "ws";
 
 import { requireEstudiante } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
 import { routes } from "./controllers/gamificacion.controller.ts";
-import { initWebSocketServer, initRedisListener } from "./websocket/handler.ts";
 import { getRedis, closeRedis } from "./connects/Redis/redis.ts";
 import { closePool } from "./connects/Database/connect.ts";
 
@@ -81,21 +79,11 @@ app.use((ctx: Context) => {
   ctx.response.body = { error: "Ruta no encontrada" };
 });
 
-// websocket -> servidor ws integrado
-const wss = new WebSocketServer({ noServer: true });
-
-// handler -> conexiones ws upgrade
-const upgradeHandler = async (_req: any, socket: any, _head: any) => {
-  console.log("[WS] Upgrade request recibido");
-  socket.destroy();
-};
-
 // proceso -> apagado del servidor
 const shutdown = async () => {
   console.log("[Shutdown] Cerrando conexiones...");
   await closeRedis();
   await closePool();
-  wss.close();
   Deno.exit(0);
 };
 

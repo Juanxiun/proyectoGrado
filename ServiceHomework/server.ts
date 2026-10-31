@@ -6,7 +6,7 @@ import { oakCors } from "@tajpouria/cors";
 
 import { requireAuth, ROLES_DOCENTES, ROLES_LECTURA } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
-import { comprobarActividad, completarReto, crearResumen, crearReto, evaluarPerfilAprendizaje, explicarSeccion, getContenidoAprendizaje, infoPaginasPdf, obtenerRetroalimentacionReto, paginaPdf, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
+import { comprobarActividad, completarReto, crearResumen, crearReto, evaluarPerfilAprendizaje, explicarSeccion, getContenidoAprendizaje, infoPaginasPdf, obtenerRetroalimentacionReto, paginaPdf, registrarProgresoTema, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
 import {
   createMaterial,
   deleteMaterial,
@@ -52,6 +52,7 @@ const rt = new Router();
 rt.get("/aprendizaje/materiales/:id", requireAuth(["estudiante"]), getContenidoAprendizaje);
 rt.post("/aprendizaje/materiales/:id/resumen", requireAuth(["estudiante"]), crearResumen);
 rt.post("/aprendizaje/materiales/:id/explicar-seccion", requireAuth(["estudiante"]), explicarSeccion);
+rt.post("/aprendizaje/materiales/:id/progreso-tema", requireAuth(["estudiante"]), registrarProgresoTema);
 rt.post("/aprendizaje/materiales/:id/reto", requireAuth(["estudiante"]), crearReto);
 rt.post("/aprendizaje/materiales/:id/reto/:quizId/completar", requireAuth(["estudiante"]), completarReto);
 rt.get("/aprendizaje/materiales/:id/reto/:quizId/feedback", requireAuth(["estudiante"]), obtenerRetroalimentacionReto);
