@@ -6,10 +6,6 @@ import { useAuth } from '../context/AuthContext';
 import { ROLE_DASHBOARD_MAP, ROLES } from '../constants/config';
 import { LoginScreen } from '../features/auth/screens/LoginScreen';
 import { TwoFactorScreen } from '../features/auth/screens/TwoFactorScreen';
-import { DireccionDashboard } from '../features/direccion/screens/DireccionDashboard';
-import { ControlDashboard } from '../features/control/screens/ControlDashboard';
-import { MaestrosDashboard } from '../features/maestros/screens/MaestrosDashboard';
-import { UsuariosDashboard } from '../features/usuarios/screens/UsuariosDashboard';
 import { ServerErrorScreen } from '../displays/screens/ErrorScreens';
 import { RoleShell } from './RoleShell';
 import {
@@ -77,32 +73,16 @@ function AppNavigator() {
         ) : (
           <>
             <Stack.Screen name="Direccion">
-              {() => (
-                <RoleShell navItems={DIRECTOR_NAV} dashboardComponent={DireccionDashboard} />
-              )}
+              {() => <RoleShell navItems={DIRECTOR_NAV} />}
             </Stack.Screen>
             <Stack.Screen name="Control">
-              {() => (
-                <RoleShell navItems={CONTROL_NAV} dashboardComponent={ControlDashboard} />
-              )}
+              {() => <RoleShell navItems={CONTROL_NAV} />}
             </Stack.Screen>
             <Stack.Screen name="Maestros">
-              {() => (
-                <RoleShell
-                  navItems={MAESTROS_NAV}
-                  dashboardComponent={MaestrosDashboard}
-                  panelTitle="Panel Docente"
-                />
-              )}
+              {() => <RoleShell navItems={MAESTROS_NAV} panelTitle="Panel Docente" />}
             </Stack.Screen>
             <Stack.Screen name="Usuarios">
-              {() => (
-                <RoleShell
-                  navItems={USUARIOS_NAV}
-                  dashboardComponent={UsuariosDashboard}
-                  panelTitle="Panel Estudiante"
-                />
-              )}
+              {() => <RoleShell navItems={USUARIOS_NAV} panelTitle="Panel Estudiante" />}
             </Stack.Screen>
           </>
         )}

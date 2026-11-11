@@ -1,5 +1,5 @@
 // shell_roles -> distribuir interfaz según rol de usuario (estudiante, docente, admin)
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../displays/layouts/AppLayout';
 import { ProfileScreen } from '../displays/screens/ProfileScreen';
@@ -34,11 +34,6 @@ import { EstudianteAsistenciaScreen } from '../features/usuarios/screens/Estudia
 
 interface RoleShellProps {
   navItems: NavItem[];
-  /**
-   * @deprecated El inicio usa `DashboardScreen` (ServiceDashboard). El
-   * componente queda por si algún rol necesita un panel propio.
-   */
-  dashboardComponent?: React.ComponentType;
   panelTitle?: string;
 }
 
