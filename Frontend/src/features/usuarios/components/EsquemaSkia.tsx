@@ -24,7 +24,7 @@ interface EsquemaSkiaProps {
 }
 
 // resumen -> texto seguro para renderizar dentro de <Text>
-function aTexto(valor: unknown, respaldo = ''): string {
+export function aTexto(valor: unknown, respaldo = ''): string {
   if (typeof valor === 'string') return valor;
   if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
   return respaldo;

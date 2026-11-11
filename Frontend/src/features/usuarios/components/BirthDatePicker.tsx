@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MONTHS } from '../../../utils/fechas';
 
 interface BirthDatePickerProps {
   value: string;
@@ -13,21 +14,6 @@ interface BirthDatePickerProps {
 
 const iso = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-const MONTHS = [
-  { short: 'Ene', long: 'Enero' },
-  { short: 'Feb', long: 'Febrero' },
-  { short: 'Mar', long: 'Marzo' },
-  { short: 'Abr', long: 'Abril' },
-  { short: 'May', long: 'Mayo' },
-  { short: 'Jun', long: 'Junio' },
-  { short: 'Jul', long: 'Julio' },
-  { short: 'Ago', long: 'Agosto' },
-  { short: 'Sep', long: 'Septiembre' },
-  { short: 'Oct', long: 'Octubre' },
-  { short: 'Nov', long: 'Noviembre' },
-  { short: 'Dic', long: 'Diciembre' },
-];
 
 const parseInitialDate = (val: unknown): Date => {
   if (!val) return new Date();

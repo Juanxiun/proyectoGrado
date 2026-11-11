@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { academicManagementApi, academicServicesApi, type EstadoGestion, type NivelEducativo } from '../../../api/academicServices.api';
 import { BirthDatePicker } from '../../usuarios/components/BirthDatePicker';
+import { dateString } from '../../../utils/fechas';
 
 interface GestionWizardModalProps {
   visible: boolean;
@@ -20,9 +21,6 @@ interface GestionWizardModalProps {
 }
 
 const GRADOS = ['1°', '2°', '3°', '4°', '5°', '6°'];
-
-const dateString = (year: number, month: number, day: number) =>
-  `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 // La heurística que sugería materias por grado ("Sugerencia Bolivia") se
 // eliminó junto con la selección manual: las materias se configuran una vez por

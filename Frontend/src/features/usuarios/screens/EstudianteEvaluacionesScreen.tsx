@@ -5,23 +5,13 @@ import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
-
-interface EvaluacionEstudiante {
-  id: string;
-  tipo: string;
-  titulo: string;
-  descripcion?: string;
-  ponderacion: number;
-  fechaPublicacion?: string;
-  fechaLimite?: string;
-  estado: string;
-  materiaNombre?: string;
-}
+import { formatFechaHora } from '../../../utils/fechas';
+import { extraerEvaluaciones, type ItemEvaluacion } from '../../academico/utils/seguimiento';
 
 export function EstudianteEvaluacionesScreen() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [evaluaciones, setEvaluaciones] = useState<EvaluacionEstudiante[]>([]);
+  const [evaluaciones, setEvaluaciones] = useState<ItemEvaluacion[]>([]);
 
   useEffect(() => {
     async function loadExamenes() {
@@ -29,23 +19,7 @@ export function EstudianteEvaluacionesScreen() {
         setLoading(true);
         // Traer encargos y filtrar por evaluaciones/exámenes
         const res = await academicServicesApi.list('encargos', { limit: 150 });
-        const all = res.data as any[];
-
-        const exams = all
-          .filter((e) => ['examen', 'evaluacion', 'parcial'].includes(String(e.tipo).toLowerCase()))
-          .map((e) => ({
-            id: String(e.id),
-            tipo: e.tipo,
-            titulo: e.titulo,
-            descripcion: e.descripcion,
-            ponderacion: Number(e.ponderacion) || 0,
-            fechaPublicacion: e.fechaPublicacion,
-            fechaLimite: e.fechaLimite,
-            estado: e.estado || 'publicado',
-            materiaNombre: e.asignacion?.materiaNombre || 'Asignatura',
-          }));
-
-        setEvaluaciones(exams);
+        setEvaluaciones(extraerEvaluaciones(res.data, 'Asignatura'));
       } catch (err) {
         console.error('Error cargando cronograma de exámenes:', err);
       } finally {
@@ -126,13 +100,13 @@ export function EstudianteEvaluacionesScreen() {
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                     <Text className="text-xs text-gray-500">
-                      Fecha Inicio: {ev.fechaPublicacion?.replace('T', ' ').slice(0, 16) || 'Por definir'}
+                      Fecha Inicio: {formatFechaHora(ev.fechaPublicacion) || 'Por definir'}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="time-outline" size={14} color="#DC2626" />
                     <Text className="text-xs font-semibold text-red-600">
-                      Fecha Límite: {ev.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Por definir'}
+                      Fecha Límite: {formatFechaHora(ev.fechaLimite) || 'Por definir'}
                     </Text>
                   </View>
                 </View>

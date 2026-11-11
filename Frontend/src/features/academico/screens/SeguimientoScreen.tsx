@@ -12,32 +12,18 @@ import { seguimientoApi, type NivelRiesgo, type PanelCurso, type PanelEstudiante
 import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
 import { StatusBadge } from '../../../shared/ui';
 import { CursosPorNivel, type CursoHabilitado } from '../components/CursosPorNivel';
+import { Miga } from '../components/Miga';
 import { PanelCursoRendimiento, ListaEstudiantesCurso } from '../components/PanelCursoRendimiento';
 import { PanelEstudianteRendimiento } from '../components/PanelEstudianteRendimiento';
 import { NIVEL_LABEL, numeroGrado, nivelDe } from '../utils/niveles';
-
-type Periodo = { id: string; nombre: string; anio: number; activo: boolean; estado: string };
-
-type Vista = 'cursos' | 'curso' | 'estudiante';
-
-/** Resumen por estudiante, armado a partir del libro de cada materia. */
-interface ResumenEstudiante {
-  estudianteId: string;
-  nombre: string;
-  apellidoPaterno: string;
-  promedio: number | null;
-  asistencia: number | null;
-  nivelRiesgo: NivelRiesgo;
-}
-
-const TRIMESTRES = [1, 2, 3] as const;
-
-const ORDEN_RIESGO: NivelRiesgo[] = ['riesgo_alto', 'riesgo', 'observacion', 'sin_riesgo'];
-
-function promediar(valores: number[]): number | null {
-  if (valores.length === 0) return null;
-  return Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 100) / 100;
-}
+import {
+  ORDEN_RIESGO,
+  TRIMESTRES,
+  promediar,
+  type Periodo,
+  type ResumenEstudiante,
+  type Vista,
+} from '../utils/seguimiento';
 
 /**
  * Seguimiento académico con recorrido descendente:
@@ -413,28 +399,5 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
         </View>
       ) : null}
     </ScrollView>
-  );
-}
-
-function Miga({
-  label,
-  activo,
-  onPress,
-}: {
-  label: string;
-  activo: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity onPress={onPress} className="flex-row items-center gap-1">
-      <Text
-        className={`text-xs font-semibold ${
-          activo ? 'text-maroon' : 'text-gray-500'
-        }`}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }

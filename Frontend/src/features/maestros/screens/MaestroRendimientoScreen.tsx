@@ -9,15 +9,20 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
-import { seguimientoApi, type NivelRiesgo, type PanelCurso, type PanelEstudiante } from '../../../api/seguimiento.api';
+import { RIESGO_META, seguimientoApi, type NivelRiesgo, type PanelCurso, type PanelEstudiante } from '../../../api/seguimiento.api';
 import { BentoCard, StatusBadge, UserAvatar } from '../../../shared/ui';
 import { useResponsive } from '../../../utils/responsive';
 import { PanelCursoRendimiento } from '../../../features/academico/components/PanelCursoRendimiento';
 import { PanelEstudianteRendimiento } from '../../../features/academico/components/PanelEstudianteRendimiento';
-
-type Periodo = { id: string; nombre: string; anio: number; activo: boolean; estado: string };
-
-type Vista = 'cursos' | 'curso' | 'estudiante';
+import { Miga } from '../../../features/academico/components/Miga';
+import {
+  ORDEN_RIESGO,
+  TRIMESTRES,
+  promediar,
+  type Periodo,
+  type ResumenEstudiante,
+  type Vista,
+} from '../../../features/academico/utils/seguimiento';
 
 interface CursoAsignado {
   cursoPeriodoId: string;
@@ -26,24 +31,6 @@ interface CursoAsignado {
   nivel: string;
   anio?: string | number;
   materias: { id: string; nombre: string; asignacionId: string }[];
-}
-
-interface ResumenEstudiante {
-  estudianteId: string;
-  nombre: string;
-  apellidoPaterno: string;
-  promedio: number | null;
-  asistencia: number | null;
-  nivelRiesgo: NivelRiesgo;
-}
-
-const TRIMESTRES = [1, 2, 3] as const;
-
-const ORDEN_RIESGO: NivelRiesgo[] = ['riesgo_alto', 'riesgo', 'observacion', 'sin_riesgo'];
-
-function promediar(valores: number[]): number | null {
-  if (valores.length === 0) return null;
-  return Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 100) / 100;
 }
 
 /**
@@ -558,8 +545,8 @@ export function MaestroRendimientoScreen() {
                     </View>
                     <View className="items-end gap-1">
                       <StatusBadge
-                        label={getRiesgoLabel(estudiante.nivelRiesgo)}
-                        variant={getRiesgoVariant(estudiante.nivelRiesgo)}
+                        label={RIESGO_META[estudiante.nivelRiesgo].label}
+                        variant={RIESGO_META[estudiante.nivelRiesgo].variant}
                       />
                       <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
                     </View>
@@ -592,48 +579,4 @@ export function MaestroRendimientoScreen() {
       )}
     </ScrollView>
   );
-}
-
-function Miga({
-  label,
-  activo,
-  onPress,
-}: {
-  label: string;
-  activo: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity onPress={onPress} className="flex-row items-center gap-1">
-      <Text
-        className={`text-xs font-semibold ${
-          activo ? 'text-maroon' : 'text-gray-500'
-        }`}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
-
-// helpers -> mapear nivel de riesgo a etiqueta y variante
-function getRiesgoLabel(nivel: NivelRiesgo): string {
-  const etiquetas: Record<NivelRiesgo, string> = {
-    sin_riesgo: 'En regla',
-    observacion: 'En observación',
-    riesgo: 'En riesgo',
-    riesgo_alto: 'Riesgo alto',
-  };
-  return etiquetas[nivel];
-}
-
-function getRiesgoVariant(nivel: NivelRiesgo): 'success' | 'warning' | 'danger' | 'info' {
-  const variantes: Record<NivelRiesgo, 'success' | 'warning' | 'danger' | 'info'> = {
-    sin_riesgo: 'success',
-    observacion: 'info',
-    riesgo: 'warning',
-    riesgo_alto: 'danger',
-  };
-  return variantes[nivel];
 }

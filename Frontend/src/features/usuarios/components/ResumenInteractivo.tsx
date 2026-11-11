@@ -4,7 +4,7 @@ import type { FormatoResumen } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
 import { EjemploCanvas } from './EjemploCanvas';
-import { EsquemaSkia } from './EsquemaSkia';
+import { EsquemaSkia, aTexto } from './EsquemaSkia';
 
 interface ResumenInteractivoProps {
   formato: FormatoResumen;
@@ -15,13 +15,6 @@ interface ResumenInteractivoProps {
   onStartActivity: () => void;
   onCompleteStudy?: (formato: FormatoResumen, progreso?: { cartaActual: number; totalCartas: number; completo: boolean }) => void;
   onAlternateSummary?: (formato: FormatoResumen) => void;
-}
-
-// resumen -> texto seguro para <Text>
-function aTexto(valor: unknown, respaldo = ''): string {
-  if (typeof valor === 'string') return valor;
-  if (typeof valor === 'number' || typeof valor === 'boolean') return String(valor);
-  return respaldo;
 }
 
 // resumen -> lista de textos segura

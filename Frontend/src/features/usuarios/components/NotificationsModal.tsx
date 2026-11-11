@@ -13,6 +13,7 @@ import { connectUsersWebSocket } from '../../../api/users.websocket';
 import { useAuth } from '../../../context/AuthContext';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { formatFechaHora } from '../../../utils/fechas';
 
 interface NotificationsModalProps {
   visible: boolean;
@@ -211,7 +212,7 @@ export function NotificationsModal({
                         {n.fechaLimite !== undefined && n.fechaLimite !== null ? (
                           <Text className="text-xs text-gray-700">
                             <Text className="font-bold text-gray-900">Fecha límite: </Text>
-                            {n.fechaLimite.replace('T', ' ').slice(0, 16)}
+                            {formatFechaHora(n.fechaLimite)}
                           </Text>
                         ) : null}
                       </View>

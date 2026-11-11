@@ -19,6 +19,7 @@ import { DateTimePicker } from '../../../displays/components/DateTimePicker';
 import { InAppDocumentViewerModal } from '../../../displays/components/InAppDocumentViewerModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { connectUsersWebSocket } from '../../../api/users.websocket';
+import { ALLOWED_TYPES } from '../../../constants/archivos';
 
 interface AsignacionMateria {
   id: string;
@@ -78,12 +79,6 @@ interface EntregaItem {
   estudiante?: { nombre?: string; apellidoPaterno?: string; apellidoMaterno?: string };
 }
 
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
 const ENCARGO_ESTADOS = ['borrador', 'publicado', 'cerrado', 'cancelado'] as const;
 const ENCARGO_TIPOS = ['tarea', 'práctica', 'examen', 'proyecto', 'quiz'] as const;
 

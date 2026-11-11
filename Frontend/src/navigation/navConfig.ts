@@ -17,18 +17,7 @@ export const DIRECTOR_NAV: NavItem[] = [
   { key: 'economia', label: 'Economía', icon: 'cash-outline', route: 'Economia' },
 ];
 
-export const CONTROL_NAV: NavItem[] = [
-  { key: 'home', label: 'Inicio', icon: 'home-outline', route: 'Dashboard' },
-  { key: 'administracion', label: 'Administración', icon: 'shield-outline', route: 'Administrativo' },
-  { key: 'docentes', label: 'Docentes', icon: 'school-outline', route: 'Docentes' },
-  { key: 'estudiantes', label: 'Estudiantes', icon: 'people-outline', route: 'Estudiantes' },
-  { key: 'estructura', label: 'Estructura', icon: 'book-outline', route: 'Estructura' },
-  { key: 'inscripciones', label: 'Inscripciones', icon: 'person-add-outline', route: 'Inscripciones' },
-  { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
-  { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'seguimiento', label: 'Seguimiento', icon: 'analytics-outline', route: 'Seguimiento' },
-  { key: 'economia', label: 'Economía', icon: 'cash-outline', route: 'Economia' },
-];
+export const CONTROL_NAV = DIRECTOR_NAV;
 
 export const MAESTROS_NAV: NavItem[] = [
   { key: 'home', label: 'Inicio', icon: 'home-outline', route: 'Dashboard' },

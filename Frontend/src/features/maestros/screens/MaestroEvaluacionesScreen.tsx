@@ -15,6 +15,8 @@ import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { DateTimePicker } from '../../../displays/components/DateTimePicker';
 import { useResponsive } from '../../../utils/responsive';
+import { formatFechaHora } from '../../../utils/fechas';
+import { extraerEvaluaciones, type ItemEvaluacion } from '../../academico/utils/seguimiento';
 
 interface AsignacionDocente {
   id: string;
@@ -24,30 +26,17 @@ interface AsignacionDocente {
   nivel: string;
 }
 
-interface EvaluacionItem {
-  id: string;
-  asignacionId: string;
-  tipo: string;
-  titulo: string;
-  descripcion?: string;
-  ponderacion: number;
-  fechaPublicacion?: string;
-  fechaLimite?: string;
-  estado: string;
-  materiaNombre?: string;
-}
-
 export function MaestroEvaluacionesScreen() {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [asignaciones, setAsignaciones] = useState<AsignacionDocente[]>([]);
-  const [evaluaciones, setEvaluaciones] = useState<EvaluacionItem[]>([]);
+  const [evaluaciones, setEvaluaciones] = useState<ItemEvaluacion[]>([]);
 
   // Formulario de creación/edición
   const [showForm, setShowForm] = useState(false);
-  const [editingEval, setEditingEval] = useState<EvaluacionItem | null>(null);
+  const [editingEval, setEditingEval] = useState<ItemEvaluacion | null>(null);
 
   const [selectedAsignacionId, setSelectedAsignacionId] = useState('');
   const [titulo, setTitulo] = useState('');
@@ -89,23 +78,7 @@ export function MaestroEvaluacionesScreen() {
       }
 
       // Filtrar encargos que sean de tipo evaluación/examen
-      const allEnc = encRes.data as any[];
-      const evals = allEnc
-        .filter((e) => ['examen', 'evaluacion', 'parcial'].includes(String(e.tipo).toLowerCase()))
-        .map((e) => ({
-          id: String(e.id),
-          asignacionId: String(e.asignacionId || ''),
-          tipo: e.tipo,
-          titulo: e.titulo,
-          descripcion: e.descripcion,
-          ponderacion: Number(e.ponderacion) || 0,
-          fechaPublicacion: e.fechaPublicacion,
-          fechaLimite: e.fechaLimite,
-          estado: e.estado || 'publicado',
-          materiaNombre: e.asignacion?.materiaNombre || 'Materia',
-        }));
-
-      setEvaluaciones(evals);
+      setEvaluaciones(extraerEvaluaciones(encRes.data, 'Materia'));
     } catch (err) {
       console.error('Error cargando evaluaciones:', err);
     } finally {
@@ -129,7 +102,7 @@ export function MaestroEvaluacionesScreen() {
     setShowForm(true);
   };
 
-  const handleEdit = (item: EvaluacionItem) => {
+  const handleEdit = (item: ItemEvaluacion) => {
     setEditingEval(item);
     setSelectedAsignacionId(item.asignacionId);
     setTitulo(item.titulo);
@@ -369,13 +342,13 @@ export function MaestroEvaluacionesScreen() {
                 <View className="flex-row items-center gap-1">
                   <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                   <Text className="text-xs text-gray-500">
-                    Apertura: {ev.fechaPublicacion?.replace('T', ' ').slice(0, 16) || 'Inmediato'}
+                    Apertura: {formatFechaHora(ev.fechaPublicacion) || 'Inmediato'}
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-1">
                   <Ionicons name="hourglass-outline" size={14} color="#DC2626" />
                   <Text className="text-xs font-semibold text-red-600">
-                    Cierre: {ev.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                    Cierre: {formatFechaHora(ev.fechaLimite) || 'Sin límite'}
                   </Text>
                 </View>
               </View>

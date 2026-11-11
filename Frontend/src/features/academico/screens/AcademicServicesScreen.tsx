@@ -16,7 +16,7 @@ import { AcademicManagementPanel } from './AcademicManagementPanel';
 import { CoverImagePicker, getFallbackGradient } from '../components/CoverImagePicker';
 import { MateriasGradoModal } from '../components/MateriasGradoModal';
 import { MayaCurricularScreen } from '../components/MayaCurricularScreen';
-import { NIVEL_LABEL, numeroGrado, type Nivel } from '../utils/niveles';
+import { NIVEL_LABEL, numeroGrado, capitalize, type Nivel } from '../utils/niveles';
 import { Button } from '../../../shared/ui';
 
 type FieldType = 'text' | 'number' | 'date' | 'boolean' | 'choice' | 'image';
@@ -73,8 +73,6 @@ const definitions: Definition[] = [
 const fileTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
 const managementRoles = ['director', 'admin', 'administrador', 'gerencia', 'control', 'editor', 'secretaria', 'secretario', 'administrativo'];
 const teachingRoles = ['profesor', 'maestro', 'maestros', 'docente'];
-
-const capitalize = (text?: string) => text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 
 const formatCursoPeriodo = (item: Item) => {
   const grado = item.curso?.grado ?? '';

@@ -15,6 +15,7 @@ import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { BirthDatePicker } from '../../usuarios/components/BirthDatePicker';
 import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
 import { GestionWizardModal } from '../components/GestionWizardModal';
+import { dateString } from '../../../utils/fechas';
 
 type PeriodRow = {
   id: string;
@@ -42,9 +43,6 @@ type FormState = {
   turno: 'manana' | 'tarde';
   montoCuota: string;
 };
-
-const dateString = (year: number, month: number, day: number) =>
-  `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
 const makeForm = (): FormState => {
   const year = new Date().getFullYear();

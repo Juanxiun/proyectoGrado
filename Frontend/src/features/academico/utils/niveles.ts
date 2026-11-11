@@ -71,7 +71,7 @@ export function etiquetaCurso(grado: string, nivel: string): string {
   return base.trim();
 }
 
-function capitalize(texto: string): string {
+export function capitalize(texto: string): string {
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : '';
 }
 

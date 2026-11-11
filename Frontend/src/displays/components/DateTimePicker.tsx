@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MONTHS } from '../../utils/fechas';
 
 interface DateTimePickerProps {
   value: string;
@@ -11,21 +12,6 @@ interface DateTimePickerProps {
   minYear?: number;
   maxYear?: number;
 }
-
-const MONTHS = [
-  { short: 'Ene', long: 'Enero' },
-  { short: 'Feb', long: 'Febrero' },
-  { short: 'Mar', long: 'Marzo' },
-  { short: 'Abr', long: 'Abril' },
-  { short: 'May', long: 'Mayo' },
-  { short: 'Jun', long: 'Junio' },
-  { short: 'Jul', long: 'Julio' },
-  { short: 'Ago', long: 'Agosto' },
-  { short: 'Sep', long: 'Septiembre' },
-  { short: 'Oct', long: 'Octubre' },
-  { short: 'Nov', long: 'Noviembre' },
-  { short: 'Dic', long: 'Diciembre' },
-];
 
 const TIME_PRESETS = [
   { label: '07:30', hour: 7, minute: 30 },

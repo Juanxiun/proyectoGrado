@@ -16,6 +16,8 @@ import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { ALLOWED_TYPES } from '../../../constants/archivos';
+import { formatFechaHora, formatFechaHoraSegundos } from '../../../utils/fechas';
 
 interface EncargoItem {
   id: string;
@@ -43,13 +45,6 @@ interface DeberesTareasSectionProps {
   asignacionId: string;
   materiaNombre: string;
 }
-
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
 
 export function DeberesTareasSection({
   asignacionId,
@@ -148,7 +143,7 @@ export function DeberesTareasSection({
       const estadoLabel = nuevaEntrega.estadoEntrega === 'a_tiempo' ? 'A tiempo' : 'Con retraso';
       Alert.alert(
         '¡Tarea Entregada!',
-        `Tu entrega ha sido registrada con fecha del sistema (${nuevaEntrega.fechaEntrega?.replace('T', ' ').slice(0, 19)}).\n\nEstado: ${estadoLabel}`,
+        `Tu entrega ha sido registrada con fecha del sistema (${formatFechaHoraSegundos(nuevaEntrega.fechaEntrega)}).\n\nEstado: ${estadoLabel}`,
       );
 
       setSubmissionModalOpen(false);
@@ -232,13 +227,13 @@ export function DeberesTareasSection({
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                     <Text className="text-xs text-gray-500">
-                      Inicio: {tarea.fechaPublicacion?.replace('T', ' ').slice(0, 16) || 'Inmediato'}
+                      Inicio: {formatFechaHora(tarea.fechaPublicacion) || 'Inmediato'}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="alarm-outline" size={14} color="#DC2626" />
                     <Text className="text-xs font-bold text-red-600">
-                      Cierre: {tarea.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                      Cierre: {formatFechaHora(tarea.fechaLimite) || 'Sin límite'}
                     </Text>
                   </View>
                 </View>
@@ -248,7 +243,7 @@ export function DeberesTareasSection({
                   <View className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex-row items-center justify-between">
                     <View className="flex-1 pr-2">
                       <Text className="text-xs font-bold text-emerald-900">
-                        ✓ Tarea entregada el {entrega.fechaEntrega.replace('T', ' ').slice(0, 19)}
+                        ✓ Tarea entregada el {formatFechaHoraSegundos(entrega.fechaEntrega)}
                       </Text>
                       {entrega.nombreArchivo ? (
                         <Text className="text-[11px] text-emerald-700 mt-0.5">
@@ -295,7 +290,7 @@ export function DeberesTareasSection({
                   Entrega de Tarea: {activeTask?.titulo}
                 </Text>
                 <Text className="text-xs text-white/80 font-medium mt-0.5">
-                  Fecha límite: {activeTask?.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                  Fecha límite: {formatFechaHora(activeTask?.fechaLimite) || 'Sin límite'}
                 </Text>
               </View>
               <TouchableOpacity
