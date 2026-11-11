@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -14,9 +14,10 @@ import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { MateriaSelectorModal } from '../components/MateriaSelectorModal';
+import { InlineInput } from '../components/InlineInput';
 import { UserAvatar } from '../../../shared/ui';
-import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../../shared/validation/credentials';
+import { aplicarErroresServidor, autocompletarCredenciales, extraerCI, ROLES_EDITOR } from '../utils/management';
 import { getFullName, isUsuarioActivo, isUsuarioInactivo } from '../../../utils/validation';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import type {
@@ -50,7 +51,7 @@ const emptyDocenteForm = {
 export function DocentesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = ['director', 'control', 'gerencia', 'admin', 'administrador', 'administrativo', 'editor', 'secretaria', 'secretario'].includes(userRol);
+  const canEdit = ROLES_EDITOR.includes(userRol);
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -82,9 +83,23 @@ export function DocentesManagementScreen() {
     fetchList({ buscar: search, estado: statusFilter, limit: 100 }).catch(() => undefined);
   };
 
+  // refresco -> callback estable para websocket y debounce de búsqueda
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const primerMontaje = useRef(true);
+
   useEffect(() => {
-    refresh();
-    return connectUsersWebSocket(refresh);
+    return connectUsersWebSocket(() => refreshRef.current());
+  }, []);
+
+  useEffect(() => {
+    if (primerMontaje.current) {
+      primerMontaje.current = false;
+      refresh();
+      return;
+    }
+    const timer = setTimeout(refresh, 300);
+    return () => clearTimeout(timer);
   }, [search, statusFilter]);
 
   useEffect(() => {
@@ -119,14 +134,10 @@ export function DocentesManagementScreen() {
     ci: string,
   ) => {
     if (!editingDocente) {
-      const generated = generateUsername(nombre, paterno, materno, ci);
-      if (generated) {
-        setForm((f) => ({
-          ...f,
-          username: f.username && f.username !== generated ? f.username : generated,
-          email: f.email && !f.email.includes('@shalom.edu.bo') ? f.email : generateStudentEmail(generated),
-        }));
-      }
+      setForm((f) => {
+        const credenciales = autocompletarCredenciales(nombre, paterno, materno, ci, f);
+        return credenciales ? { ...f, ...credenciales } : f;
+      });
     }
   };
 
@@ -222,14 +233,8 @@ export function DocentesManagementScreen() {
       refresh();
     } catch (err: any) {
       const msg = err?.message || 'No se pudo guardar el docente';
-      const errors: Record<string, string> = {};
-      if (err?.field) {
-        errors[err.field] = msg;
-      }
-      if (/username|usuario/i.test(msg)) errors.username = 'El nombre de usuario ya está en uso.';
-      if (/email|correo/i.test(msg)) errors.email = 'El correo institucional ya está en uso.';
-      if (/documento|numero_doc|ci/i.test(msg)) errors['documento:CI'] = 'La cédula de identidad ya está registrada.';
-      
+      const errors = aplicarErroresServidor(err, msg);
+
       if (Object.keys(errors).length > 0) {
         setFieldErrors(errors);
         Alert.alert('Datos Duplicados', Object.values(errors)[0]);
@@ -335,10 +340,13 @@ export function DocentesManagementScreen() {
     }
   };
 
-  const docentesList = (data?.data ?? []).filter((u) => {
-    const r = (u.rol || '').toLowerCase();
-    return r === 'profesor' || r === 'profesores' || r === 'maestro' || r === 'maestros' || r === 'docente' || String(u.rolId) === '2';
-  });
+  const docentesList = useMemo(
+    () => (data?.data ?? []).filter((u) => {
+      const r = (u.rol || '').toLowerCase();
+      return r === 'profesor' || r === 'profesores' || r === 'maestro' || r === 'maestros' || r === 'docente' || String(u.rolId) === '2';
+    }),
+    [data]
+  );
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -357,6 +365,132 @@ export function DocentesManagementScreen() {
     const start = (currentPage - 1) * pageSize;
     return currentList.slice(start, start + pageSize);
   }, [currentList, currentPage, pageSize]);
+
+  // renderTarjetaUsuario -> pintar la tarjeta Bento de un docente
+  const renderTarjetaUsuario = (doc: Usuario) => {
+    const docs = doc.documentos ?? [];
+    const ciDoc = extraerCI(docs);
+    const apPat = doc.apellidoPaterno || (doc as any).apellido_paterno || '';
+    const apMat = doc.apellidoMaterno || (doc as any).apellido_materno || '';
+    const docFullName = getFullName(doc.nombre, apPat, apMat);
+    const especialidad = (doc as any).especialidad || (doc as any).maestro?.especialidad || 'Docencia';
+    const celular = doc.contactos?.[0]?.contenido || '';
+    const isOnline = isUsuarioActivo(doc.estado);
+
+    return (
+      <BentoCard
+        key={doc.id}
+        className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
+      >
+        {/* Cabecera de la tarjeta con foto MinIO ampliada a 80px e indicador online/offline */}
+        <View>
+          <View className="flex-row items-start justify-between mb-3">
+            <View className="relative">
+              <UserAvatar
+                nombre={doc.nombre}
+                apellidoPaterno={apPat}
+                fotoUrl={doc.fotoUrl}
+                className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                textoClassName="text-gold font-serif font-bold text-2xl"
+              />
+              <View
+                className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
+                  isOnline ? 'bg-green-500' : 'bg-gray-400'
+                }`}
+              />
+            </View>
+
+            <StatusBadge status={doc.estado} />
+          </View>
+
+          {/* Datos del docente */}
+          <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
+            {docFullName}
+          </Text>
+          <Text className="text-xs font-mono text-maroon mt-0.5">
+            @{doc.username || 'sin-cuenta'}
+          </Text>
+
+          {/* Píldoras Bento de información */}
+          <View className="flex-row flex-wrap gap-1.5 mt-3">
+            <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
+              <Text className="text-xs font-bold text-maroon">{especialidad}</Text>
+            </View>
+            <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
+              <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
+            </View>
+          </View>
+
+          {/* Contacto rápido */}
+          <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
+            {doc.email ? (
+              <View className="flex-row items-center gap-1.5">
+                <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
+                <Text className="text-xs text-gray-500" numberOfLines={1}>
+                  {doc.email}
+                </Text>
+              </View>
+            ) : null}
+            {celular ? (
+              <View className="flex-row items-center gap-1.5">
+                <Ionicons name="call-outline" size={13} color="#9CA3AF" />
+                <Text className="text-xs text-gray-500">{celular}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+
+        {/* Acciones Bento */}
+        {canEdit && (
+          <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
+            <TouchableOpacity
+              onPress={() => handleEdit(doc)}
+              className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
+            >
+              <Ionicons name="create-outline" size={16} color="#7A1F3D" />
+              <Text className="text-xs font-bold text-maroon">Editar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleToggleState(doc)}
+              className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
+            >
+              <Ionicons
+                name={isUsuarioActivo(doc.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                size={16}
+                color={isUsuarioActivo(doc.estado) ? '#DC2626' : '#16A34A'}
+              />
+              <Text
+                className={`text-xs font-semibold ${
+                  isUsuarioActivo(doc.estado) ? 'text-red-600' : 'text-green-600'
+                }`}
+              >
+                {isUsuarioActivo(doc.estado) ? 'Baja' : 'Activar'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setDeletingDocente(doc)}
+              className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
+            >
+              <Ionicons name="trash-outline" size={16} color="#DC2626" />
+              <Text className="text-xs font-bold text-red-600">Eliminar</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {docentesListTab === 'disabled' && !canEdit && (
+          <TouchableOpacity
+            onPress={() => setSelectedDocenteDetail(doc)}
+            className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
+          >
+            <Ionicons name="eye-outline" size={16} color="#7A1F3D" />
+            <Text className="text-xs font-bold text-maroon">Ver Ficha</Text>
+          </TouchableOpacity>
+        )}
+      </BentoCard>
+    );
+  };
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-12" showsVerticalScrollIndicator={false}>
@@ -566,13 +700,12 @@ export function DocentesManagementScreen() {
                   {fieldErrors.email ? <Text className="text-[11px] text-red-500 mt-1">{fieldErrors.email}</Text> : null}
                 </View>
                 {editingDocente && (
-                  <TextInput
+                  <InlineInput
                     value={form.password}
                     onChangeText={(v) => setForm((f) => ({ ...f, password: sanitizePassword(v) }))}
                     placeholder="Nueva Contraseña (Opcional)"
                     secureTextEntry
                     maxLength={PASSWORD_MAX}
-                    className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
                   />
                 )}
               </View>
@@ -582,25 +715,22 @@ export function DocentesManagementScreen() {
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
               <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Contacto y Domicilio</Text>
               <View className="flex-row flex-wrap gap-2">
-                <TextInput
+                <InlineInput
                   value={form.celular}
                   onChangeText={(v) => setForm((f) => ({ ...f, celular: v.replace(/[^0-9]/g, '').slice(0, 15) }))}
                   placeholder="Celular (dígitos)"
                   keyboardType="numeric"
                   maxLength={15}
-                  className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
                 />
-                <TextInput
+                <InlineInput
                   value={form.zona}
                   onChangeText={(v) => setForm((f) => ({ ...f, zona: v }))}
                   placeholder="Zona / Barrio"
-                  className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
                 />
-                <TextInput
+                <InlineInput
                   value={form.calle}
                   onChangeText={(v) => setForm((f) => ({ ...f, calle: v }))}
                   placeholder="Calle y Número"
-                  className="bg-white rounded-xl px-3 py-2.5 flex-1 min-w-[150px] border border-gray-200 text-sm"
                 />
               </View>
             </BentoCard>
@@ -638,145 +768,51 @@ export function DocentesManagementScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* GRID DE CARTAS BENTO PARA DOCENTES - HABILITADOS */}
-      {docentesListTab === 'enabled' && <BentoCard className="p-5 bg-white">
+      {/* GRID DE CARTAS BENTO PARA DOCENTES SEGÚN PESTAÑA ACTIVA */}
+      <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">
-            <Ionicons name="checkmark-circle" size={20} color="#16A34A" />
-            <Text className="text-lg font-bold text-gray-900">Habilitados</Text>
-            <View className="bg-green-100 px-3 py-1 rounded-full">
-              <Text className="text-sm font-bold text-green-700">{habilitados.length}</Text>
+            <Ionicons
+              name={docentesListTab === 'enabled' ? 'checkmark-circle' : 'close-circle'}
+              size={20}
+              color={docentesListTab === 'enabled' ? '#16A34A' : '#DC2626'}
+            />
+            <Text className="text-lg font-bold text-gray-900">
+              {docentesListTab === 'enabled' ? 'Habilitados' : 'Deshabilitados'}
+            </Text>
+            <View
+              className={
+                docentesListTab === 'enabled'
+                  ? 'bg-green-100 px-3 py-1 rounded-full'
+                  : 'bg-red-100 px-3 py-1 rounded-full'
+              }
+            >
+              <Text
+                className={
+                  docentesListTab === 'enabled'
+                    ? 'text-sm font-bold text-green-700'
+                    : 'text-sm font-bold text-red-700'
+                }
+              >
+                {currentList.length}
+              </Text>
             </View>
           </View>
-          {loading && <ActivityIndicator color="#7A1F3D" />}
+          {docentesListTab === 'enabled' && loading && <ActivityIndicator color="#7A1F3D" />}
         </View>
 
-        {error && <Text className="text-red-600 text-xs mb-3">{error}</Text>}
+        {docentesListTab === 'enabled' && error && <Text className="text-red-600 text-xs mb-3">{error}</Text>}
 
-        {habilitados.length > 0 ? (
+        {currentList.length > 0 ? (
           <>
             <View className="flex-row flex-wrap gap-4">
-              {paginatedList.map((doc) => {
-                const docs = doc.documentos ?? [];
-                const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
-                  (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
-                const apPat = doc.apellidoPaterno || (doc as any).apellido_paterno || '';
-                const apMat = doc.apellidoMaterno || (doc as any).apellido_materno || '';
-                const docFullName = getFullName(doc.nombre, apPat, apMat);
-                const especialidad = (doc as any).especialidad || (doc as any).maestro?.especialidad || 'Docencia';
-                const celular = doc.contactos?.[0]?.contenido || '';
-                const isOnline = isUsuarioActivo(doc.estado);
-
-                return (
-                  <BentoCard
-                    key={doc.id}
-                    className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
-                  >
-                    {/* Cabecera de la tarjeta con foto MinIO ampliada a 80px e indicador online/offline */}
-                    <View>
-                      <View className="flex-row items-start justify-between mb-3">
-                        <View className="relative">
-                          <UserAvatar
-                            nombre={doc.nombre}
-                            apellidoPaterno={apPat}
-                            fotoUrl={doc.fotoUrl}
-                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                            textoClassName="text-gold font-serif font-bold text-2xl"
-                          />
-                          <View
-                            className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                              isOnline ? 'bg-green-500' : 'bg-gray-400'
-                            }`}
-                          />
-                        </View>
-
-                        <StatusBadge status={doc.estado} />
-                      </View>
-
-                      {/* Datos del docente */}
-                      <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
-                        {docFullName}
-                      </Text>
-                      <Text className="text-xs font-mono text-maroon mt-0.5">
-                        @{doc.username || 'sin-cuenta'}
-                      </Text>
-
-                      {/* Píldoras Bento de información */}
-                      <View className="flex-row flex-wrap gap-1.5 mt-3">
-                        <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
-                          <Text className="text-xs font-bold text-maroon">{especialidad}</Text>
-                        </View>
-                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-                          <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
-                        </View>
-                      </View>
-
-                      {/* Contacto rápido */}
-                      <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
-                        {doc.email ? (
-                          <View className="flex-row items-center gap-1.5">
-                            <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
-                            <Text className="text-xs text-gray-500" numberOfLines={1}>
-                              {doc.email}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {celular ? (
-                          <View className="flex-row items-center gap-1.5">
-                            <Ionicons name="call-outline" size={13} color="#9CA3AF" />
-                            <Text className="text-xs text-gray-500">{celular}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    {/* Acciones Bento */}
-                    {canEdit && (
-                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
-                        <TouchableOpacity
-                          onPress={() => handleEdit(doc)}
-                          className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
-                        >
-                          <Ionicons name="create-outline" size={16} color="#7A1F3D" />
-                          <Text className="text-xs font-bold text-maroon">Editar</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleToggleState(doc)}
-                          className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
-                        >
-                          <Ionicons
-                            name={isUsuarioActivo(doc.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
-                            size={16}
-                            color={isUsuarioActivo(doc.estado) ? '#DC2626' : '#16A34A'}
-                          />
-                          <Text
-                            className={`text-xs font-semibold ${
-                              isUsuarioActivo(doc.estado) ? 'text-red-600' : 'text-green-600'
-                            }`}
-                          >
-                            {isUsuarioActivo(doc.estado) ? 'Baja' : 'Activar'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => setDeletingDocente(doc)}
-                          className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
-                        >
-                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                          <Text className="text-xs font-bold text-red-600">Eliminar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </BentoCard>
-                );
-              })}
+              {paginatedList.map(renderTarjetaUsuario)}
             </View>
 
             <Pagination
               currentPage={currentPage}
-              totalPages={Math.ceil(habilitados.length / pageSize)}
-              totalRecords={habilitados.length}
+              totalPages={Math.ceil(currentList.length / pageSize)}
+              totalRecords={currentList.length}
               pageSize={pageSize}
               onPageChange={setCurrentPage}
               onPageSizeChange={(s) => {
@@ -789,173 +825,12 @@ export function DocentesManagementScreen() {
         ) : (
           <View className="items-center justify-center py-12 px-4">
             <Ionicons name="school-outline" size={48} color="#D1D5DB" />
-            <Text className="text-gray-500 text-center mt-4 text-sm">No hay docentes habilitados.</Text>
+            <Text className="text-gray-500 text-center mt-4 text-sm">
+              {docentesListTab === 'enabled' ? 'No hay docentes habilitados.' : 'No hay docentes deshabilitados.'}
+            </Text>
           </View>
         )}
-      </BentoCard>}
-
-      {/* GRID DE CARTAS BENTO PARA DOCENTES - DESHABILITADOS */}
-      {docentesListTab === 'disabled' && <BentoCard className="p-5 bg-white">
-        <View className="flex-row items-center justify-between mb-4">
-          <View className="flex-row items-center gap-2">
-            <Ionicons name="close-circle" size={20} color="#DC2626" />
-            <Text className="text-lg font-bold text-gray-900">Deshabilitados</Text>
-            <View className="bg-red-100 px-3 py-1 rounded-full">
-              <Text className="text-sm font-bold text-red-700">{deshabilitados.length}</Text>
-            </View>
-          </View>
-        </View>
-
-        {deshabilitados.length > 0 ? (
-          <>
-            <View className="flex-row flex-wrap gap-4">
-              {paginatedList.map((doc) => {
-                const docs = doc.documentos ?? [];
-                const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
-                  (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
-                const apPat = doc.apellidoPaterno || (doc as any).apellido_paterno || '';
-                const apMat = doc.apellidoMaterno || (doc as any).apellido_materno || '';
-                const docFullName = getFullName(doc.nombre, apPat, apMat);
-                const especialidad = (doc as any).especialidad || (doc as any).maestro?.especialidad || 'Docencia';
-                const celular = doc.contactos?.[0]?.contenido || '';
-                const isOnline = isUsuarioActivo(doc.estado);
-
-                return (
-                  <BentoCard
-                    key={doc.id}
-                    className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
-                  >
-                    {/* Cabecera de la tarjeta con foto MinIO ampliada a 80px e indicador */}
-                    <View>
-                      <View className="flex-row items-start justify-between mb-3">
-                        <View className="relative">
-                          <UserAvatar
-                            nombre={doc.nombre}
-                            apellidoPaterno={apPat}
-                            fotoUrl={doc.fotoUrl}
-                            className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                            textoClassName="text-gold font-serif font-bold text-2xl"
-                          />
-                          <View
-                            className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
-                              isOnline ? 'bg-green-500' : 'bg-gray-400'
-                            }`}
-                          />
-                        </View>
-
-                        <StatusBadge status={doc.estado} />
-                      </View>
-
-                      {/* Datos del docente */}
-                      <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
-                        {docFullName}
-                      </Text>
-                      <Text className="text-xs font-mono text-maroon mt-0.5">
-                        @{doc.username || 'sin-cuenta'}
-                      </Text>
-
-                      {/* Píldoras Bento de información */}
-                      <View className="flex-row flex-wrap gap-1.5 mt-3">
-                        <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
-                          <Text className="text-xs font-bold text-maroon">{especialidad}</Text>
-                        </View>
-                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
-                          <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
-                        </View>
-                      </View>
-
-                      {/* Contacto rápido */}
-                      <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
-                        {doc.email ? (
-                          <View className="flex-row items-center gap-1.5">
-                            <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
-                            <Text className="text-xs text-gray-500" numberOfLines={1}>
-                              {doc.email}
-                            </Text>
-                          </View>
-                        ) : null}
-                        {celular ? (
-                          <View className="flex-row items-center gap-1.5">
-                            <Ionicons name="call-outline" size={13} color="#9CA3AF" />
-                            <Text className="text-xs text-gray-500">{celular}</Text>
-                          </View>
-                        ) : null}
-                      </View>
-                    </View>
-
-                    {/* Acciones Bento */}
-                    {canEdit && (
-                      <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
-                        <TouchableOpacity
-                          onPress={() => handleEdit(doc)}
-                          className="p-2 bg-gray-100 hover:bg-maroon/10 rounded-xl flex-row items-center gap-1.5"
-                        >
-                          <Ionicons name="create-outline" size={16} color="#7A1F3D" />
-                          <Text className="text-xs font-bold text-maroon">Editar</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => handleToggleState(doc)}
-                          className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
-                        >
-                          <Ionicons
-                            name={isUsuarioActivo(doc.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
-                            size={16}
-                            color={isUsuarioActivo(doc.estado) ? '#DC2626' : '#16A34A'}
-                          />
-                          <Text
-                            className={`text-xs font-semibold ${
-                              isUsuarioActivo(doc.estado) ? 'text-red-600' : 'text-green-600'
-                            }`}
-                          >
-                            {isUsuarioActivo(doc.estado) ? 'Baja' : 'Activar'}
-                          </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                          onPress={() => setDeletingDocente(doc)}
-                          className="p-2 bg-red-50 hover:bg-red-100 rounded-xl flex-row items-center gap-1"
-                        >
-                          <Ionicons name="trash-outline" size={16} color="#DC2626" />
-                          <Text className="text-xs font-bold text-red-600">Eliminar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
-
-                    {(!canEdit) && (
-                      <TouchableOpacity
-                        onPress={() => setSelectedDocenteDetail(doc)}
-                        className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1"
-                      >
-                        <Ionicons name="eye-outline" size={16} color="#7A1F3D" />
-                        <Text className="text-xs font-bold text-maroon">Ver Ficha</Text>
-                      </TouchableOpacity>
-                    )}
-                  </BentoCard>
-                );
-              })}
-            </View>
-
-            <Pagination
-              currentPage={currentPage}
-              totalPages={Math.ceil(deshabilitados.length / pageSize)}
-              totalRecords={deshabilitados.length}
-              pageSize={pageSize}
-              onPageChange={setCurrentPage}
-              onPageSizeChange={(s) => {
-                setPageSize(s);
-                setCurrentPage(1);
-              }}
-              className="mt-4"
-            />
-          </>
-        ) : (
-          <View className="items-center justify-center py-12 px-4">
-            <Ionicons name="school-outline" size={48} color="#D1D5DB" />
-            <Text className="text-gray-500 text-center mt-4 text-sm">No hay docentes deshabilitados.</Text>
-          </View>
-        )}
-      </BentoCard>}
+      </BentoCard>
 
       <BajaConfirmModal
         user={bajaTarget}

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,6 +22,8 @@ import { DocumentInput } from '../components/DocumentInput';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
+import { InlineInput } from '../components/InlineInput';
+import { extraerCI, ROLES_EDITOR } from '../utils/management';
 import { UserAvatar } from '../../../shared/ui';
 import { numeroGrado } from '../../academico/utils/niveles';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
@@ -83,46 +85,10 @@ const emptyStudentForm: {
   referencia: '',
 };
 
-function InlineInput({
-  error,
-  className = '',
-  numericOnly = false,
-  maxLength,
-  onChangeText,
-  ...props
-}: ComponentProps<typeof TextInput> & {
-  error?: string;
-  numericOnly?: boolean;
-}) {
-  const handleChangeText = (v: string) => {
-    if (numericOnly) {
-      const filtered = v.replace(/\D/g, '');
-      if (onChangeText) onChangeText(filtered);
-    } else {
-      if (onChangeText) onChangeText(v);
-    }
-  };
-
-  return (
-    <View className="flex-1 min-w-[150px]">
-      <TextInput
-        {...props}
-        maxLength={maxLength}
-        keyboardType={numericOnly ? 'numeric' : props.keyboardType}
-        onChangeText={handleChangeText}
-        className={`bg-white rounded-xl px-3 py-2.5 border text-sm ${
-          error ? 'border-red-500 bg-red-50/20' : 'border-gray-200'
-        } ${className}`}
-      />
-      {error ? <Text className="text-xs text-red-600 mt-1 font-medium">{error}</Text> : null}
-    </View>
-  );
-}
-
 export function EstudiantesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = ['director', 'control', 'gerencia', 'admin', 'administrador', 'administrativo', 'editor', 'secretaria', 'secretario'].includes(userRol);
+  const canEdit = ROLES_EDITOR.includes(userRol);
 
   const { data, loading, error, fetchAll } = useUsuariosList();
   const [search, setSearch] = useState('');
@@ -221,9 +187,23 @@ export function EstudiantesManagementScreen() {
     loadCursosAndInscripciones();
   };
 
+  // refresco -> callback estable para websocket y debounce de búsqueda
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const primerMontaje = useRef(true);
+
   useEffect(() => {
-    refresh();
-    return connectUsersWebSocket(refresh);
+    return connectUsersWebSocket(() => refreshRef.current());
+  }, []);
+
+  useEffect(() => {
+    if (primerMontaje.current) {
+      primerMontaje.current = false;
+      refresh();
+      return;
+    }
+    const timer = setTimeout(refresh, 300);
+    return () => clearTimeout(timer);
   }, [search, statusFilter]);
 
   // Mapeo de inscripciones y cursos por estudiante
@@ -959,8 +939,7 @@ export function EstudiantesManagementScreen() {
           <View className="flex-row flex-wrap -mx-2 min-w-0">
             {paginatedStudents.map((st) => {
               const docs = st.documentos ?? [];
-              const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
-                (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
+              const ciDoc = extraerCI(docs);
               const rudeDoc = docs.find((d) => d.tipoDoc === 'RUDE' || (d as any).tipo_doc === 'RUDE')?.numeroDoc ??
                 (docs.find((d) => (d as any).tipo_doc === 'RUDE') as any)?.numero_doc;
               const apPat = st.apellidoPaterno || (st as any).apellido_paterno || '';
