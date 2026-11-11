@@ -102,3 +102,13 @@ export function buildQuery(
   const qs = search.toString();
   return qs ? `?${qs}` : "";
 }
+
+// safe -> ejecutar petición con fallback controlado
+export async function safe<T>(tag: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(tag, err);
+    return fallback;
+  }
+}

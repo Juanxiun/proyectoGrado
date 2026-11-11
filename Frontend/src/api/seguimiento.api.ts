@@ -1,4 +1,4 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest, buildQuery, safe } from './client';
 
 /** Escala de riesgo del seguimiento académico. */
 export type NivelRiesgo = 'sin_riesgo' | 'observacion' | 'riesgo' | 'riesgo_alto';
@@ -162,35 +162,25 @@ export const seguimientoApi = {
     materiaId: string | number;
     trimestre: number;
   }): Promise<LibroNotas | null> {
-    try {
-      return await apiRequest<LibroNotas>(
-        `/api/seguimiento/libro${buildQuery({
-          cursoPeriodoId: String(params.cursoPeriodoId),
-          materiaId: String(params.materiaId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.libro]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.libro]', () => apiRequest<LibroNotas>(
+      `/api/seguimiento/libro${buildQuery({
+        cursoPeriodoId: String(params.cursoPeriodoId),
+        materiaId: String(params.materiaId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async panelCurso(params: {
     cursoPeriodoId: string | number;
     trimestre: number;
   }): Promise<PanelCurso | null> {
-    try {
-      return await apiRequest<PanelCurso>(
-        `/api/seguimiento/panel/curso${buildQuery({
-          cursoPeriodoId: String(params.cursoPeriodoId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.panelCurso]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.panelCurso]', () => apiRequest<PanelCurso>(
+      `/api/seguimiento/panel/curso${buildQuery({
+        cursoPeriodoId: String(params.cursoPeriodoId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async panelEstudiante(params: {
@@ -198,17 +188,12 @@ export const seguimientoApi = {
     periodoId: string | number;
     trimestre: number;
   }): Promise<PanelEstudiante | null> {
-    try {
-      return await apiRequest<PanelEstudiante>(
-        `/api/seguimiento/panel/estudiante/${params.estudianteId}${buildQuery({
-          periodoId: String(params.periodoId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.panelEstudiante]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.panelEstudiante]', () => apiRequest<PanelEstudiante>(
+      `/api/seguimiento/panel/estudiante/${params.estudianteId}${buildQuery({
+        periodoId: String(params.periodoId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async riesgo(params: {
@@ -216,27 +201,17 @@ export const seguimientoApi = {
     trimestre: number;
     limite?: number;
   }): Promise<{ total: number; umbrales: UmbralesSeguimiento; alertas: AlertaRiesgo[] } | null> {
-    try {
-      return await apiRequest(
-        `/api/seguimiento/riesgo${buildQuery({
-          periodoId: String(params.periodoId),
-          trimestre: String(params.trimestre),
-          limite: params.limite,
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.riesgo]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.riesgo]', () => apiRequest(
+      `/api/seguimiento/riesgo${buildQuery({
+        periodoId: String(params.periodoId),
+        trimestre: String(params.trimestre),
+        limite: params.limite,
+      })}`,
+    ), null);
   },
 
   async umbrales(): Promise<UmbralesSeguimiento | null> {
-    try {
-      return await apiRequest<UmbralesSeguimiento>('/api/seguimiento/umbrales');
-    } catch (err) {
-      console.warn('[seguimientoApi.umbrales]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.umbrales]', () => apiRequest<UmbralesSeguimiento>('/api/seguimiento/umbrales'), null);
   },
 };
 

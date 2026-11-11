@@ -1,4 +1,4 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest, buildQuery, safe } from './client';
 
 export interface PlanPago {
   id: number;
@@ -64,112 +64,49 @@ export interface Page<T> {
 }
 
 export const billingApi = {
-  /**
-   * Listar planes de pago con cuotas pendientes
-   */
   async listPlanos(params: {
     periodo_id?: number;
     nivel?: string;
     page?: number;
     limit?: number;
   } = {}): Promise<{ data: { plan: PlanPago; cuotas_pendientes: number }[]; total: number }> {
-    try {
-      return await apiRequest(`/api/planos${buildQuery(params)}`);
-    } catch (err) {
-      console.warn('[billingApi.listPlanos]', err);
-      return { data: [], total: 0 };
-    }
+    return safe('[billingApi.listPlanos]', () => apiRequest(`/api/planos${buildQuery(params)}`), { data: [], total: 0 });
   },
 
-  /**
-   * Obtener un plan por ID
-   */
   async getPlan(id: number): Promise<PlanPago | null> {
-    try {
-      return await apiRequest<PlanPago>(`/api/planos/${id}`);
-    } catch (err) {
-      console.warn('[billingApi.getPlan]', err);
-      return null;
-    }
+    return safe('[billingApi.getPlan]', () => apiRequest<PlanPago>(`/api/planos/${id}`), null);
   },
 
-  /**
-   * Crear un nuevo plan de pago
-   */
   async createPlan(data: Omit<PlanPago, 'id' | 'fecha_creacion' | 'estado'>): Promise<PlanPago | null> {
-    try {
-      return await apiRequest<PlanPago>('/api/planos', { method: 'POST', body: data });
-    } catch (err) {
-      console.warn('[billingApi.createPlan]', err);
-      return null;
-    }
+    return safe('[billingApi.createPlan]', () => apiRequest<PlanPago>('/api/planos', { method: 'POST', body: data }), null);
   },
 
-  /**
-   * Actualizar un plan de pago
-   */
   async updatePlan(id: number, data: Partial<PlanPago>): Promise<PlanPago | null> {
-    try {
-      return await apiRequest<PlanPago>(`/api/planos/${id}`, { method: 'PUT', body: data });
-    } catch (err) {
-      console.warn('[billingApi.updatePlan]', err);
-      return null;
-    }
+    return safe('[billingApi.updatePlan]', () => apiRequest<PlanPago>(`/api/planos/${id}`, { method: 'PUT', body: data }), null);
   },
 
-  /**
-   * Anular un plan de pago
-   */
   async deletePlan(id: number): Promise<boolean> {
-    try {
+    return safe('[billingApi.deletePlan]', async () => {
       await apiRequest(`/api/planos/${id}`, { method: 'DELETE' });
       return true;
-    } catch (err) {
-      console.warn('[billingApi.deletePlan]', err);
-      return false;
-    }
+    }, false);
   },
 
-  /**
-   * Listar cuotas de un plan
-   */
   async listCuotas(planId: number): Promise<CuotaPlanPago[]> {
-    try {
-      return await apiRequest<CuotaPlanPago[]>(`/api/cuotas${buildQuery({ plan_id: planId })}`);
-    } catch (err) {
-      console.warn('[billingApi.listCuotas]', err);
-      return [];
-    }
+    return safe('[billingApi.listCuotas]', () => apiRequest<CuotaPlanPago[]>(`/api/cuotas${buildQuery({ plan_id: planId })}`), []);
   },
 
-  /**
-   * Actualizar estado de cuota
-   */
   async updateCuota(id: number, estado: CuotaPlanPago['estado']): Promise<boolean> {
-    try {
+    return safe('[billingApi.updateCuota]', async () => {
       await apiRequest(`/api/cuotas/${id}`, { method: 'PUT', body: { estado } });
       return true;
-    } catch (err) {
-      console.warn('[billingApi.updateCuota]', err);
-      return false;
-    }
+    }, false);
   },
 
-  /**
-   * Listar pagos de un estudiante
-   */
   async listPagos(estudianteId: number): Promise<PagoRealizado[]> {
-    try {
-      return await apiRequest<PagoRealizado[]>(`/api/pagos${buildQuery({ estudiante_id: estudianteId })}`);
-    } catch (err) {
-      console.warn('[billingApi.listPagos]', err);
-      return [];
-    }
+    return safe('[billingApi.listPagos]', () => apiRequest<PagoRealizado[]>(`/api/pagos${buildQuery({ estudiante_id: estudianteId })}`), []);
   },
 
-  /**
-   * Registrar un nuevo pago
-   */
   async registrarPago(data: {
     estudianteId: number;
     monto: number;
@@ -178,36 +115,15 @@ export const billingApi = {
     comprobanteUrl?: string;
     registradoPor?: number;
   }): Promise<{ pago: PagoRealizado } | null> {
-    try {
-      return await apiRequest<{ pago: PagoRealizado }>('/api/pagos', { method: 'POST', body: data });
-    } catch (err) {
-      console.warn('[billingApi.registrarPago]', err);
-      return null;
-    }
+    return safe('[billingApi.registrarPago]', () => apiRequest<{ pago: PagoRealizado }>('/api/pagos', { method: 'POST', body: data }), null);
   },
 
-  /**
-   * Obtener deuda de un estudiante
-   */
   async getDeudaEstudiante(estudianteId: number): Promise<EstudianteDeuda | null> {
-    try {
-      return await apiRequest<EstudianteDeuda>(`/api/estudiantes/${estudianteId}/deuda`);
-    } catch (err) {
-      console.warn('[billingApi.getDeudaEstudiante]', err);
-      return null;
-    }
+    return safe('[billingApi.getDeudaEstudiante]', () => apiRequest<EstudianteDeuda>(`/api/estudiantes/${estudianteId}/deuda`), null);
   },
 
-  /**
-   * Obtener estudiantes con deuda >= 2 cuotas en un periodo
-   */
   async getDeudaEstudiantesPeriodo(periodoId: number): Promise<DeudaEstudiantePeriodo[]> {
-    try {
-      return await apiRequest<DeudaEstudiantePeriodo[]>(`/api/periodos/${periodoId}/DeudaEstudiantes`);
-    } catch (err) {
-      console.warn('[billingApi.getDeudaEstudiantesPeriodo]', err);
-      return [];
-    }
+    return safe('[billingApi.getDeudaEstudiantesPeriodo]', () => apiRequest<DeudaEstudiantePeriodo[]>(`/api/periodos/${periodoId}/DeudaEstudiantes`), []);
   },
 };
 

@@ -1,43 +1,9 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest, buildQuery, safe } from './client';
+import type { CuotaPlanPago, PagoRealizado, PlanPago } from './billing.api';
 
-export interface PlanPago {
-  id: number;
-  periodo_id: number;
-  nivel: string;
-  nombre: string;
-  cantidad_cuotas: number;
-  monto_total: number;
-  monto_cuota: number;
-  dia_vencimiento: number;
-  estado: 'borrador' | 'generado' | 'anulado';
-  fecha_creacion: string;
-  cuotas_pendientes?: number;
-  estudiante_id?: number;
-}
-
-export interface CuotaPlanPago {
-  id: number;
-  plan_id: number;
-  numero: number;
-  anio: number;
-  mes: number;
-  fecha_vencimiento: string;
-  monto: number;
-  estado: 'pendiente' | 'pagado' | 'anulado';
-}
-
-export interface PagoRealizado {
-  id: number;
-  estudiante_id: number;
-  monto: number;
-  metodo: string;
-  numero_transaccion?: string | null;
-  comprobante_url?: string | null;
-  fecha_pago: string;
-  registrado_por: number;
-  estado: 'pendiente' | 'confirmado' | 'anulado';
-  observacion?: string | null;
-}
+// reexportar -> conservar superficie de economia tras dedup con billing
+export { MONEDA, formatearMonto, getEstadoBadge, getEstadoColor } from './billing.api';
+export type { CuotaPlanPago, Page, PagoRealizado, PlanPago } from './billing.api';
 
 export interface EstudianteDeuda {
   estudiante_id: number;
@@ -87,30 +53,11 @@ export interface KpisEconomia {
   estudiantes_deudores: number;
 }
 
-export interface Page<T> {
-  data: T[];
-  total: number;
-  page: number;
-  limit: number;
-  totalPages: number;
-}
-
 export const economiaApi = {
-  /**
-   * Obtener KPIs generales de economía
-   */
   async getKpis(periodoId?: number): Promise<KpisEconomia | null> {
-    try {
-      return await apiRequest<KpisEconomia>(`/api/economia/kpis${buildQuery({ periodo_id: periodoId })}`);
-    } catch (err) {
-      console.warn('[economiaApi.getKpis]', err);
-      return null;
-    }
+    return safe('[economiaApi.getKpis]', () => apiRequest<KpisEconomia>(`/api/economia/kpis${buildQuery({ periodo_id: periodoId })}`), null);
   },
 
-  /**
-   * Listar estudiantes con estado económico agrupados por nivel/grado/paralelo
-   */
   async getEstudiantesPorPlan(params: {
     periodo_id?: number;
     nivel?: string;
@@ -120,34 +67,18 @@ export const economiaApi = {
     page?: number;
     limit?: number;
   } = {}): Promise<{ data: EstudianteEconomico[]; total: number }> {
-    try {
-      return await apiRequest(`/api/economia/estudiantes${buildQuery({ limit: 100, ...params })}`);
-    } catch (err) {
-      console.warn('[economiaApi.getEstudiantesPorPlan]', err);
-      return { data: [], total: 0 };
-    }
+    return safe('[economiaApi.getEstudiantesPorPlan]', () => apiRequest(`/api/economia/estudiantes${buildQuery({ limit: 100, ...params })}`), { data: [], total: 0 });
   },
 
-  /**
-   * Obtener detalle económico de un estudiante
-   */
   async getEstudianteDetalle(estudianteId: number): Promise<{
     estudiante: EstudianteEconomico;
     plan: PlanPago | null;
     cuotas: CuotaPlanPago[];
     pagos: PagoRealizado[];
   } | null> {
-    try {
-      return await apiRequest(`/api/economia/estudiantes/${estudianteId}`);
-    } catch (err) {
-      console.warn('[economiaApi.getEstudianteDetalle]', err);
-      return null;
-    }
+    return safe('[economiaApi.getEstudianteDetalle]', () => apiRequest(`/api/economia/estudiantes/${estudianteId}`), null);
   },
 
-  /**
-   * Crear un nuevo plan de pago (solo administradores)
-   */
   async createPlan(data: {
     periodo_id: number;
     nivel: string;
@@ -157,119 +88,34 @@ export const economiaApi = {
     monto_cuota: number;
     dia_vencimiento: number;
   }): Promise<PlanPago | null> {
-    try {
-      return await apiRequest<PlanPago>('/api/planos', { method: 'POST', body: data });
-    } catch (err) {
-      console.warn('[economiaApi.createPlan]', err);
-      return null;
-    }
+    return safe('[economiaApi.createPlan]', () => apiRequest<PlanPago>('/api/planos', { method: 'POST', body: data }), null);
   },
 
-  /**
-   * Listar planes de pago con cuotas pendientes
-   */
   async listPlanos(params: {
     periodo_id?: number;
     nivel?: string;
     page?: number;
     limit?: number;
   } = {}): Promise<{ data: { plan: PlanPago; cuotas_pendientes: number }[]; total: number }> {
-    try {
-      return await apiRequest(`/api/planos${buildQuery(params)}`);
-    } catch (err) {
-      console.warn('[economiaApi.listPlanos]', err);
-      return { data: [], total: 0 };
-    }
+    return safe('[economiaApi.listPlanos]', () => apiRequest(`/api/planos${buildQuery(params)}`), { data: [], total: 0 });
   },
 
-  /**
-   * Obtener un plan por ID
-   */
   async getPlan(id: number): Promise<PlanPago | null> {
-    try {
-      return await apiRequest<PlanPago>(`/api/planos/${id}`);
-    } catch (err) {
-      console.warn('[economiaApi.getPlan]', err);
-      return null;
-    }
+    return safe('[economiaApi.getPlan]', () => apiRequest<PlanPago>(`/api/planos/${id}`), null);
   },
 
-  /**
-   * Listar cuotas de un plan
-   */
   async listCuotas(planId: number): Promise<CuotaPlanPago[]> {
-    try {
-      return await apiRequest<CuotaPlanPago[]>(`/api/cuotas${buildQuery({ plan_id: planId })}`);
-    } catch (err) {
-      console.warn('[economiaApi.listCuotas]', err);
-      return [];
-    }
+    return safe('[economiaApi.listCuotas]', () => apiRequest<CuotaPlanPago[]>(`/api/cuotas${buildQuery({ plan_id: planId })}`), []);
   },
 
-  /**
-   * Listar pagos de un estudiante
-   */
   async listPagos(estudianteId: number): Promise<PagoRealizado[]> {
-    try {
-      return await apiRequest<PagoRealizado[]>(`/api/pagos${buildQuery({ estudiante_id: estudianteId })}`);
-    } catch (err) {
-      console.warn('[economiaApi.listPagos]', err);
-      return [];
-    }
+    return safe('[economiaApi.listPagos]', () => apiRequest<PagoRealizado[]>(`/api/pagos${buildQuery({ estudiante_id: estudianteId })}`), []);
   },
 
-  /**
-   * Obtener deuda de un estudiante (para vista estudiante)
-   */
   async getDeudaEstudiante(estudianteId: number): Promise<EstudianteDeuda | null> {
-    try {
-      return await apiRequest<EstudianteDeuda>(`/api/estudiantes/${estudianteId}/deuda`);
-    } catch (err) {
-      console.warn('[economiaApi.getDeudaEstudiante]', err);
-      return null;
-    }
+    return safe('[economiaApi.getDeudaEstudiante]', () => apiRequest<EstudianteDeuda>(`/api/estudiantes/${estudianteId}/deuda`), null);
   },
 };
-
-export const MONEDA = 'Bs';
-
-export function formatearMonto(valor: number): string {
-  return `${MONEDA} ${new Intl.NumberFormat('es-BO', { maximumFractionDigits: 0 }).format(valor)}`;
-}
-
-export function getEstadoColor(estado: string): string {
-  switch (estado) {
-    case 'generado':
-    case 'confirmado':
-    case 'pagado':
-      return 'text-green-600';
-    case 'pendiente':
-      return 'text-amber-600';
-    case 'anulado':
-    case 'borrador':
-      return 'text-gray-500';
-    default:
-      return 'text-gray-600';
-  }
-}
-
-export function getEstadoBadge(estado: string): string {
-  switch (estado) {
-    case 'generado':
-    case 'confirmado':
-      return 'bg-green-100 text-green-700';
-    case 'pagado':
-      return 'bg-green-100 text-green-800';
-    case 'pendiente':
-      return 'bg-amber-100 text-amber-700';
-    case 'anulado':
-      return 'bg-gray-100 text-gray-700';
-    case 'borrador':
-      return 'bg-gray-100 text-gray-600';
-    default:
-      return 'bg-gray-100 text-gray-600';
-  }
-}
 
 export function getDeudaEstado(cuotasPendientes: number): 'al_dia' | 'una_cuota' | 'deudor' {
   if (cuotasPendientes === 0) return 'al_dia';
