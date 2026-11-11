@@ -110,7 +110,6 @@ export function EconomyManagementScreen() {
     return estudiantes.filter(e => getDeudaEstado(e.cuotas_pendientes) === filtroDeuda);
   }, [estudiantes, filtroDeuda]);
 
-  // Pre-compute complex nested structures to avoid nested map in JSX
   const resumenTabContent = useMemo(() => {
     const activePlanes = planes.filter(p => p.estado === 'generado');
     const planCards = activePlanes.map((plan) => (
@@ -178,7 +177,6 @@ export function EconomyManagementScreen() {
     );
   }, [kpis, planes, formatearMonto]);
 
-  // Pre-compute estudiantes tab content
   const estudiantesTabContent = useMemo(() => {
     if (niveles.length === 0) {
       return (
@@ -189,12 +187,10 @@ export function EconomyManagementScreen() {
       );
     }
 
-    // Build nivel sections
     const nivelSections = niveles.map((nivel) => {
       const gradoSections = Object.keys(estudiantesAgrupados[nivel]).sort().map((grado) => {
         const paraleloItems = Object.keys(estudiantesAgrupados[nivel][grado]).sort().map((paralelo) => {
           const estudianteItems = estudiantesAgrupados[nivel][grado][paralelo].map((est) => {
-            const deudaEstado = getDeudaEstado(est.cuotas_pendientes);
             return (
               <TouchableOpacity
                 key={est.id}
@@ -333,44 +329,6 @@ export function EconomyManagementScreen() {
     const badgeColor = badgeVariant === 'danger' ? '#DC2626' : badgeVariant === 'warning' ? '#B45309' : '#16A34A';
     const badgeBg = badgeVariant === 'danger' ? 'bg-red-100' : badgeVariant === 'warning' ? 'bg-amber-100' : 'bg-green-100';
 
-    const cuotaItems = detalleEstudiante.cuotas.map((cuota) => (
-      <View
-        key={cuota.id}
-        className={`flex-row items-center justify-between p-3 rounded-lg ${cuota.estado === 'pagado' ? 'bg-green-50' : cuota.estado === 'pendiente' ? 'bg-amber-50' : 'bg-gray-50'}`}
-      >
-        <View className="flex-row items-center gap-2 flex-1">
-          <View className={`w-6 h-6 rounded-full border-2 ${cuota.estado === 'pagado' ? 'border-green-500 bg-green-500' : cuota.estado === 'pendiente' ? 'border-amber-500' : 'border-gray-300'}`} />
-          <View>
-            <Text className="font-medium text-gray-900">Cuota {cuota.numero} - {cuota.mes}/{cuota.anio}</Text>
-            <Text className="text-xs text-gray-500">Vence: {new Date(cuota.fecha_vencimiento).toLocaleDateString('es-BO')}</Text>
-          </View>
-        </View>
-        <View className="flex-row items-center gap-3">
-          <Text className="font-bold text-gray-900">{formatearMonto(cuota.monto)}</Text>
-          <StatusBadge
-            label={cuota.estado}
-            variant={cuota.estado === 'pagado' ? 'success' : cuota.estado === 'pendiente' ? 'warning' : 'neutral'}
-          />
-        </View>
-      </View>
-    ));
-
-    const pagoItems = detalleEstudiante.pagos.map((pago) => (
-      <View key={pago.id} className="flex-row items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
-        <View className="flex-1">
-          <View className="flex-row items-center gap-2">
-            <Text className="font-semibold text-gray-900">{formatearMonto(pago.monto)}</Text>
-            <StatusBadge label={pago.metodo} variant="info" />
-            <StatusBadge label={pago.estado} variant={pago.estado === 'confirmado' ? 'success' : 'neutral'} />
-          </View>
-          <Text className="text-sm text-gray-500 mt-0.5">
-            {new Date(pago.fecha_pago).toLocaleDateString('es-BO', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            {pago.numero_transaccion ? ` . Ref: ${pago.numero_transaccion}` : ''}
-          </Text>
-        </View>
-      </View>
-    ));
-
     return (
       <Modal visible={showDetalleModal} animationType="slide" transparent>
         <TouchableOpacity onPress={() => { setShowDetalleModal(false); setDetalleEstudiante(null); }} activeOpacity={1}>
@@ -498,7 +456,6 @@ export function EconomyManagementScreen() {
       );
     }, [showDetalleModal, detalleEstudiante, formatearMonto]);
 
-  // ===== LOADING STATE =====
   if (loading) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
@@ -507,7 +464,6 @@ export function EconomyManagementScreen() {
     );
   }
 
-  // ===== MAIN RETURN =====
   return (
     <ScrollView
       className="flex-1 bg-gray-50"

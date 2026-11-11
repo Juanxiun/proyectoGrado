@@ -1,4 +1,4 @@
-// campo_texto -> entrada de datos con validación
+// TextField -> entrada con etiqueta, icono y error
 import { forwardRef } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import type { ComponentProps } from 'react';
@@ -13,7 +13,7 @@ interface TextFieldProps extends Omit<ComponentProps<typeof TextInput>, 'classNa
   hint?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   variant?: TextFieldVariant;
-  /** Muestra el botón de ojo y aplica `secureTextEntry` automáticamente. */
+  // password -> muestra el ojo y oculta el texto
   password?: boolean;
   showPassword?: boolean;
   onTogglePassword?: () => void;
@@ -22,10 +22,6 @@ interface TextFieldProps extends Omit<ComponentProps<typeof TextInput>, 'classNa
   inputClassName?: string;
 }
 
-/**
- * Campo de texto institucional con etiqueta, icono, estado de error y soporte de
- * contraseña. Sustituye a los campos escritos a mano en cada pantalla.
- */
 export const TextField = forwardRef<TextInput, TextFieldProps>(function TextField(
   {
     label,

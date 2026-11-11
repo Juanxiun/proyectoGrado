@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -14,9 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import {
   gamificacionApi,
-  type DesafioDiarioGamificacion,
   type InfoEstudianteGamificacion,
-  type InsigniaEstudiante,
   type RankingParalelo,
   type RecompensaTienda,
   type ResumenGamificacion,
@@ -24,20 +22,16 @@ import {
 import { aprendizajeApi, type PerfilAprendizajeEstudiante } from '../../../api/aprendizaje.api';
 import {
   BentoCard,
-  CargaDestacada,
-  KpiCard,
   ModalRespuestaPregunta,
   SvgInsignia,
   SvgPodio,
   SvgRangoMedalla,
   StatusBadge,
-  TarjetaEstado,
   UserAvatar,
 } from '../../../shared/ui';
 import { useResponsive } from '../../../utils/responsive';
 import { ApiClientError } from '../../../api/client';
 
-// Insignias del sistema gamificado
 const INSIGNIAS_CATALOGO = [
   {
     codigo: 'speedrun',
@@ -123,21 +117,6 @@ function InformeAprendizajeModal({
   </Modal>;
 }
 
-function ListaDesafiosDiarios({ desafios, bonoOtorgado, insignias }: { desafios: DesafioDiarioGamificacion[]; bonoOtorgado: boolean; insignias: InsigniaEstudiante[] }) {
-  const NOMBRE_DESAFIO: Record<string, string> = {
-    resumen: 'Ver un tema (resumen)',
-    actividad: 'Resolver una actividad',
-    puntos: 'Sumar puntos',
-    cartas: 'Repasar con cartas',
-    esquema: 'Estudiar esquema',
-  };
-
-  return <View className="gap-2">
-    {desafios.map((reto) => <View key={reto.codigo} className="flex-row items-center gap-2 rounded-xl bg-gray-50 p-3"><Ionicons name={reto.completado ? 'checkmark-circle' : 'ellipse-outline'} size={18} color={reto.completado ? '#16A34A' : '#9CA3AF'} /><Text className="flex-1 text-xs text-gray-800">{NOMBRE_DESAFIO[reto.codigo] ?? reto.nombre}</Text></View>)}
-    {bonoOtorgado ? <Text className="text-xs font-bold text-emerald-700">¡Bono semanal de hasta 20 puntos obtenido!</Text> : null}
-  </View>;
-}
-
 export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
@@ -147,7 +126,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [resumen, setResumen] = useState<ResumenGamificacion | null>(null);
   const [rankings, setRankings] = useState<RankingParalelo[]>([]);
 
-  // Valores animados
   const puntosAnimado = useRef(new Animated.Value(0)).current;
   const rachaScale = useRef(new Animated.Value(1)).current;
   const rachaRotate = useRef(new Animated.Value(0)).current;
@@ -155,12 +133,10 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const rankingOpacity = useRef(new Animated.Value(0)).current;
   const rankingTranslateY = useRef(new Animated.Value(30)).current;
 
-  // Control de primera carga para no disparar animación falsa de racha
+  // esPrimeraCarga -> evita animar la racha al primer render
   const esPrimeraCarga = useRef(true);
-  // Racha previamente completada (para detectar activación nueva real)
   const rachaCompletadaAntes = useRef(false);
 
-  // Modal de recompensas
   const [tiendaModalOpen, setTiendaModalOpen] = useState(false);
   const [rangosModalOpen, setRangosModalOpen] = useState(false);
   const [recompensas, setRecompensas] = useState<RecompensaTienda[]>([]);
@@ -170,9 +146,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [perfil, setPerfil] = useState<PerfilAprendizajeEstudiante | null>(null);
   const [perfilError, setPerfilError] = useState<string | null>(null);
 
-  // Modal de respuesta de pregunta fallada
   const [respuestaModalOpen, setRespuestaModalOpen] = useState(false);
-  const [respuestaPregunta, setRespuestaPregunta] = useState<{
+  const [respuestaPregunta] = useState<{
     pregunta: string;
     respuestaEstudiante: string;
     respuestaCorrecta: string;
@@ -254,27 +229,24 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     return () => clearTimeout(temporizador);
   }, [cursoPeriodoId]);
 
-  // Animaciones: puntos, racha activada y entrada del ranking
+  // animaciones -> puntos, racha y entrada del ranking
   useEffect(() => {
     if (!resumen) return;
 
     const esPrimero = esPrimeraCarga.current;
     esPrimeraCarga.current = false;
 
-    // 1. Animar contador de puntos de 0 al valor actual (siempre al cargar)
     Animated.timing(puntosAnimado, {
       toValue: resumen.puntosIndividuales,
       duration: 900,
       useNativeDriver: true,
     }).start();
 
-    // 2. Detectar activación nueva de racha diaria (solo si NO es la primera carga)
     if (!esPrimero) {
       const acabadaDeActivar = resumen.racha?.completada && !rachaCompletadaAntes.current;
       rachaCompletadaAntes.current = resumen.racha?.completada ?? false;
 
       if (acabadaDeActivar) {
-        // Pulso de escala + giro ligero + brillo en el medallón de fuego
         Animated.sequence([
           Animated.parallel([
             Animated.timing(rachaScale, { toValue: 1.25, duration: 300, useNativeDriver: true }),
@@ -289,11 +261,9 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         ]).start();
       }
     } else {
-      // Primera carga: sincronizar referencia sin animar
       rachaCompletadaAntes.current = resumen.racha?.completada ?? false;
     }
 
-    // 3. Entrada animada del ranking (opacidad + deslizamiento)
     Animated.parallel([
       Animated.timing(rankingOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
       Animated.timing(rankingTranslateY, { toValue: 0, duration: 700, useNativeDriver: true }),
@@ -354,16 +324,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     }
   };
 
-  const handleSalvarRacha = async () => {
-    try {
-      await gamificacionApi.salvarRacha();
-      Alert.alert('¡Racha Salvada!', 'Tu racha consecutiva fue rescatada exitosamente (-50 pts).');
-      await fetchData();
-    } catch {
-      Alert.alert('No se pudo salvar', 'Verifica que cuentes con 50 puntos individuales o un salvador de racha.');
-    }
-  };
-
   const racha = resumen?.racha;
   const puntosInd = resumen?.puntosIndividuales ?? 0;
   const puntosCurso = resumen?.puntosCurso ?? puntosInd;
@@ -372,7 +332,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const colorRango = coloresRango[rango];
   const hoyLaPaz = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/La_Paz' }).format(new Date());
 
-  // --- "Qué aprendí hoy" como resumen narrativo ---
   const aprendizajeHoy = resumen?.aprendizajeHoy ?? [];
   const materiasHoy = [...new Set(aprendizajeHoy.map((a) => a.materiaNombre))];
   const promedioAciertoHoy =
@@ -384,7 +343,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     if (totalTemasHoy === 0) {
       return 'Aún no has estudiado nada hoy. ¡Anímate a completar una actividad y descubre qué aprendiste!';
     }
-    const materiaPrincipal = materiasHoy[0];
     let adjetivo = 'buen';
     if (promedioAciertoHoy >= 0.8) adjetivo = 'muy buen';
     else if (promedioAciertoHoy >= 0.6) adjetivo = 'buen';
@@ -394,11 +352,9 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     return `Repasaste ${totalTemasHoy} tema${totalTemasHoy > 1 ? 's' : ''} de ${temaList}${masTemas} y demostraste un rendimiento ${adjetivo}.`;
   };
 
-  // --- Ranking del paralelo del estudiante ---
   const rankingParalelo = rankings.find((r) => r.paralelo === (user?.paralelo === 'B' ? 'B' : 'A'))?.estudiantes ?? [];
   const estudianteLogueadoId = user?.estudianteId || user?.id;
 
-  // Estudiantes mapeados para el podio SVG del ranking (top 3 del paralelo)
   const estudiantesPodio = rankingParalelo
     .slice(0, 3)
     .map((st, i) => ({
@@ -411,12 +367,10 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       avatarUrl: st.avatarUrl ?? undefined,
     }));
 
-  // --- Insignias obtenidas vs catálogo ---
   const insigniasObtenidas = resumen?.insignias ?? [];
   const insigniaPorCodigo = (codigo: string) =>
     insigniasObtenidas.some((ins) => ins.codigo === codigo);
 
-  // Desafíos diarios (máximo 3)
   const desafiosDiarios = resumen?.desafiosDiarios?.slice(0, 3) ?? [];
 
   const NOMBRE_DESAFIO: Record<string, string> = {
@@ -430,10 +384,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
 
   if (isMobile) return (
     <ScrollView className="flex-1" contentContainerClassName="gap-3 pb-6">
-      {/* 0. ERROR / VACÍO */}
       {dashboardError ? <TouchableOpacity onPress={() => void fetchData()} className="rounded-xl border border-rose-200 bg-rose-50 p-3"><Text className="text-xs font-bold text-rose-900">No se pudo cargar gamificación</Text><Text className="text-[10px] text-rose-800 mt-1">{dashboardError}</Text><Text className="text-[10px] font-bold text-rose-900 mt-2">Toca para volver a intentar</Text></TouchableOpacity> : null}
 
-      {/* 1. HÉROE: saludo + RANGO grande y resaltado + foto */}
       <View className="rounded-3xl overflow-hidden bg-[#801F3F] shadow-sm">
         <View className="px-5 pt-5 pb-4 flex-row items-center justify-between">
           <View className="flex-1">
@@ -450,7 +402,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
             bordered
           />
         </View>
-        {/* Rango enorme y resaltado (SVG animado) */}
         <View className="px-5 pb-5 flex-row items-center gap-4">
           <TouchableOpacity onPress={() => setRangosModalOpen(true)}>
           <SvgRangoMedalla
@@ -468,7 +419,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 2. RACHA DIARIA grande */}
       <View className="flex-row gap-3">
         <View className="flex-1 rounded-3xl bg-[#F3D9B7] p-4 items-center justify-center min-h-44">
           <Animated.View
@@ -497,7 +447,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 3. INSIGNIAS del estudiante */}
       <View className="gap-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Tus insignias</Text>
@@ -517,7 +466,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 4. DESAFÍOS DIARIOS (3 retos) */}
       <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
@@ -554,7 +502,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         )}
       </View>
 
-      {/* 5. QUÉ APRENDÍ HOY como resumen narrativo */}
       <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
@@ -574,7 +521,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
       </BentoCard>
 
-      {/* 5. ACCESOS RÁPIDOS (tienda + perfil) */}
       <View className="flex-row gap-3">
         <TouchableOpacity onPress={handleOpenTienda} className="flex-1 rounded-3xl bg-[#801F3F] items-center justify-center p-4">
           <Ionicons name="bag-handle-outline" size={30} color="#F3D9B7" /><Text className="text-[#F3D9B7] text-xs font-bold mt-2">Tienda de Recompensas</Text>
@@ -585,9 +531,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </TouchableOpacity>
       </View>
 
-      {/* 6. PROGRESO */}
-
-      {/* 7. RANKING COMO PODIO */}
       <View className="gap-5 mt-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
@@ -614,7 +557,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   return (
     <ScrollView className="flex-1" contentContainerClassName={isMobile ? 'gap-3 px-3 pt-2 pb-8' : 'gap-4 pb-12'}>
       {dashboardError ? <TouchableOpacity onPress={() => void fetchData()} className="rounded-xl border border-rose-200 bg-rose-50 p-3"><Text className="text-xs font-bold text-rose-900">No se pudo cargar gamificación</Text><Text className="text-[10px] text-rose-800 mt-1">{dashboardError}</Text><Text className="text-[10px] font-bold text-rose-900 mt-2">Toca para volver a intentar</Text></TouchableOpacity> : null}
-      {/* 1. HÉROE: rango grande y resaltado */}
       <View className="rounded-3xl overflow-hidden bg-[#801F3F] shadow-sm">
         <View className="px-5 pt-5 pb-4 flex-row items-center justify-between">
           <View className="flex-1">
@@ -648,7 +590,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 2. RACHA Y PUNTOS */}
       <View className="flex-row gap-3">
         <View className="flex-1 rounded-3xl bg-[#F3D9B7] p-4 items-center justify-center min-h-44">
           <Animated.View
@@ -677,7 +618,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 3. INSIGNIAS */}
       <View className="gap-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Tus insignias</Text>
@@ -697,7 +637,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </View>
 
-      {/* 4. DESAFÍOS DIARIOS (3 retos) */}
       <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
         <View className="flex-row items-center justify-between mb-2">
           <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
@@ -734,7 +673,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         )}
       </View>
 
-      {/* 5. QUÉ APRENDÍ HOY (resumen narrativo) */}
       <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
@@ -754,7 +692,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
       </BentoCard>
 
-      {/* 5. ACCESOS RÁPIDOS */}
       <View className="flex-row gap-3">
         <TouchableOpacity onPress={handleOpenTienda} className="flex-1 rounded-3xl bg-[#801F3F] items-center justify-center p-4">
           <Ionicons name="bag-handle-outline" size={30} color="#F3D9B7" /><Text className="text-[#F3D9B7] text-xs font-bold mt-2">Tienda de Recompensas</Text>
@@ -765,9 +702,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </TouchableOpacity>
       </View>
 
-      {/* 6. PROGRESO */}
-
-      {/* 7. RANKING COMO PODIO */}
       <View className="gap-5 mt-2">
         <View className="flex-row items-center justify-between px-1">
           <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
@@ -777,7 +711,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </Animated.View>
       </View>
 
-      {/* MODAL: TIENDA DE RECOMPENSAS */}
       <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>
         <View className="flex-1 bg-black/60 justify-center items-center p-4">
           <View className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl max-h-[85%]">

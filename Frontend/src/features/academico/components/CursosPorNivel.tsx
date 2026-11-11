@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
-import { NIVEL_LABEL, nivelDe, type CursoAgrupable } from '../utils/niveles';
+import { nivelDe, type CursoAgrupable } from '../utils/niveles';
 import { BentoCard } from '../../../shared/ui';
 
 export type CursoHabilitado = CursoAgrupable & {
@@ -59,12 +59,10 @@ export function CursosPorNivel({
     );
   }
 
-  // Filtrar cursos por el nivel activo
   const cursosDelNivelActivo = cursos.filter(
     (c) => nivelDe(c.nivel) === activeNivel,
   );
 
-  // Agrupar por grados del nivel (1° al 6°)
   const gradosDelNivel = Array.from(
     new Set(cursosDelNivelActivo.map((c) => String(c.grado ?? '').trim())),
   ).sort((a, b) => {
@@ -75,7 +73,6 @@ export function CursosPorNivel({
 
   return (
     <View className="gap-5">
-      {/* ── Tabs de Selección de Nivel y Botón de Recarga ── */}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <View className="flex-row gap-2 bg-gray-100 p-1 rounded-2xl flex-1 max-w-md border border-gray-200">
           <TouchableOpacity
@@ -130,7 +127,6 @@ export function CursosPorNivel({
         )}
       </View>
 
-      {/* ── Grid de Cursos (Filas y Columnas por Grado y Paralelos A / B) ── */}
       {gradosDelNivel.length === 0 ? (
         <View className="py-12 items-center justify-center bg-white rounded-2xl border border-gray-100 p-6">
           <Text className="text-sm text-gray-500">
@@ -160,7 +156,6 @@ export function CursosPorNivel({
                   </Text>
                 </View>
 
-                {/* Columnas de Paralelos */}
                 <View className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
                   {cursosDelGrado.map((curso) => {
                     const par = String(curso.paralelo ?? 'A').toUpperCase();

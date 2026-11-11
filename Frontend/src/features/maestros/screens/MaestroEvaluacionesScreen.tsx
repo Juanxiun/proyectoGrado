@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -34,7 +33,6 @@ export function MaestroEvaluacionesScreen() {
   const [asignaciones, setAsignaciones] = useState<AsignacionDocente[]>([]);
   const [evaluaciones, setEvaluaciones] = useState<ItemEvaluacion[]>([]);
 
-  // Formulario de creación/edición
   const [showForm, setShowForm] = useState(false);
   const [editingEval, setEditingEval] = useState<ItemEvaluacion | null>(null);
 
@@ -48,6 +46,7 @@ export function MaestroEvaluacionesScreen() {
   const [estado, setEstado] = useState<'borrador' | 'publicado' | 'cerrado'>('publicado');
   const [saving, setSaving] = useState(false);
 
+  // carga evaluaciones -> asignaciones y encargos del docente
   const loadData = async () => {
     try {
       setLoading(true);
@@ -77,7 +76,6 @@ export function MaestroEvaluacionesScreen() {
         setSelectedAsignacionId(mappedAsig[0].id);
       }
 
-      // Filtrar encargos que sean de tipo evaluación/examen
       setEvaluaciones(extraerEvaluaciones(encRes.data, 'Materia'));
     } catch (err) {
       console.error('Error cargando evaluaciones:', err);
@@ -179,7 +177,6 @@ export function MaestroEvaluacionesScreen() {
         </View>
       </BentoCard>
 
-      {/* Formulario de creación/edición */}
       {showForm && (
         <BentoCard className="p-5 border-2 border-maroon/20">
           <View className="flex-row items-center justify-between mb-4">
@@ -242,7 +239,6 @@ export function MaestroEvaluacionesScreen() {
               </View>
             </View>
 
-            {/* Parámetros de ejecución temporal con Calendario y Selector de Horas */}
             <View className={`gap-3 ${isMobile ? '' : 'flex-row'}`}>
               <DateTimePicker
                 label="📅 Fecha y Hora de Inicio *"
@@ -289,7 +285,6 @@ export function MaestroEvaluacionesScreen() {
         </BentoCard>
       )}
 
-      {/* Listado de Evaluaciones */}
       {loading ? (
         <View className="py-12 items-center justify-center">
           <ActivityIndicator size="large" color="#801529" />

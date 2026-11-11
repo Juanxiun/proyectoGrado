@@ -1,4 +1,4 @@
-// tarjeta_estado -> tarjeta roja/verde/azul con título, valor, barra y gráfico simple
+// TarjetaEstado -> tarjeta con título, valor y barra
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 

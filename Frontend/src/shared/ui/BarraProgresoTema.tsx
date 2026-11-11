@@ -1,6 +1,6 @@
-// barra_progreso_tema -> barra de completado de un tema con animacion y puntos al terminar
+// BarraProgresoTema -> progreso de un tema con animación
 import { Animated, Text, View } from 'react-native';
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface BarraProgresoTemaProps {
   tema: string;
@@ -23,7 +23,6 @@ export function BarraProgresoTema({
   const animPuntos = useRef(new Animated.Value(0)).current;
   const completadoAntes = useRef(false);
 
-  // Animar barra de progreso cuando cambia
   useEffect(() => {
     Animated.timing(animProgreso, {
       toValue: progreso,
@@ -32,7 +31,6 @@ export function BarraProgresoTema({
     }).start();
   }, [progreso, animProgreso]);
 
-  // Detectar cuando se completa el tema y animar puntos
   useEffect(() => {
     if (completado && !completadoAntes.current) {
       completadoAntes.current = true;

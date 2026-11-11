@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -36,7 +35,7 @@ export function EstudianteMateriasScreen() {
   const [selectedMateria, setSelectedMateria] = useState<MateriaInscrita | null>(null);
   const [busqueda, setBusqueda] = useState('');
 
-  // Dos pestañas estrictamente separadas: 'contenido' vs 'tareas'
+  // pestañas -> contenido separado de tareas
   const [activeTab, setActiveTab] = useState<'contenido' | 'tareas'>('contenido');
   const materiasFiltradas = materias.filter((materia) => `${materia.materiaNombre} ${materia.docenteNombre ?? ''}`.toLowerCase().includes(busqueda.toLowerCase()));
 
@@ -45,7 +44,7 @@ export function EstudianteMateriasScreen() {
       try {
         setLoading(true);
 
-        // 1. Obtener inscripcion del estudiante si no viene en user.cursoPeriodoId
+        // inscripción -> resolver curso del estudiante
         let cpId = user?.cursoPeriodoId;
         if (!cpId) {
           const inscRes = await academicServicesApi.list('inscripciones', {
@@ -65,7 +64,6 @@ export function EstudianteMateriasScreen() {
           return;
         }
 
-        // 2. Obtener materias asignadas a este curso
         const asigRes = await academicServicesApi.list('asignaciones', {
           cursoPeriodoId: cpId,
           estado: 'activo',
@@ -190,9 +188,7 @@ export function EstudianteMateriasScreen() {
           )}
         </>
       ) : (
-        /* Vista de la Materia Seleccionada */
         <View className="flex-1 gap-4">
-          {/* Barra Superior con Botón Volver y Pestañas */}
           <BentoCard className="p-5">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-3">
@@ -214,7 +210,6 @@ export function EstudianteMateriasScreen() {
               <StatusBadge label="Estudiante" variant="neutral" />
             </View>
 
-            {/* SEPARACIÓN ESTRICTA DE SECCIONES (TABS) */}
             <View className="flex-row gap-3 mt-4 pt-4 border-t border-gray-100">
               <TouchableOpacity
                 onPress={() => setActiveTab('contenido')}
@@ -262,7 +257,6 @@ export function EstudianteMateriasScreen() {
             </View>
           </BentoCard>
 
-          {/* CARGA INDEPENDIENTE: Renderiza cada componente bajo demanda */}
           {activeTab === 'contenido' ? (
             <ContenidoEstudioSection
               asignacionId={selectedMateria.asignacionId}

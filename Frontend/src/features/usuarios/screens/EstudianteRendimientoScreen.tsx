@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -10,17 +10,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import {
   seguimientoApi,
-  type DesempenoMateria,
   type PanelEstudiante,
   RIESGO_META,
 } from '../../../api/seguimiento.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge, TarjetaEstado, UserAvatar } from '../../../shared/ui';
-import { useResponsive } from '../../../utils/responsive';
 
 export function EstudianteRendimientoScreen() {
   const { user } = useAuth();
-  const { isMobile } = useResponsive();
 
   const [loading, setLoading] = useState(true);
   const [trimestre, setTrimestre] = useState<number>(1);
@@ -53,18 +50,16 @@ export function EstudianteRendimientoScreen() {
 
   const promedioGeneral = periodoActual?.promedio ?? panelData?.indiceGeneral ?? 0;
   const materiasEnRiesgo = materias.filter((m) => {
-    const meta = RIESGO_META[m.nivelRiesgo];
     return m.nivelRiesgo === 'riesgo' || m.nivelRiesgo === 'riesgo_alto' || (m.promedio !== null && m.promedio < 60);
   }).length;
   const materiasFortaleza = materias.filter((m) => m.promedio !== null && m.promedio >= 80).length;
   const materiasEnRegla = materias.filter((m) => m.promedio !== null && m.promedio >= 60 && m.promedio < 80).length;
 
-  // Promedio de comprensión (promedio general mapeado 0-100)
+  // comprensión -> promedio general 0-100
   const comprension = Math.max(0, Math.min(100, promedioGeneral ?? 0));
-  // Tiempo de estudio estimado: índice de desempeño del período
+  // tiempo -> estimado por desempeño del período
   const tiempoEstudio = periodoActual?.indiceDesempeno ?? 0;
 
-  // Recomendación personalizada
   const recomendacionMejora = materiasEnRiesgo > 0
     ? `Refuerza ${materiasEnRiesgo} materia${materiasEnRiesgo > 1 ? 's' : ''} en riesgo: dedica tiempo extra a sus tareas y pide apoyo a tu docente.`
     : 'No tienes materias en riesgo. ¡Sigue así y mantén el ritmo!';
@@ -116,7 +111,6 @@ export function EstudianteRendimientoScreen() {
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
-      {/* Cabecera: avatar + nombre + promedio grande */}
       <BentoCard className="p-5">
         <View className="flex-row items-start justify-between gap-4">
           <UserAvatar
@@ -145,7 +139,6 @@ export function EstudianteRendimientoScreen() {
         <StatusBadge label={RIESGO_META[periodoActual.nivelRiesgo].label} variant={RIESGO_META[periodoActual.nivelRiesgo].variant} />
       </BentoCard>
 
-      {/* Selector de trimestre */}
       <View className="px-1">
         <View className="flex-row bg-gray-100 p-1 rounded-xl">
           {[1, 2, 3].map((t) => (
@@ -156,9 +149,7 @@ export function EstudianteRendimientoScreen() {
         </View>
       </View>
 
-      {/* Tarjetas de estado roja/verde/azul */}
       <View className="flex-row flex-wrap gap-3 px-1">
-        {/* Roja: lo que está fallando */}
         <TarjetaEstado
           variante="peligro"
           titulo="Lo que estás fallando"
@@ -167,7 +158,6 @@ export function EstudianteRendimientoScreen() {
           porcentaje={materias.length > 0 ? Math.round((materiasEnRiesgo / materias.length) * 100) : 0}
           iconoColor="#DC2626"
         />
-        {/* Verde: fortalezas */}
         <TarjetaEstado
           variante="exito"
           titulo="Tus fortalezas"
@@ -176,7 +166,6 @@ export function EstudianteRendimientoScreen() {
           porcentaje={materias.length > 0 ? Math.round((materiasFortaleza / materias.length) * 100) : 0}
           iconoColor="#16A34A"
         />
-        {/* Azul: tiempo de estudio y comprensión */}
         <TarjetaEstado
           variante="info"
           titulo="Tiempo de estudio"
@@ -195,7 +184,6 @@ export function EstudianteRendimientoScreen() {
         />
       </View>
 
-      {/* Gráfico de barras por materia */}
       {materias.length > 0 && (
         <BentoCard className="p-5">
           <View className="flex-row items-center justify-between mb-4">
@@ -229,7 +217,6 @@ export function EstudianteRendimientoScreen() {
         </BentoCard>
       )}
 
-      {/* Recomendación personalizada final */}
       <BentoCard className="p-5 rounded-3xl bg-amber-50 border border-amber-100 shadow-sm">
         <View className="flex-row items-start gap-3 mb-4">
           <View className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shrink-0">

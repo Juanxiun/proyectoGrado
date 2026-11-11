@@ -1,4 +1,4 @@
-// hook_usuarios -> obtener y listar datos de usuarios
+// useUsuarios -> alta y listado de usuarios
 import { useCallback, useState } from 'react';
 import { usuariosApi } from '../api/usuarios.api';
 import type {
@@ -29,14 +29,7 @@ export function useUsuariosList() {
     }
   }, []);
 
-  /**
-   * Igual que `fetchList` pero recorre todas las páginas.
-   *
-   * El backend topa `limit` en 100 por pedido sin avisar, así que un solo
-   * pedido con `limit: 300` devuelve 100. Las pantallas que filtran o cuentan
-   * sobre el listado completo (por ejemplo el control estudiantil por nivel)
-   * necesitan sí o sí todas las filas.
-   */
+  // fetchAll -> trae todas las páginas aplanadas
   const fetchAll = useCallback(async (params: UsuariosQueryParams = {}) => {
     setLoading(true);
     setError(null);

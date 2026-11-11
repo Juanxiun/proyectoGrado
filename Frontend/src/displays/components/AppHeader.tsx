@@ -1,12 +1,12 @@
-﻿import React, { useEffect, useState } from 'react';
-import { Alert, Image, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
+﻿import { useEffect, useState } from 'react';
+import { Alert, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { notificacionesApi } from '../../api/notificaciones.api';
 import { connectUsersWebSocket } from '../../api/users.websocket';
 import { wsClient } from '../../api/websocket.client';
 import { useAuth } from '../../context/AuthContext';
 import { NotificationsModal } from '../../features/usuarios/components/NotificationsModal';
-import { BentoCard, UserAvatar } from '../../shared/ui';
+import { UserAvatar } from '../../shared/ui';
 import { useResponsive } from '../../utils/responsive';
 
 interface AppHeaderProps {
@@ -86,7 +86,6 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
       </View>
 
       <View className="flex-row items-center gap-3">
-        {/* Notificaciones */}
         <TouchableOpacity
           onPress={() => setNotifModalOpen(true)}
           className="relative w-10 h-10 rounded-full items-center justify-center"
@@ -101,7 +100,6 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
           )}
         </TouchableOpacity>
 
-        {/* User Chip */}
         <TouchableOpacity
           onPress={() => setUserMenuOpen(true)}
           className={`flex-row items-center ${isMobile ? 'p-0' : 'gap-2.5 pl-2 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-full hover:bg-gray-100'}`}
@@ -120,7 +118,6 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
         </TouchableOpacity>
       </View>
 
-      {/* Notificaciones Modal */}
       <NotificationsModal
         visible={notifModalOpen}
         onClose={() => {
@@ -129,7 +126,6 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
         }}
       />
 
-      {/* User Menu Modal */}
       <Modal
         visible={userMenuOpen}
         transparent

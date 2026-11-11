@@ -1,4 +1,4 @@
-// banner -> mostrar imagen principal del header
+// HeroBanner -> banner principal del encabezado
 import { Text, TouchableOpacity, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { COLORS } from '../theme';

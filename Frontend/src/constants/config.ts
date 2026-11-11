@@ -8,15 +8,12 @@ export const API_BASE_URL =
 
 export const APP_VERSION = 'v1.0.0';
 
-// ── MinIO (archivos) ──────────────────────────────────────────────────────────
-// La API devuelve `fotoUrl`, `archivoUrl` y `caratulaUrl` ya como URL absoluta
-// (ver `buildPublicUrl` en ServiceUser/connects/Storage/minio.ts), así que acá
-// sólo hace falta la URL de la foto por defecto, que el usuario no carga nunca.
+// MEDIA_BASE_URL -> host de MinIO para la foto por defecto
 export const MEDIA_BASE_URL =
   process.env.EXPO_PUBLIC_MEDIA_URL || `http://${DEFAULT_API_HOST}:9000`;
 export const MEDIA_BUCKET = 'usuarios';
 
-// media -> reemplazar hosts locales por el host accesible del gateway en dispositivos
+// resolveMediaUrl -> cambia hosts locales por el del gateway
 export function resolveMediaUrl(rawUrl: string): string {
   try {
     const media = new URL(rawUrl);
@@ -29,10 +26,6 @@ export function resolveMediaUrl(rawUrl: string): string {
   }
 }
 
-/**
- * Foto de perfil por defecto de cualquier usuario sin `fotoUrl`.
- * Vive en MinIO como `usuarios/default/profil.jpg`.
- */
 export const DEFAULT_USER_PHOTO = `${MEDIA_BASE_URL}/${MEDIA_BUCKET}/default/profil.jpg`;
 
 export const ROLES = {

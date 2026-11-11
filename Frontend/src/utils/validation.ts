@@ -1,8 +1,4 @@
-/**
- * Las reglas de credenciales viven en src/shared/validation/credentials.ts.
- * Este módulo se conserva como punto de entrada compatible y además mantiene
- * los formateadores de uso general que usan las pantallas.
- */
+// validation -> reexporta credenciales y formateadores generales
 export {
   USERNAME_MAX,
   PASSWORD_MIN,

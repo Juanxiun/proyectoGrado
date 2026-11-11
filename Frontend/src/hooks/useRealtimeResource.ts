@@ -1,10 +1,7 @@
 import { useEffect } from 'react';
 import { wsClient, type DataChangePayload } from '../api/websocket.client';
 
-/**
- * Hook para suscribir un componente a cambios en tiempo real vía Webhooks / SignalR
- * del gateway de backend.
- */
+// useRealtimeResource -> suscribe a cambios en tiempo real
 export function useRealtimeResource(
   resource: string,
   onDataChanged: (payload: DataChangePayload) => void,

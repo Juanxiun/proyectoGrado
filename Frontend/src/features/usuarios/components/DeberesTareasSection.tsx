@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
   Platform,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,7 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
@@ -50,24 +48,20 @@ export function DeberesTareasSection({
   asignacionId,
   materiaNombre,
 }: DeberesTareasSectionProps) {
-  const { user } = useAuth();
-
   const [loading, setLoading] = useState(true);
   const [tareas, setTareas] = useState<EncargoItem[]>([]);
   const [myEntregas, setMyEntregas] = useState<Record<string, EntregaItem>>({});
 
-  // Modal Formulario de Entrega
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<EncargoItem | null>(null);
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Carga Diferida e Independiente
+  // carga deberes -> encargos y entregas propias
   const loadData = async () => {
     try {
       setLoading(true);
-      // Peticiones independientes para tareas y para entregas propias
       const [encRes, entRes] = await Promise.all([
         academicServicesApi.list('encargos', { asignacionId, limit: 100 }),
         academicServicesApi.list('entregas', { limit: 100 }),
@@ -78,7 +72,6 @@ export function DeberesTareasSection({
       );
       setTareas(tasks);
 
-      // Mapear mis entregas por encargoId
       const map: Record<string, EntregaItem> = {};
       for (const ent of entRes.data as any[]) {
         map[String(ent.encargoId)] = ent;
@@ -222,7 +215,6 @@ export function DeberesTareasSection({
                   </View>
                 </View>
 
-                {/* Fechas de disponibilidad */}
                 <View className="flex-row flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100 text-xs">
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
@@ -238,7 +230,6 @@ export function DeberesTareasSection({
                   </View>
                 </View>
 
-                {/* Información de entrega o botón de envío */}
                 {isDelivered ? (
                   <View className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex-row items-center justify-between">
                     <View className="flex-1 pr-2">
@@ -274,7 +265,6 @@ export function DeberesTareasSection({
         </View>
       )}
 
-      {/* Modal de Envío de Tarea */}
       <Modal
         visible={submissionModalOpen}
         animationType="fade"
@@ -283,7 +273,6 @@ export function DeberesTareasSection({
       >
         <View className="flex-1 bg-black/60 items-center justify-center p-4">
           <View className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
-            {/* Header del Modal */}
             <View className="p-5 bg-maroon text-white flex-row items-center justify-between">
               <View className="flex-1 pr-2">
                 <Text className="text-base font-bold text-white">
@@ -301,9 +290,7 @@ export function DeberesTareasSection({
               </TouchableOpacity>
             </View>
 
-            {/* Cuerpo del Formulario */}
             <View className="p-5 gap-4">
-              {/* Aviso de marca de tiempo y privacidad */}
               <View className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex-row items-start gap-2">
                 <Ionicons name="shield-checkmark-outline" size={18} color="#801529" />
                 <View className="flex-1">
@@ -316,7 +303,6 @@ export function DeberesTareasSection({
                 </View>
               </View>
 
-              {/* Selector de Archivo */}
               <View>
                 <Text className="text-xs font-semibold text-gray-700 mb-1">Archivo de Tarea *</Text>
                 <TouchableOpacity
@@ -333,7 +319,6 @@ export function DeberesTareasSection({
                 </TouchableOpacity>
               </View>
 
-              {/* Comentarios del estudiante */}
               <View>
                 <Text className="text-xs font-semibold text-gray-700 mb-1">Comentario para el profesor (Opcional)</Text>
                 <TextInput
@@ -347,7 +332,6 @@ export function DeberesTareasSection({
                 />
               </View>
 
-              {/* Botón de Confirmación */}
               <TouchableOpacity
                 onPress={handleSubmitTask}
                 disabled={submitting}

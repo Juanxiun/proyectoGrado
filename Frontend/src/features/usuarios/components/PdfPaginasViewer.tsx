@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Image, PanResponder, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { aprendizajeApi, type PaginaPdf, type VistaPreviaPdf } from '../../../api/aprendizaje.api';
@@ -67,7 +67,6 @@ export function PdfPaginasViewer({ materialId, titulo }: PdfPaginasViewerProps) 
     cargadasRef.current = new Set();
     setPaginaActual(1);
     void cargar(1);
-    // lector -> reiniciar solo cuando cambia el material
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [materialId]);
 

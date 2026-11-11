@@ -1,6 +1,5 @@
-// podio_svg -> podio del ranking: foto arriba, nombre y apellido debajo, sin numeros
+// SvgPodio -> podio del ranking con foto y nombre
 import { Svg, Circle, Rect, Text, Defs, LinearGradient, Stop, G, Image as SvgImage } from 'react-native-svg';
-import React from 'react';
 
 interface EstudiantePodioSvg {
   nombre: string;
@@ -52,7 +51,6 @@ export function SvgPodio({ estudiantes }: SvgPodioProps) {
 
         return (
           <G key={est.posicion} transform={`translate(${posX}, ${baseY - altura})`}>
-            {/* Barra de altura */}
             <Rect
               x={0}
               y={0}
@@ -64,7 +62,6 @@ export function SvgPodio({ estudiantes }: SvgPodioProps) {
               strokeWidth={esLogueado ? 3 : 0}
             />
 
-            {/* Foto de perfil del estudiante arriba */}
             {est.avatarUrl ? (
               <SvgImage
                 href={est.avatarUrl}
@@ -85,7 +82,6 @@ export function SvgPodio({ estudiantes }: SvgPodioProps) {
               />
             )}
 
-            {/* Nombre */}
             <Text
               x={columnWidth / 2}
               y={altura + 8}
@@ -99,7 +95,6 @@ export function SvgPodio({ estudiantes }: SvgPodioProps) {
               {est.nombre}
             </Text>
 
-            {/* Apellido */}
             <Text
               x={columnWidth / 2}
               y={altura + 22}
@@ -113,7 +108,6 @@ export function SvgPodio({ estudiantes }: SvgPodioProps) {
               {est.apellidoPaterno}
             </Text>
 
-            {/* Puntos */}
             <Text
               x={columnWidth / 2}
               y={altura + 36}

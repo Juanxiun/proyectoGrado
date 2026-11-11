@@ -1,4 +1,3 @@
-import React from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 // @ts-ignore react-native-webview se instala desde las dependencias Expo
 import { WebView } from 'react-native-webview';

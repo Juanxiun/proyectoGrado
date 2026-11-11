@@ -43,7 +43,7 @@ function FilaResumen({ etiqueta, children }: { etiqueta: string; children: React
   );
 }
 
-/** Desempeño individual: todas las materias del período, con su riesgo. */
+// panel estudiante -> desempeño por materia y riesgo
 export function PanelEstudianteRendimiento({
   panel,
   loading,

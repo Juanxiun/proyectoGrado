@@ -135,10 +135,7 @@ export const academicManagementApi = {
     apiRequest<Record<string, unknown>>(`/api/inscripciones/solicitudes/${id}/rechazar`, { method: 'PATCH', body: { observacion } }),
 };
 
-// ── Materias y maya curricular por GRADO ─────────────────────────────────────
-// 1°A y 1°B cursan lo mismo, así que la materia y el temario se configuran una
-// sola vez a nivel de grado. Los paralelos siguen siendo cursos aparte para
-// horarios, inscripciones y asignaciones.
+// materias por grado -> se configuran una vez a nivel de grado
 
 export interface MateriaDelGrado {
   materiaId: string;
@@ -151,7 +148,6 @@ export interface MateriaDelGrado {
   orden: number;
 }
 
-/** Bloque de "Cursos base": un grado con todos sus paralelos juntos. */
 export interface GradoConParalelos {
   nivel: NivelEducativo;
   grado: string;
@@ -184,7 +180,6 @@ export interface TemaMalla {
   orden: number;
 }
 
-/** La maya de un grado: una entrada por materia, con sus temas ya ordenados. */
 export interface MayaPorMateria {
   materia: MateriaDelGrado;
   temas: TemaMalla[];
@@ -202,14 +197,7 @@ export type NivelEducativo = 'inicial' | 'primaria' | 'secundaria' | 'bachillera
 const gradoQuery = (nivel: NivelEducativo, grado: string, extra: Record<string, string> = {}) =>
   buildQuery({ nivel, grado, ...extra });
 
-/**
- * Trae todas las páginas de un listado y las devuelve aplanadas.
- *
- * Los tres servicios topan `limit` en 100 por pedido (`Math.min(100, ...)` en
- * `utils/http.ts` de cada uno) sin avisar, así que un `limit: 200` se queda
- * en 100 y cualquier conteo o filtro sobre la lista sale mal. Esto recorre las
- * páginas hasta cubrirlas todas.
- */
+// listAll -> recorre todas las páginas y las aplana
 async function listAll(
   resource: ServiceResource,
   params: Record<string, string | number | undefined> = {},
@@ -236,7 +224,6 @@ export const academicServicesApi = {
       `${paths[resource]}${buildQuery({ page: 1, limit: 100, ...params })}`,
     ),
 
-  /** Igual que `list`, pero recorre todas las páginas y las aplana. */
   listAll,
   create: (resource: ServiceResource, payload: Record<string, unknown>) =>
     apiRequest<Record<string, unknown>>(paths[resource], {
@@ -260,7 +247,6 @@ export const academicServicesApi = {
       { method: "PATCH", body: payload },
     ),
 
-  // ── Materias por grado ─────────────────────────────────────────────────────
   listGrados: (nivel?: NivelEducativo) =>
     apiRequest<ListaGrados>(`/api/grados${buildQuery({ nivel })}`),
   gradoMaterias: (nivel: NivelEducativo, grado: string) =>
@@ -288,7 +274,6 @@ export const academicServicesApi = {
       body: { materias },
     }),
 
-  // ── Maya curricular: temas por grado y materia ─────────────────────────────
   getMalla: (nivel: NivelEducativo, grado: string) =>
     apiRequest<MayaPorMateria[]>(`/api/malla${gradoQuery(nivel, grado)}`),
   getResumenMalla: (nivel: NivelEducativo, grado: string) =>

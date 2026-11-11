@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import type { FormatoResumen } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';

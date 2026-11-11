@@ -26,13 +26,7 @@ function reduceToSingleDigit(sum: number): number {
   return s;
 }
 
-/**
- * Genera un nombre de usuario autogenerado siguiendo la fórmula institucional limpia:
- *   - 2 letras de Apellido Paterno
- *   - 2 letras de Apellido Materno (o fallback elegante)
- *   - 2 letras de Nombre
- *   - 2 primeros y 2 últimos dígitos de CI con suma de verificación
- */
+// generateUsername -> usuario institucional de 8 letras más CI
 export function generateUsername(
   nombre: string,
   apellidoPaterno: string,
@@ -76,9 +70,7 @@ export function generateUsername(
   return `${apPat}${apMat}${nom}${ciFirstTwo}${ciLastTwo}${checksum}`;
 }
 
-/**
- * Genera el correo electrónico institucional.
- */
+// generateStudentEmail -> correo institucional del usuario
 export function generateStudentEmail(username: string): string {
   if (!username) return 'usuario@shalom.edu.bo';
   const cleanUsername = username.toLowerCase().trim().replace(/[^a-z0-9_.-]/g, '');

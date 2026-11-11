@@ -1,4 +1,4 @@
-// shell_roles -> distribuir interfaz según rol de usuario (estudiante, docente, admin)
+// RoleShell -> distribuye la interfaz según el rol
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { AppLayout } from '../displays/layouts/AppLayout';
@@ -69,7 +69,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
   };
   const headerTitle = titleByRoute[activeRoute] ?? panelTitle;
 
-  // Restriccion RBAC: la vista movil es exclusiva para Estudiantes
+  // RBAC -> la vista móvil es solo para estudiantes
   if (isMobile && !isStudent) {
     return <MobileAccessRestrictedScreen role={user.rol} />;
   }

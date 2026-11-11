@@ -1,7 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
   Image,
   Modal,
   Platform,
@@ -35,7 +33,7 @@ export function InAppDocumentViewerModal({
   fileSize,
   uploadedAt,
 }: DocumentViewerProps) {
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -145,7 +143,6 @@ export function InAppDocumentViewerModal({
 
     if (isOffice) return <DocumentWebView uri={displayUrl || url} title={resolvedName} mimeType={mimeType} fileName={resolvedName} />;
 
-    // Archivos generales
     return (
       <View className="flex-1 items-center justify-center p-8 bg-gray-50">
         <View className="w-20 h-20 rounded-3xl bg-maroon/10 items-center justify-center mb-4">
@@ -175,7 +172,6 @@ export function InAppDocumentViewerModal({
     >
       <View className="flex-1 bg-black/70 items-center justify-center p-2 md:p-6">
         <View className="bg-white rounded-3xl overflow-hidden shadow-2xl flex-col border border-gray-200" style={{ height: '92%', maxWidth: 1152, width: '100%' }}>
-          {/* Header Barra Superior */}
           <View className="p-4 bg-maroon text-white flex-row items-center justify-between">
             <View className="flex-row items-center gap-3 flex-1 mr-3">
               <View className="w-10 h-10 rounded-xl bg-white/20 items-center justify-center">
@@ -195,7 +191,6 @@ export function InAppDocumentViewerModal({
               </View>
             </View>
 
-            {/* Acciones de Zoom & Descarga */}
             <View className="flex-row items-center gap-2">
               {isImage && (
                 <View className="flex-row items-center bg-white/20 rounded-xl p-1 mr-1">
@@ -244,12 +239,10 @@ export function InAppDocumentViewerModal({
             </View>
           </View>
 
-          {/* Área Principal de Contenido */}
           <View className="flex-1 bg-gray-100 relative">
             {renderContent()}
           </View>
 
-          {/* Footer de información */}
           <View className="px-4 py-2.5 bg-gray-50 border-t border-gray-200 flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <View className="w-2 h-2 rounded-full bg-green-500" />

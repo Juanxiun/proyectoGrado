@@ -42,13 +42,12 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
   const [periodoId, setPeriodoId] = useState(String(initialPeriodoId ?? user?.periodoId ?? ''));
   const [periodOptions, setPeriodOptions] = useState<Array<{ id: string; anio: number; nombre: string; activo: boolean; estado: string }>>([]);
 
-  // Multicurso monitor para Director / Control / Admin
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [nivelTab, setNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
   const [selectedCourseForEdit, setSelectedCourseForEdit] = useState<string | undefined>(undefined);
   const [expandedCourseId, setExpandedCourseId] = useState<string | null>(null);
 
-  // Modo construcción de horarios para dirección, control y administración
+  // builder -> construcción de horarios para gestión
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedDayIndex, setSelectedDayIndex] = useState(Math.max(0, Math.min(4, new Date().getDay() - 1)));
   const [weekOffset, setWeekOffset] = useState(0);
@@ -80,7 +79,6 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
       }
       if (!id) return;
 
-      // Cargar lista de cursos para el selector multicurso si es director, control o admin
       if (isDirectorOrControl || isAdmin) {
         const cpRes = await academicServicesApi.list('cursos-periodo', { periodoId: id, estado: 'activo', limit: 100 });
         const rawCps = (cpRes.data ?? []) as Array<Record<string, any>>;
@@ -100,7 +98,6 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
         setCourses(opts);
       }
 
-      // Parámetros según rol
       const filters: Record<string, string | undefined> = {};
       if (isStudent && user?.cursoPeriodoId) {
         filters.cursoPeriodoId = String(user.cursoPeriodoId);
@@ -210,7 +207,6 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pb-8">
-      {/* Header y Acciones de Horarios */}
       <BentoCard className="p-5">
         <View className="flex-row items-center justify-between flex-wrap gap-2">
           <View>
@@ -235,7 +231,6 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
           </View>
         </View>
 
-        {/* Pestañas de Nivel (Primaria / Secundaria) para gestores de horarios cuando no está en builder */}
         {isScheduleManager && !showBuilder && (
           <View className="flex-row items-center gap-2 mt-4 pt-3 border-t border-gray-100">
             <TouchableOpacity
@@ -335,7 +330,6 @@ export function ScheduleScreen({ onNavigate, initialPeriodoId }: { onNavigate?: 
         )}
       </BentoCard>
 
-      {/* Si está en modo Construcción de horarios */}
       {showBuilder && isScheduleManager ? (
         <InteractiveScheduleBuilder
           periodoId={periodoId}

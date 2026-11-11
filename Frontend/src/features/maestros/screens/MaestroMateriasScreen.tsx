@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -117,11 +117,9 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
   const [encargosList, setEncargosList] = useState<EncargoItem[]>([]);
   const [loadingContent, setLoadingContent] = useState(false);
 
-  // Malla curricular
   const [temasMalla, setTemasMalla] = useState<TemaMallaItem[]>([]);
-  const [loadingMalla, setLoadingMalla] = useState(false);
+  const [, setLoadingMalla] = useState(false);
 
-  // Material form
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<MaterialItem | null>(null);
   const [matTitulo, setMatTitulo] = useState('');
@@ -133,9 +131,7 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
   // malla -> tema seleccionado para subir material
   const [selectedTemaForUpload, setSelectedTemaForUpload] = useState<TemaMallaItem | null>(null);
   const [matTipoSubida, setMatTipoSubida] = useState<'estudio' | 'actividad'>('estudio');
-  const [expandedTemaId, setExpandedTemaId] = useState<string | null>(null);
 
-  // Encargo form
   const [showTareaForm, setShowTareaForm] = useState(false);
   const [editingEncargo, setEditingEncargo] = useState<EncargoItem | null>(null);
   const [tareaTitulo, setTareaTitulo] = useState('');
@@ -149,19 +145,16 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
   );
   const [savingTarea, setSavingTarea] = useState(false);
 
-  // Entregas
   const [entregasModalOpen, setEntregasModalOpen] = useState(false);
   const [selectedEncargoForEntregas, setSelectedEncargoForEntregas] = useState<EncargoItem | null>(null);
   const [entregas, setEntregas] = useState<EntregaItem[]>([]);
   const [loadingEntregas, setLoadingEntregas] = useState(false);
 
-  // Viewer
   const [viewerDoc, setViewerDoc] = useState<{
     visible: boolean; title: string; url?: string | null;
     fileName?: string; mimeType?: string; fileSize?: number; uploadedAt?: string;
   }>({ visible: false, title: '' });
 
-  // Delete Confirm Modal
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'material' | 'encargo'; item: MaterialItem | EncargoItem } | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
@@ -237,7 +230,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
     ]);
     setMaterialesList(mRes.data as any[]);
     setEncargosList(eRes.data as any[]);
-    // Cargar malla curricular
     await loadMallaCurricular(asig);
   };
 
@@ -249,7 +241,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
     try { await reloadContent(asig); } catch (e) { console.error(e); } finally { setLoadingContent(false); }
   };
 
-  // ── MATERIAL CRUD ─────────────────────────────────────────────────────────
   const openNewMaterial = (tema?: TemaMallaItem, tipo?: 'estudio' | 'actividad') => {
     setEditingMaterial(null);
     setMatTitulo(tema ? tema.titulo : '');
@@ -313,7 +304,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         return data;
       };
 
-      // upload -> paso 1: subiendo
       await new Promise((r) => setTimeout(r, 300));
       setUploadProgress({ step: 1, message: UPLOAD_STEPS[1].label });
 
@@ -332,13 +322,11 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         await academicServicesApi.uploadMaterial(data);
       }
 
-      // upload -> paso 2: analizando / verificado
       setUploadProgress({ step: 2, message: UPLOAD_STEPS[2].label });
       await new Promise((r) => setTimeout(r, 400));
       setUploadProgress({ step: 3, message: UPLOAD_STEPS[3].label });
       await new Promise((r) => setTimeout(r, 400));
 
-      // upload -> paso final: éxito
       setUploadProgress({ step: 4, message: UPLOAD_STEPS[4].label });
       await new Promise((r) => setTimeout(r, 600));
 
@@ -378,7 +366,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
     }
   };
 
-  // ── ENCARGO CRUD ──────────────────────────────────────────────────────────
   const openNewEncargo = () => {
     setEditingEncargo(null); setTareaTitulo(''); setTareaDescripcion(''); setTareaPonderacion('100');
     setTareaTipo('tarea'); setTareaEstado('publicado');
@@ -421,11 +408,9 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
     catch { setEntregas([]); } finally { setLoadingEntregas(false); }
   };
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-10">
 
-      {/* ── Header ── */}
       <BentoCard className="p-5">
         <View className="flex-row items-center gap-3">
           {selectedAsig && (
@@ -471,7 +456,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         )}
       </BentoCard>
 
-      {/* ── Selección de materia ── */}
       {!selectedAsig ? (
         loading ? (
           <View className="py-16 items-center">
@@ -491,7 +475,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
             {(['Primaria', 'Secundaria'] as const).map((nivel) => {
               const materiasNivel = materias.filter(m => m.nivel === nivel);
               if (materiasNivel.length === 0) return null;
-              const color = nivel === 'Primaria' ? 'green' : 'blue';
               const colorBg = nivel === 'Primaria' ? 'bg-green-50' : 'bg-blue-50';
               const colorBorder = nivel === 'Primaria' ? 'border-green-200' : 'border-blue-200';
               const colorText = nivel === 'Primaria' ? 'text-green-700' : 'text-blue-700';
@@ -552,7 +535,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         </View>
 
       ) : contentTab === 'tareas' ? (
-        /* ─────────── EVALUACIONES ─────────── */
         <View className="gap-4">
           <BentoCard className="p-4">
             <View className="flex-row items-center justify-between">
@@ -694,7 +676,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         </View>
 
       ) : (
-        /* ─────────── MATERIALES PEDAGÓGICOS ─────────── */
         <View className="gap-4">
           <BentoCard className="p-4">
             <View className="flex-row items-center justify-between">
@@ -723,7 +704,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                 <Text className="text-base font-black text-gray-900">{editingMaterial ? 'Editar material' : 'Subir nuevo material'}</Text>
               </View>
 
-              {/* Selector / Chip de tema vinculado */}
               {selectedTemaForUpload ? (
                 <View className="p-3 mb-3 bg-gray-50 rounded-xl border border-gray-200 gap-2">
                   <View className="flex-row items-center justify-between">
@@ -1034,7 +1014,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         </View>
       )}
 
-      {/* ── Modal Entregas ── */}
       <Modal visible={entregasModalOpen} animationType="fade" transparent onRequestClose={() => setEntregasModalOpen(false)}>
         <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
           <View className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl">
@@ -1094,7 +1073,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         </View>
       </Modal>
 
-      {/* ── Visor de Documentos ── */}
       <InAppDocumentViewerModal
         visible={viewerDoc.visible}
         onClose={() => setViewerDoc({ visible: false, title: '' })}
@@ -1106,7 +1084,6 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         uploadedAt={viewerDoc.uploadedAt}
       />
 
-      {/* ── Confirmación de Eliminación ── */}
       <ConfirmDeleteModal
         visible={Boolean(deleteTarget)}
         title={deleteTarget?.type === 'material' ? 'Eliminar Material' : 'Eliminar Evaluación'}

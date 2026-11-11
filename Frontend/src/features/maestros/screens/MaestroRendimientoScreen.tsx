@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -33,11 +33,7 @@ interface CursoAsignado {
   materias: { id: string; nombre: string; asignacionId: string }[];
 }
 
-/**
- * Panel de rendimiento docente: muestra cursos asignados y permite
- * navegar al detalle de rendimiento por curso y por estudiante.
- * Reutiliza la lógica de seguimientoApi y componentes de académico.
- */
+// panel docente -> cursos asignados y detalle por curso/estudiante
 export function MaestroRendimientoScreen() {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
@@ -60,7 +56,7 @@ export function MaestroRendimientoScreen() {
 
   const [vista, setVista] = useState<Vista>('cursos');
 
-  // ── Cargar gestiones académicas ──────────────────────────────────────────────
+  // periodos -> carga gestiones y marca la activa
   useEffect(() => {
     academicServicesApi
       .list('periodos', { limit: 50 })
@@ -79,7 +75,7 @@ export function MaestroRendimientoScreen() {
       .catch(() => setPeriodos([]));
   }, []);
 
-  // ── Cargar cursos asignados al docente autenticado ───────────────────────────
+  // cursos asignados -> agrupa asignaciones del docente
   const cargarCursosAsignados = useCallback(async () => {
     if (!periodoId || !user) {
       setCursos([]);
@@ -90,10 +86,9 @@ export function MaestroRendimientoScreen() {
       const res = await academicServicesApi.list('asignaciones', { limit: 200 });
       const allAsignaciones = res.data as any[];
 
-      // Filtrar por el maestro autenticado
       const teacherAsignaciones = allAsignaciones.filter((asig) => {
         const m = asig.maestro;
-        if (!m) return true; // Fallback seguro
+        if (!m) return true;
         if (user.maestroId && String(asig.maestroId) === String(user.maestroId)) return true;
         if (String(m.usuarioId) === String(user.id)) return true;
         if (
@@ -107,13 +102,11 @@ export function MaestroRendimientoScreen() {
         return false;
       });
 
-      // Filtrar solo los del período seleccionado
       const asignacionesPeriodo = teacherAsignaciones.filter((a) =>
         String(a.cursoPeriodoId) === String(periodoId) ||
         String(a.cursoPeriodo?.id) === String(periodoId)
       );
 
-      // Agrupar por cursoPeriodoId
       const map = new Map<string, CursoAsignado>();
 
       for (const item of asignacionesPeriodo) {
@@ -158,7 +151,7 @@ export function MaestroRendimientoScreen() {
     void cargarCursosAsignados();
   }, [cargarCursosAsignados]);
 
-  // ── Panel del curso (rendimiento grupal) ─────────────────────────────────────
+  // panel curso -> rendimiento grupal del curso
   const cargarPanelCurso = useCallback(async () => {
     if (!cursoPeriodoId) return;
     setPanelLoading(true);
@@ -176,7 +169,7 @@ export function MaestroRendimientoScreen() {
     if (vista === 'curso' || vista === 'estudiante') void cargarPanelCurso();
   }, [cargarPanelCurso, vista]);
 
-  // ── Resumen por estudiante (armado desde libros de cada materia) ─────────────
+  // resumen estudiantes -> promedia libros de cada materia
   useEffect(() => {
     if (vista !== 'curso' || !panel) return;
     let cancelado = false;
@@ -238,7 +231,7 @@ export function MaestroRendimientoScreen() {
     };
   }, [panel, trimestre, cursoPeriodoId, vista]);
 
-  // ── Panel del estudiante individual ──────────────────────────────────────────
+  // panel estudiante -> detalle individual del trimestre
   const cargarEstudiante = useCallback(async () => {
     if (!estudianteId || !periodoId) return;
     setEstudianteLoading(true);
@@ -257,7 +250,6 @@ export function MaestroRendimientoScreen() {
     if (vista === 'estudiante') void cargarEstudiante();
   }, [cargarEstudiante, vista]);
 
-  // ── Navegación ───────────────────────────────────────────────────────────────
   const cursoSeleccionado = useMemo(
     () => cursos.find((c) => String(c.cursoPeriodoId) === cursoPeriodoId) ?? null,
     [cursos, cursoPeriodoId],
@@ -288,10 +280,8 @@ export function MaestroRendimientoScreen() {
 
   const periodo = periodos.find((p) => String(p.id) === periodoId);
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pb-10">
-      {/* Selector de gestión y trimestre */}
       <BentoCard className="p-4">
         <View className="flex-row items-center gap-2 mb-3">
           <Ionicons name="briefcase-outline" size={16} color="#801529" />
@@ -359,7 +349,6 @@ export function MaestroRendimientoScreen() {
         </View>
       </BentoCard>
 
-      {/* Migas de pan */}
       <View className="flex-row items-center gap-1 flex-wrap">
         <Miga
           label={periodo ? periodo.nombre : 'Gestión'}
@@ -388,7 +377,6 @@ export function MaestroRendimientoScreen() {
         ) : null}
       </View>
 
-      {/* Contenido según la vista */}
       {vista === 'cursos' && (
         <View className="gap-4">
           <View className="flex-row items-center justify-between">
@@ -447,7 +435,6 @@ export function MaestroRendimientoScreen() {
                       <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
                     </View>
 
-                    {/* Materias asignadas en este curso */}
                     <View className="mt-4 pt-3 border-t border-gray-100">
                       <Text className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
                         Materias que impartes:
@@ -465,7 +452,6 @@ export function MaestroRendimientoScreen() {
                       </View>
                     </View>
 
-                    {/* Indicador rápido de estado */}
                     <View className="mt-4 flex-row items-center justify-between">
                       <View className="flex-row items-center gap-2">
                         <Ionicons name="people-outline" size={16} color="#801529" />
@@ -502,10 +488,8 @@ export function MaestroRendimientoScreen() {
             ) : null}
           </View>
 
-          {/* Panel de rendimiento del curso - reutiliza componente de académico */}
           <PanelCursoRendimiento panel={panel} loading={panelLoading} />
 
-          {/* Lista de estudiantes con resumen individual */}
           <BentoCard className="p-4">
             <View className="flex-row items-center justify-between mb-3">
               <View>
@@ -573,7 +557,6 @@ export function MaestroRendimientoScreen() {
             <Text className="text-xs font-bold text-maroon">Volver al curso</Text>
           </TouchableOpacity>
 
-          {/* Panel de rendimiento individual - reutiliza componente de académico */}
           <PanelEstudianteRendimiento panel={panelEstudiante} loading={estudianteLoading} />
         </View>
       )}

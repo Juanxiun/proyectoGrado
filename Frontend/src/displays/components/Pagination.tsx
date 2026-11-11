@@ -1,5 +1,4 @@
-// paginacion -> navegar entre páginas de contenido
-import React from 'react';
+// Pagination -> navegación entre páginas
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -41,7 +40,6 @@ export function Pagination({
     <View
       className={`flex-row flex-wrap items-center justify-between gap-3 pt-4 border-t border-gray-100 ${className}`}
     >
-      {/* Información de Registros */}
       <View className="flex-row items-center gap-2">
         {totalRecords !== undefined ? (
           <Text className="text-xs text-gray-500">
@@ -58,7 +56,6 @@ export function Pagination({
           </Text>
         )}
 
-        {/* Selector opcional de tamaño por página */}
         {onPageSizeChange && (
           <View className="flex-row items-center gap-1 ml-2 bg-gray-100 p-0.5 rounded-lg">
             {pageSizeOptions.map((opt) => (
@@ -83,9 +80,7 @@ export function Pagination({
         )}
       </View>
 
-      {/* Controles de Navegación: < Anterior | Página X de Y | Siguiente > */}
       <View className="flex-row items-center gap-1.5">
-        {/* Botón Primera Página */}
         {safeTotalPages > 3 && (
           <TouchableOpacity
             onPress={() => onPageChange(1)}
@@ -100,7 +95,6 @@ export function Pagination({
           </TouchableOpacity>
         )}
 
-        {/* Botón < Anterior */}
         <TouchableOpacity
           onPress={() => onPageChange(Math.max(1, currentPage - 1))}
           disabled={isFirst || loading}
@@ -120,14 +114,12 @@ export function Pagination({
           </Text>
         </TouchableOpacity>
 
-        {/* Badge Página X de Y */}
         <View className="px-3 py-1.5 bg-maroon/10 border border-maroon/20 rounded-xl">
           <Text className="text-xs font-bold text-maroon">
             {currentPage} / {safeTotalPages}
           </Text>
         </View>
 
-        {/* Botón Siguiente > */}
         <TouchableOpacity
           onPress={() => onPageChange(Math.min(safeTotalPages, currentPage + 1))}
           disabled={isLast || loading}
@@ -147,7 +139,6 @@ export function Pagination({
           <Ionicons name="chevron-forward" size={14} color="#374151" />
         </TouchableOpacity>
 
-        {/* Botón Última Página */}
         {safeTotalPages > 3 && (
           <TouchableOpacity
             onPress={() => onPageChange(safeTotalPages)}

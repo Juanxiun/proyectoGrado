@@ -41,8 +41,7 @@ const definitions: Definition[] = [
     { key: 'codigo', label: 'Código único', required: true }, { key: 'nombre', label: 'Nombre de la materia', required: true }, { key: 'descripcion', label: 'Descripción' },
     { key: 'tipoMateria', label: 'Tipo', type: 'choice', options: ['principal', 'extracurricular'] }, { key: 'cargaHorariaSemanal', label: 'Horas semanales', type: 'number' }, { key: 'pesoSintactico', label: 'Peso sintáctico', type: 'number' }, { key: 'materiaPesada', label: 'Materia pesada', type: 'boolean' }, { key: 'activo', label: 'Activo', type: 'boolean' }, { key: 'caratulaUrl', label: 'Carátula / Portada', type: 'image' },
   ] },
-  // Debajo de Materias y a propósito: se apoya en ellas. Reusa el recurso
-  // `cursos` porque comparte permisos, pero dibuja su propio panel.
+  // maya curricular -> reusa el recurso cursos
   { title: 'Maya curricular', resource: 'cursos', custom: true, fields: [] },
   { title: 'Cursos por periodo', resource: 'cursos-periodo', management: true, fields: [
     { key: 'cursoId', label: 'Curso', required: true, reference: 'cursos' }, { key: 'periodoId', label: 'Periodo académico', required: true, reference: 'periodos' }, { key: 'capacidadMaxima', label: 'Capacidad máxima', type: 'number', required: true }, { key: 'turnoId', label: 'Turno (ID)', type: 'number' }, { key: 'estado', label: 'Estado', type: 'choice', options: ['activo', 'cerrado', 'cancelado'] },
@@ -143,7 +142,6 @@ function ReferencePicker({ field, items, value, onChange }: { field: Field; item
 
   const isCursoReference = field.reference === 'cursos-periodo' || field.reference === 'cursos';
 
-  // Agrupar cursos por nivel y grado
   const cursosPorNivel = useMemo(() => {
     if (!isCursoReference) return null;
     const primariaItems = items.filter((item) => {
@@ -189,7 +187,6 @@ function ReferencePicker({ field, items, value, onChange }: { field: Field; item
             <Text className="p-3 text-sm text-gray-500 text-center">No hay registros disponibles.</Text>
           ) : isCursoReference && cursosPorNivel ? (
             <View className="gap-3">
-              {/* Selector de Nivel Primaria / Secundaria */}
               <View className="flex-row gap-2 bg-gray-100 p-1 rounded-xl">
                 <TouchableOpacity
                   onPress={() => setActiveNivelTab('primaria')}
@@ -209,7 +206,6 @@ function ReferencePicker({ field, items, value, onChange }: { field: Field; item
                 </TouchableOpacity>
               </View>
 
-              {/* Lista de Grados y Paralelos */}
               <ScrollView nestedScrollEnabled className="max-h-56">
                 {Object.keys(cursosPorNivel[activeNivelTab]).length === 0 ? (
                   <Text className="p-3 text-xs text-gray-400 text-center">No hay cursos en este nivel.</Text>
@@ -275,11 +271,7 @@ function ReferencePicker({ field, items, value, onChange }: { field: Field; item
   );
 }
 
-/**
- * Texto en el que se busca dentro de un registro. Se recorren los campos que
- * la persona realmente ve en la tarjeta, no todo el objeto: los ids y las
- * fechas harían que cualquier número pareciera coincidir.
- */
+// camposBuscables -> campos que la persona ve
 const camposBuscables = [
   'nombre', 'titulo', 'codigo', 'descripcion', 'detalle', 'observacion',
   'anio', 'grado', 'paralelo', 'nivel', 'tipo', 'estado', 'justificacion',
@@ -294,11 +286,7 @@ const textoBuscable = (item: Item): string =>
     .join(' ')
     .toLowerCase();
 
-/**
- * El buscador filtra mientras se escribe, en el cliente: la lista ya está
- * descargada, así que el resultado aparece al instante y no hace falta
- * apretar la lupa. Se posterga un poco para no filtrar en cada tecla.
- */
+// useBusquedaEnVivo -> filtra en cliente con retardo
 function useBusquedaEnVivo(rows: Item[], resource: ServiceResource, termino: string) {
   const [aplazado, setAplazado] = useState(termino);
 
@@ -320,16 +308,13 @@ function useBusquedaEnVivo(rows: Item[], resource: ServiceResource, termino: str
 export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area?: 'academic' | 'enrollment' | 'learning'; onNavigate?: (route: string, params?: { periodoId?: string }) => void }) {
   const { user } = useAuth();
   const role = user?.rol?.toLowerCase() ?? '';
-  // Estudiantes y apoderados pueden consultar el aula; las mutaciones siguen
-  // limitadas a docentes y roles de gestión también en la interfaz.
+  // permisos -> consulta abierta, mutación restringida
   const allowed = area === 'learning' ? Boolean(role) : managementRoles.includes(role);
   const canWrite = area === 'academic' || area === 'enrollment'
     ? managementRoles.includes(role)
     : teachingRoles.includes(role);
   const available = useMemo(() => definitions.filter((d) => area === 'academic' ? (d.custom || ['periodos', 'cursos', 'materias', 'asesores'].includes(d.resource)) : area === 'enrollment' ? ['cursos-periodo', 'inscripciones'].includes(d.resource) : ['materiales', 'encargos', 'calificaciones', 'asistencia'].includes(d.resource)), [area]);
   const [selected, setSelected] = useState(available[0]);
-  // La Maya curricular no es una tabla CRUD: dibuja su propio panel y no pide
-  // el listado genérico ni el formulario de alta/edición.
   const esMayaCurricular = Boolean(selected.custom);
   const [rows, setRows] = useState<Item[]>([]); const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState(''); const [showForm, setShowForm] = useState(false); const [editing, setEditing] = useState<Item | null>(null);
@@ -339,42 +324,33 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   const [bulkObservation, setBulkObservation] = useState('');
   const [references, setReferences] = useState<Partial<Record<ReferenceSource, Item[]>>>({});
 
-  // Visor de documentos de materiales
   const [viewerMaterial, setViewerMaterial] = useState<Item | null>(null);
 
-  // Estado de eliminación con ConfirmDeleteModal
   const [deletingItem, setDeletingItem] = useState<Item | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Cursos por Periodo: Filtro de periodo (activo vs historico)
   const [periodosList, setPeriodosList] = useState<Item[]>([]);
   const [periodoSeleccionadoFiltro, setPeriodoSeleccionadoFiltro] = useState<string>('activo');
   const [periodoGestionId, setPeriodoGestionId] = useState('');
 
-  // Detalle del Curso (Estudiantes inscritos y Maestros asignados)
   const [cursoPeriodoDetalle, setCursoPeriodoDetalle] = useState<Item | null>(null);
   const [detalleInscritos, setDetalleInscritos] = useState<Item[]>([]);
   const [detalleAsignaciones, setDetalleAsignaciones] = useState<Item[]>([]);
   const [loadingDetalle, setLoadingDetalle] = useState(false);
 
-  // Materias del GRADO (compartidas por 1°A, 1°B y el resto de paralelos).
   const [gradoMaterias, setGradoMaterias] = useState<{
     nivel: Nivel;
     grado: string;
     paralelos: string[];
   } | null>(null);
 
-  // Asignaciones docentes: Segmentación de nivel educativo
   const [nivelFiltroAsignacion, setNivelFiltroAsignacion] = useState<'todos' | 'primaria' | 'secundaria'>('todos');
   const [cursoNivelTab, setCursoNivelTab] = useState<'primaria' | 'secundaria'>('primaria');
-  // Grado con el que se abre la Maya curricular al entrar desde una tarjeta.
   const [gradoMaya, setGradoMaya] = useState<string>('');
 
-  // Paginación Estricta
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  // El buscador vive arriba de los filtros de nivel/nivel de asignación.
   const rowsPorBusqueda = useBusquedaEnVivo(rows, selected.resource, search);
 
   const filteredRows = useMemo(() => {
@@ -398,12 +374,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
     return filteredRows.slice(start, start + pageSize);
   }, [filteredRows, currentPage, pageSize]);
 
-  /**
-   * Un bloque por GRADO, no por paralelo: 1°A y 1°B cursan lo mismo, así que
-   * se muestran juntos con sus paralelos adentro. Dentro de cada bloque los
-   * cursos siguen siendo filas propias porque horarios, inscripciones y
-   * asignaciones sí son por paralelo.
-   */
+  // cursosPorGrado -> un bloque por grado
   const cursosPorGrado = useMemo(() => {
     const mapa = new Map<string, { nivel: Nivel; grado: string; cursos: Item[] }>();
     for (const item of filteredRows) {
@@ -433,15 +404,14 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
     return cursosPorGrado.slice(start, start + pageSize);
   }, [cursosPorGrado, currentPage, pageSize]);
 
-  // Lo que cuenta como "un registro" depende de la pestaña: en Cursos base es
-  // un grado con todos sus paralelos, en el resto es una fila.
+  // totalRegistros -> grado en cursos, fila en el resto
   const totalRegistros = selected.resource === 'cursos' ? cursosPorGrado.length : filteredRows.length;
 
   useEffect(() => {
     setCurrentPage(1);
   }, [selected, periodoSeleccionadoFiltro, nivelFiltroAsignacion, cursoNivelTab]);
 
-  // Cargar lista de periodos para el selector de periodos historicos
+  // periodos -> carga el selector de históricos
   useEffect(() => {
     if (['cursos-periodo', 'asesores', 'asignaciones'].includes(selected.resource)) {
       academicServicesApi.list('periodos', { limit: 50 })
@@ -462,17 +432,13 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   }, [selected.resource]);
 
   const load = async () => {
-    // La Maya curricular carga sola desde su propio panel.
     if (esMayaCurricular) return;
     setLoading(true);
     try {
-      // `buscar` NO se manda al servidor: el filtrado es del cliente y en
-      // vivo. Mandarlo además dejaría la lista recortada para siempre, y al
-      // borrar el texto no volverían a aparecer los registros.
+      // buscar -> se filtra en cliente, nunca en el servidor
       const queryParams: Record<string, any> = {};
       if (selected.resource === 'cursos-periodo') {
         if (periodoSeleccionadoFiltro === 'activo') {
-          // El microservicio filtra por periodo activo si periodoId o anio no se especifica, pero lo forzamos con estado activo
           queryParams.estado = 'activo';
         } else {
           queryParams.periodoId = periodoSeleccionadoFiltro;
@@ -481,7 +447,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       const data = await academicServicesApi.list(selected.resource, queryParams);
       let loadedRows = data.data ?? [];
 
-      // Si estamos en cursos-periodo y el filtro es "activo", filtramos en cliente que pertenezcan al periodo activo
       if (selected.resource === 'cursos-periodo' && periodoSeleccionadoFiltro === 'activo') {
         loadedRows = loadedRows.filter((row: any) => row.periodo?.activo === true || row.periodo?.activo === undefined);
       }
@@ -512,14 +477,13 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
     }
   };
 
-  // Sincronización en tiempo real vía Webhooks/SignalR
+  // tiempo real -> recarga al cambiar el recurso
   useRealtimeResource(selected.resource, () => {
     void load();
   });
 
   useEffect(() => { setSelected(available[0]); }, [area]);
-  // La búsqueda es por pestaña: un término de "cursos" no debe filtrar
-  // "materias" si después se cambia de pestaña.
+  // búsqueda -> se limpia al cambiar de pestaña
   useEffect(() => { setSearch(''); }, [selected.title]);
   useEffect(() => {
     setValues(initialValues(selected));
@@ -616,19 +580,16 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
 
       if (selected.resource === 'materiales') {
         if (!editing && file) {
-          // Creación: siempre multipart
           const data = new FormData();
           Object.entries(payload).forEach(([key, value]) => data.append(key, String(value)));
           data.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as any);
           await academicServicesApi.uploadMaterial(data);
         } else if (editing && file) {
-          // Edición con reemplazo de archivo: multipart PUT
           const data = new FormData();
           Object.entries(payload).forEach(([key, value]) => data.append(key, String(value)));
           data.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as any);
           await academicServicesApi.updateMaterialWithFile(String(editing.id), data);
         } else if (editing) {
-          // Edición solo de metadatos: JSON
           await academicServicesApi.update(selected.resource, String(editing.id), payload);
         }
       } else if (editing) {
@@ -756,7 +717,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
         </View>
       )}
 
-      {/* Cursos por periodo: Filtro de Periodo Activo vs Periodos Históricos */}
       {selected.resource === 'cursos-periodo' && (
         <View className="mt-3 pt-3 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
           <View className="flex-row items-center gap-2">
@@ -802,7 +762,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
         </View>
       )}
 
-      {/* Cursos base: Segmentación por nivel */}
       {selected.resource === 'cursos' && (
         <View className="mt-3 pt-3 border-t border-gray-100">
           <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">
@@ -872,7 +831,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
         </View>
       )}
 
-      {/* Asignaciones docentes: Segmentación Primaria / Secundaria */}
       {selected.resource === 'asignaciones' && (
         <View className="mt-3 pt-3 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
           <Text className="text-xs font-bold text-gray-700">Nivel educativo:</Text>
@@ -893,7 +851,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       )}
     </BentoCard>
 
-    {/* Modal Dialog Overlay para Crear / Editar Registro Académico */}
     <Modal
       visible={showForm}
       transparent
@@ -1095,7 +1052,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       </BentoCard>
     )}
 
-    {/* Materias del GRADO, compartidas por todos sus paralelos */}
     <MateriasGradoModal
       visible={Boolean(gradoMaterias)}
       grado={gradoMaterias}
@@ -1105,7 +1061,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       onChanged={load}
     />
 
-    {/* Modal Flotante para Detalle del Aula */}
     <Modal
       visible={Boolean(cursoPeriodoDetalle)}
       transparent
@@ -1142,7 +1097,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
               </View>
             ) : (
               <>
-                {/* Maestros Asignados */}
                 <View>
                   <Text className="text-xs font-bold text-maroon uppercase mb-2">
                     Maestros Asignados ({detalleAsignaciones.length})
@@ -1167,7 +1121,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                   )}
                 </View>
 
-                {/* Estudiantes Inscritos */}
                 <View>
                   <Text className="text-xs font-bold text-maroon uppercase mb-2">
                     Estudiantes Inscritos ({detalleInscritos.length})
@@ -1213,7 +1166,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       </View>
     </Modal>
 
-    {/* Bento Grid de 3 Columnas para Registros Académicos */}
     <View className="gap-3">
       <View className="flex-row items-center justify-between px-1">
         <Text className="text-lg font-black text-gray-900">
@@ -1256,8 +1208,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
           ) : null}
         </View>
       ) : selected.resource === 'cursos' ? (
-        // Un bloque por grado: los paralelos van adentro porque comparten
-        // materia y temario.
         <View className="flex-row flex-wrap -mx-2 min-w-0">
           {paginatedGrados.map((grupo) => {
             const paralelos = grupo.cursos
@@ -1294,8 +1244,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                       {etiquetaGrado}
                     </Text>
 
-                    {/* Paralelos: siguen siendo cursos aparte para horarios,
-                        inscripciones y asignaciones. */}
                     <View className="bg-gray-50 border border-gray-200 rounded-2xl p-3 mt-3">
                       <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">
                         Paralelos · {grupo.cursos.length}
@@ -1329,7 +1277,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                       </View>
                     </View>
 
-                    {/* Materias y Maya curricular son por grado, no por paralelo. */}
                     <View className="flex-row flex-wrap gap-2 mt-3">
                       <TouchableOpacity
                         onPress={() =>
@@ -1427,9 +1374,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
           {paginatedRows.map((item) => {
             const isAsesor = selected.resource === 'asesores';
             const isCursoPeriodo = selected.resource === 'cursos-periodo';
-            // Sin materias el curso queda fuera de la próxima gestión; se avisa
-            // en la propia tarjeta para que se note antes de generar.
-            const sinMaterias = selected.resource === 'cursos' && Number(item.totalMaterias ?? 0) === 0;
             const isVigente = isAsesor && (item.cursoPeriodo?.periodo?.activo === true || item.fechaFin === null || item.fechaFin === undefined || item.fechaFin === '');
             const iconName = selected.resource === 'periodos' ? 'calendar-outline'
               : selected.resource === 'cursos' ? 'school-outline'
@@ -1447,7 +1391,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
               <View key={item.id} className="w-full md:w-1/2 lg:w-1/3 p-2 min-w-0">
                 <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md overflow-hidden">
                   <View className="min-w-0">
-                    {/* Carátula / Portada para Cursos y Materias */}
                     {(selected.resource === 'cursos' || selected.resource === 'materias') && (
                       <View className="w-full h-24 rounded-2xl overflow-hidden mb-3 relative bg-gray-100 border border-gray-200 shadow-sm">
                         {item.caratulaUrl ? (
@@ -1472,7 +1415,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                       </View>
                     )}
 
-                    {/* Header de la Tarjeta Bento */}
                     <View className="flex-row items-start justify-between gap-2 mb-2.5">
                       <View className="w-10 h-10 rounded-2xl bg-maroon/10 border border-maroon/20 items-center justify-center">
                         <Ionicons name={iconName} size={20} color="#801529" />
@@ -1496,12 +1438,10 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                       </View>
                     </View>
 
-                    {/* Título Principal */}
                     <Text className="font-bold text-gray-900 text-sm mb-1" numberOfLines={2} ellipsizeMode="tail">
                       {labelFor(item, selected.resource)}
                     </Text>
 
-                    {/* Métricas y Datos Destacados Bento */}
                     {selected.resource === 'materiales' ? (
                       <View className="my-2 gap-1.5">
                         {item.nombreArchivo && (
@@ -1567,7 +1507,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                     )}
 
 
-                    {/* Botón de inspección para aulas */}
                     {isCursoPeriodo && (
                       <TouchableOpacity
                         onPress={() => handleOpenCursoDetalle(item)}
@@ -1578,7 +1517,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                       </TouchableOpacity>
                     )}
 
-                    {/* Botón de vista previa para materiales */}
                     {selected.resource === 'materiales' && item.archivoUrl && (
                       <TouchableOpacity
                         onPress={() => setViewerMaterial(item)}
@@ -1598,7 +1536,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                     )}
                   </View>
 
-                  {/* Barra de Acciones */}
                   <View className="flex-row flex-wrap items-center justify-between gap-2 mt-3 pt-2.5 border-t border-gray-100 min-w-0">
                     <Text className="text-[11px] text-gray-400 font-mono">ID #{item.id}</Text>
                     <View className="flex-row flex-wrap items-center gap-1">
@@ -1639,7 +1576,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
         </View>
       )}
 
-      {/* Paginación: en "Cursos base" se pagina por GRADO, no por fila de curso. */}
       <Pagination
         currentPage={currentPage}
         totalPages={Math.max(1, Math.ceil(totalRegistros / pageSize))}
@@ -1654,7 +1590,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       />
     </View>
 
-    {/* Visor de documentos de materiales */}
     <InAppDocumentViewerModal
       visible={Boolean(viewerMaterial)}
       onClose={() => setViewerMaterial(null)}
@@ -1666,7 +1601,6 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       uploadedAt={viewerMaterial?.fechaSubida ?? undefined}
     />
 
-    {/* Modal de confirmación de eliminación */}
     <ConfirmDeleteModal
       visible={Boolean(deletingItem)}
       title={`Eliminar ${selected.title.slice(0, -1) || 'registro'}`}

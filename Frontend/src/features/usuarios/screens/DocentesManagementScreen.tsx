@@ -55,7 +55,7 @@ export function DocentesManagementScreen() {
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<EstadoUsuario | undefined>(undefined);
+  const [statusFilter] = useState<EstadoUsuario | undefined>(undefined);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingDocente, setEditingDocente] = useState<Usuario | null>(null);
@@ -72,7 +72,7 @@ export function DocentesManagementScreen() {
   const [bajaLoading, setBajaLoading] = useState(false);
   const [deletingDocente, setDeletingDocente] = useState<Usuario | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [selectedDocenteDetail, setSelectedDocenteDetail] = useState<Usuario | null>(null);
+  const [, setSelectedDocenteDetail] = useState<Usuario | null>(null);
   const [docentesListTab, setDocentesListTab] = useState<'enabled' | 'disabled'>('enabled');
   const [materiasDisponibles, setMateriasDisponibles] = useState<Array<{ id: string; nombre: string; codigo: string }>>([]);
   const [materiasSeleccionadas, setMateriasSeleccionadas] = useState<string[]>([]);
@@ -126,7 +126,7 @@ export function DocentesManagementScreen() {
     setMateriasConfiguradasOriginal(false);
   };
 
-  // Autogenerar username al cambiar nombre, apellidos o CI si es nuevo registro
+  // username -> autogenerar con nombre y CI
   const handleAutoFillUsername = (
     nombre: string,
     paterno: string,
@@ -282,9 +282,7 @@ export function DocentesManagementScreen() {
     }
     setDocenteDocs(mappedDocs);
     setDocentePhoto(u.fotoUrl ?? undefined);
-    // Las materias habilitadas se conservan; el curso/paralelo se asigna
-    // posteriormente desde Construcción de horarios. Un docente legacy sin
-    // catálogo explícito no debe perder ese catálogo al editar otros datos.
+    // materias -> legacy sin catálogo conserva el suyo
     setMateriasConfiguradasOriginal(u.materiasConfigurado === true || String(u.materiasConfigurado ?? '').toLowerCase() === 'true');
     const idsMateria = (u.materias ?? []).map((materia) => String(materia.id));
     setMateriasSeleccionadas(idsMateria);
@@ -382,7 +380,6 @@ export function DocentesManagementScreen() {
         key={doc.id}
         className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
       >
-        {/* Cabecera de la tarjeta con foto MinIO ampliada a 80px e indicador online/offline */}
         <View>
           <View className="flex-row items-start justify-between mb-3">
             <View className="relative">
@@ -403,7 +400,6 @@ export function DocentesManagementScreen() {
             <StatusBadge status={doc.estado} />
           </View>
 
-          {/* Datos del docente */}
           <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
             {docFullName}
           </Text>
@@ -411,7 +407,6 @@ export function DocentesManagementScreen() {
             @{doc.username || 'sin-cuenta'}
           </Text>
 
-          {/* Píldoras Bento de información */}
           <View className="flex-row flex-wrap gap-1.5 mt-3">
             <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
               <Text className="text-xs font-bold text-maroon">{especialidad}</Text>
@@ -421,7 +416,6 @@ export function DocentesManagementScreen() {
             </View>
           </View>
 
-          {/* Contacto rápido */}
           <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
             {doc.email ? (
               <View className="flex-row items-center gap-1.5">
@@ -440,7 +434,6 @@ export function DocentesManagementScreen() {
           </View>
         </View>
 
-        {/* Acciones Bento */}
         {canEdit && (
           <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
             <TouchableOpacity
@@ -494,7 +487,6 @@ export function DocentesManagementScreen() {
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-12" showsVerticalScrollIndicator={false}>
-      {/* Cabecera Bento */}
       <BentoCard className="p-5 bg-card border-l-4 border-maroon">
         <View className="flex-row items-center justify-between mb-4 flex-wrap gap-3">
           <View>
@@ -541,7 +533,6 @@ export function DocentesManagementScreen() {
         </View>
       </BentoCard>
 
-      {/* Modal Dialog Overlay para Registro o Edición */}
       <Modal
         visible={showModal}
         transparent
@@ -575,13 +566,11 @@ export function DocentesManagementScreen() {
 
             <ScrollView className="p-5 max-h-[75vh]" contentContainerStyle={{ gap: 16 }}>
               <View className="gap-4">
-            {/* Foto de Perfil */}
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
               <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial (MinIO)</Text>
               <ProfilePhotoPicker photoUri={docentePhoto} onChange={setDocentePhoto} required={false} />
             </BentoCard>
 
-            {/* Datos Personales */}
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
               <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Datos Personales</Text>
               <View className="flex-row flex-wrap gap-2">
@@ -644,7 +633,6 @@ export function DocentesManagementScreen() {
             </BentoCard>
 
 
-            {/* Documentos */}
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
               <DocumentInput
                 documents={docenteDocs}
@@ -659,7 +647,6 @@ export function DocentesManagementScreen() {
               />
             </BentoCard>
 
-            {/* Cuenta de Acceso */}
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
               <Text className="text-xs font-bold text-gray-700 mb-2 uppercase">Cuenta de Acceso Institucional</Text>
               {!editingDocente && (
@@ -711,7 +698,6 @@ export function DocentesManagementScreen() {
               </View>
             </BentoCard>
 
-            {/* Contacto y Dirección */}
             <BentoCard className="p-4 bg-gray-50 border border-gray-200">
               <Text className="text-xs font-bold text-gray-700 mb-3 uppercase">Contacto y Domicilio</Text>
               <View className="flex-row flex-wrap gap-2">
@@ -768,7 +754,6 @@ export function DocentesManagementScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* GRID DE CARTAS BENTO PARA DOCENTES SEGÚN PESTAÑA ACTIVA */}
       <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">

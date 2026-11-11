@@ -41,20 +41,13 @@ const borradorVacio = (): Borrador => ({
   esEvaluacion: false,
 });
 
-/**
- * Maya curricular: qué temas se van a trabajar en cada materia de un grado.
- *
- * Es el contenido de la materia y se define una sola vez por grado —igual que
- * las materias—, así que 1°A y 1°B comparten temario. A diferencia de la malla
- * del período, que sólo registra qué materia existe en una gestión concreta.
- */
+// maya curricular -> temas por materia de un grado
 export function MayaCurricularScreen({
   nivelInicial = 'primaria',
   gradoInicial,
   canEdit,
 }: {
   nivelInicial?: NivelEducativo;
-  /** Grado con el que se abre el panel (viene de la tarjeta del curso). */
   gradoInicial?: string;
   canEdit: boolean;
 }) {
@@ -66,8 +59,7 @@ export function MayaCurricularScreen({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // La materia abierta y su temario en edición. Se edita en memoria y se
-  // guarda entero de un golpe, que es lo que espera el backend.
+  // temario -> se edita en memoria y se guarda entero
   const [materiaAbierta, setMateriaAbierta] = useState<string | null>(null);
   const [borradores, setBorradores] = useState<Borrador[]>([]);
   const [guardando, setGuardando] = useState(false);
@@ -118,7 +110,7 @@ export function MayaCurricularScreen({
     void cargarGrados();
   }, [cargarGrados]);
 
-  // Llegar desde la tarjeta de un grado debe abrir ese grado, no el primero.
+  // grado inicial -> abre ese grado, no el primero
   useEffect(() => {
     if (gradoInicial) setGrado(gradoInicial);
   }, [gradoInicial]);
@@ -129,7 +121,7 @@ export function MayaCurricularScreen({
     void cargarMalla();
   }, [cargarMalla]);
 
-  // Cualquier escritura en grados o materias obliga a recargar la maya.
+  // tiempo real -> recarga la maya al cambiar grados
   useRealtimeResource('grados', () => {
     void cargarGrados();
     void cargarMalla();
@@ -165,7 +157,6 @@ export function MayaCurricularScreen({
           contenidos: b.contenidos.trim() || null,
           horasPrevistas: Number(b.horasPrevistas) || 1,
           esEvaluacion: b.esEvaluacion,
-          // Cada tema cierra su propia unidad salvo que se indique otra.
           unidad: indice + 1,
         })),
       );
@@ -200,7 +191,6 @@ export function MayaCurricularScreen({
           reutilizable: 1°A y 1°B comparten el mismo temario y sirve para todas las gestión.
         </Text>
 
-        {/* Nivel */}
         <View className="mt-4">
           <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">Nivel</Text>
           <View className="flex-row flex-wrap gap-2">
@@ -225,7 +215,6 @@ export function MayaCurricularScreen({
           </View>
         </View>
 
-        {/* Grado */}
         <View className="mt-4">
           <Text className="text-[10px] font-bold text-gray-500 uppercase mb-2">Grado</Text>
           {gradosDisponibles.length === 0 ? (

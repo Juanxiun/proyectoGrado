@@ -10,7 +10,7 @@ const META: Record<NivelRiesgo, { label: string; variant: 'success' | 'info' | '
   riesgo_alto: { label: 'Riesgo alto', variant: 'danger' },
 };
 
-/** Estudiantes que necesitan intervención, con el motivo del criterio. */
+// panel riesgo -> estudiantes que requieren intervención
 export function PanelRiesgo({ riesgo }: { riesgo: ResumenRiesgo }) {
   if (riesgo.total === 0 && riesgo.observacion === 0) {
     return (

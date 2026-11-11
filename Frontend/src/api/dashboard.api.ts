@@ -150,10 +150,7 @@ export interface DashboardData {
   economicoOculto?: boolean;
 }
 
-/**
- * Tablero de inicio. Es un servicio de sólo lectura en el backend: el recorte
- * por rol ya viene aplicado, así que acá no hay filtros que enviar.
- */
+// dashboardApi -> tablero de solo lectura, recortado por rol
 export const dashboardApi = {
   async get(params: { periodoId?: string; trimestre?: number } = {}): Promise<DashboardData | null> {
     return safe('[dashboardApi.get]', () => apiRequest<DashboardData>(`/api/dashboard${buildQuery(params)}`), null);

@@ -1,4 +1,4 @@
-// modal_respuesta_pregunta -> modal con la explicación de una pregunta fallada
+// ModalRespuestaPregunta -> explicación de una pregunta fallada
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 

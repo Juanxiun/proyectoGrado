@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -114,16 +114,15 @@ export function InteractiveScheduleBuilder({
   const [subjects, setSubjects] = useState<SubjectCard[]>([]);
   const [curriculum, setCurriculum] = useState<Array<Record<string, any>>>([]);
 
-  // Todos los horarios existentes en la gestión (para validación de choques en tiempo real)
   const [allSchedules, setAllSchedules] = useState<Array<Record<string, any>>>([]);
 
-  // Borrador local de la grilla para el curso seleccionado: key = `${diaSemana}:${horaInicio}`
+  // draftGrid -> clave "día:hora de inicio"
   const [draftGrid, setDraftGrid] = useState<Record<string, GridSlot>>({});
   const [selectedSubjectToPlace, setSelectedSubjectToPlace] = useState<SubjectCard | null>(null);
   const activeCourse = courses.find((course) => course.id === selectedCourseId);
   const timeBlocks = activeCourse?.turno === 'tarde' ? AFTERNOON_TIME_BLOCKS : MORNING_TIME_BLOCKS;
 
-  // Cargar datos del período
+  // cargar datos -> cursos, docentes, materias y horarios
   useEffect(() => {
     let mounted = true;
     async function init() {
@@ -140,7 +139,6 @@ export function InteractiveScheduleBuilder({
 
         if (!mounted) return;
 
-        // Cursos del periodo
         const rawCps = (cpRes.data ?? []) as Array<Record<string, any>>;
         const courseOpts: CourseOption[] = rawCps.map((cp) => {
           const grado = cp.curso?.grado ?? cp.grado ?? '';
@@ -167,7 +165,6 @@ export function InteractiveScheduleBuilder({
           }
         }
 
-        // Los docentes se obtienen del registro de usuarios; el curso se asigna al guardar el horario.
         const rawUsers = (teachersRes.data ?? []) as Array<Record<string, any>>;
         const teachersMap = new Map<string, TeacherOption>();
         rawUsers
@@ -193,7 +190,6 @@ export function InteractiveScheduleBuilder({
         setTeachers(Array.from(teachersMap.values()));
         setCurriculum((curriculumRes ?? []) as Array<Record<string, any>>);
 
-        // Materias
         const rawMats = (materiasRes.data ?? []) as Array<Record<string, any>>;
         const subCards: SubjectCard[] = rawMats.map((m) => ({
           id: String(m.id),
@@ -205,7 +201,6 @@ export function InteractiveScheduleBuilder({
         }));
         setSubjects(subCards);
 
-        // Guardar todos los horarios
         setAllSchedules((schedRes ?? []) as Array<Record<string, any>>);
       } catch (err) {
         Alert.alert('Error', 'No se pudieron cargar los datos para la construcción de horarios.');
@@ -218,7 +213,7 @@ export function InteractiveScheduleBuilder({
     return () => { mounted = false; };
   }, [periodoId]);
 
-  // Mostrar sólo las materias de la malla del curso seleccionado.
+  // materias del curso -> sólo la malla del grado
   useEffect(() => {
     const course = courses.find((item) => item.id === selectedCourseId);
     if (!course) return;
@@ -243,7 +238,7 @@ export function InteractiveScheduleBuilder({
     }));
   }, [courses, curriculum, selectedCourseId]);
 
-  // Sincronizar grilla borrador cuando cambia el curso seleccionado
+  // grilla borrador -> se sincroniza al cambiar de curso
   useEffect(() => {
     if (!selectedCourseId) return;
     const courseScheds = allSchedules.filter((s) => String(s.cursoPeriodoId) === selectedCourseId);
@@ -273,7 +268,7 @@ export function InteractiveScheduleBuilder({
     setSelectedSubjectToPlace(null);
   }, [selectedCourseId, allSchedules, timeBlocks]);
 
-  // Actualizar profesor en tarjeta de materia
+  // handleTeacherChange -> actualiza el docente de la materia
   const handleTeacherChange = (materiaId: string, maestroId: string) => {
     setSubjects((prev) =>
       prev.map((s) => (s.id === materiaId ? { ...s, profesorId: maestroId } : s)),
@@ -283,7 +278,7 @@ export function InteractiveScheduleBuilder({
     }
   };
 
-  // Validar y colocar materia en la celda horaria
+  // handleSlotClick -> valida recreo, choque y coloca
   const handleSlotClick = (diaSemana: number, block: TimeBlock) => {
     if (block.isRecess) {
       Alert.alert(
@@ -295,7 +290,6 @@ export function InteractiveScheduleBuilder({
 
     const key = `${diaSemana}:${block.horaInicio}`;
 
-    // Si no hay materia seleccionada para colocar, si la celda tiene contenido, permitir quitarla
     if (!selectedSubjectToPlace) {
       if (draftGrid[key]) {
         const copy = { ...draftGrid };
@@ -309,9 +303,7 @@ export function InteractiveScheduleBuilder({
     const maestroId = subject.profesorId;
     const teacherObj = teachers.find((t) => t.id === maestroId);
 
-    // Validación de traslape de profesores en tiempo real (Hard Constraint Warning)
     if (maestroId) {
-      // Buscar en otros cursos del periodo
       const conflict = allSchedules.find((other) => {
         if (String(other.cursoPeriodoId) === selectedCourseId) return false;
         const otherTeacherId = String(other.maestro?.usuarioId ?? other.maestroId ?? '');
@@ -337,7 +329,6 @@ export function InteractiveScheduleBuilder({
       }
     }
 
-    // Colocar materia en la celda borrador
     setDraftGrid((prev) => ({
       ...prev,
       [key]: {
@@ -353,7 +344,7 @@ export function InteractiveScheduleBuilder({
     }));
   };
 
-  // Guardar horario manual completo en DB
+  // handleSaveSchedule -> guarda el horario del curso
   const handleSaveSchedule = async () => {
     if (!selectedCourseId) return;
     const slotsWithoutTeacher = Object.values(draftGrid).filter((slot) => !slot.maestroId);
@@ -380,7 +371,6 @@ export function InteractiveScheduleBuilder({
         slots,
       });
 
-      // Recargar lista global de horarios
       const updatedSchedules = await academicManagementApi.listSchedules(periodoId);
       setAllSchedules(updatedSchedules as Array<Record<string, any>>);
 
@@ -453,7 +443,6 @@ export function InteractiveScheduleBuilder({
 
   return (
     <View className="gap-4 min-w-0">
-      {/* Selector superior de Curso / Paralelo */}
       <BentoCard className="p-4 border border-maroon/20 overflow-hidden">
         <View className="flex-row items-center justify-between flex-wrap gap-2 mb-3">
           <View className="flex-row items-center gap-2 flex-1 min-w-0">
@@ -501,7 +490,6 @@ export function InteractiveScheduleBuilder({
           </View>
         </View>
 
-        {/* Pestañas de Nivel (Primaria / Secundaria) */}
         <View className="flex-row items-center gap-2 mb-3 bg-gray-100 p-1 rounded-xl self-start">
           <TouchableOpacity
             onPress={() => {
@@ -579,7 +567,6 @@ export function InteractiveScheduleBuilder({
       </BentoCard>
 
       <View className={`gap-4 ${isDesktop ? 'flex-row items-start' : ''}`}>
-      {/* Panel de materias y docentes */}
       <BentoCard className={`p-4 bg-gray-50 overflow-hidden ${isDesktop ? 'flex-1 min-w-0' : ''}`}>
         <View className="flex-row items-start justify-between gap-2 mb-2 min-w-0">
           <View className="flex-1 min-w-0">
@@ -629,7 +616,6 @@ export function InteractiveScheduleBuilder({
                     </View>
                   </TouchableOpacity>
 
-                  {/* Selector de Profesor */}
                   <View className="border-t border-gray-100 pt-2">
                     <Text className="text-[10px] font-semibold text-gray-500 mb-1">Docente Asignado:</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} className="w-full gap-1">
@@ -673,7 +659,6 @@ export function InteractiveScheduleBuilder({
         </View>
       </BentoCard>
 
-      {/* Grilla Semanal de Horario (Lunes a Viernes) */}
       <BentoCard className={`p-5 overflow-hidden ${isDesktop ? 'flex-[1.7] min-w-0' : ''}`}>
         <Text className="text-sm font-bold text-gray-800 uppercase mb-4 text-center">
           Grilla Semanal · {selectedCourse?.label ?? 'Curso'}
@@ -681,7 +666,6 @@ export function InteractiveScheduleBuilder({
 
         <ScrollView horizontal showsHorizontalScrollIndicator className="w-full">
           <View className="min-w-[900px] self-center">
-            {/* Header Días */}
             <View className="flex-row border-b border-gray-200 pb-2 mb-2">
               <View className="w-24 items-center">
                 <Text className="text-xs font-bold text-gray-500">HORA</Text>
@@ -693,7 +677,6 @@ export function InteractiveScheduleBuilder({
               ))}
             </View>
 
-            {/* Filas de Bloques Horarios */}
             {timeBlocks.map((block) => {
               if (block.isRecess) {
                 return (

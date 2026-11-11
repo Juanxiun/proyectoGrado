@@ -1,4 +1,4 @@
-// carga_destacada -> pantalla de carga resaltada mientras espera feedback de Mistral
+// CargaDestacada -> carga mientras llega el feedback de Mistral
 import { ActivityIndicator, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 

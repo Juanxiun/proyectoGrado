@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Modal, PanResponder, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { SvgXml } from 'react-native-svg';
 import { academicServicesApi, type TemaMalla } from '../../../api/academicServices.api';
 import { ApiClientError } from '../../../api/client';
 import { aprendizajeApi, type ActividadAprendizaje, type ContenidoAprendizaje, type ExplicacionSeccion, type FormatoResumen, type ResumenAprendizaje, type ResultadoReto, type RetoAprendizaje } from '../../../api/aprendizaje.api';
@@ -39,11 +38,6 @@ interface ContenidoEstudioSectionProps {
   materiaId?: string;
   materiaNombre: string;
 }
-
-const FORMATOS: Array<{ id: FormatoResumen; label: string; detail: string; icon: keyof typeof Ionicons.glyphMap }> = [
-  { id: 'CARTAS_EXPLICATIVAS', label: 'Cartas', detail: 'Ideas clave en tarjetas', icon: 'albums-outline' },
-  { id: 'ESQUEMA_GEMMA', label: 'Esquema', detail: 'Diagrama interactivo', icon: 'share-social-outline' },
-];
 
 const MENSAJES_CARGA_RETO = [
   'Empezando con la actividad',
@@ -116,7 +110,7 @@ function LectorArchivo({ material }: { material: MaterialItem }) {
   const esImagen = material.tipoMime?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '');
   const esPdf = material.tipoMime?.toLowerCase() === 'application/pdf' || extension === 'pdf';
   const url = normalizarUrlMovil(material.archivoUrl);
-  // material -> PDF se lee por paginas dentro de la app, sin descargar el archivo
+  // material -> PDF se pagina dentro de la app
   if (esPdf && !esImagen) return <PdfPaginasViewer materialId={material.id} titulo={material.titulo}/>;
   return <DocumentWebView uri={url} title={material.titulo} mimeType={material.tipoMime} isPdf={esPdf} preferNativePdf={Platform.OS !== 'web'} fileName={nombreArchivo}/>;
 }
@@ -192,7 +186,7 @@ function crearFeedbackComparativo(input: {
 type ParteRuta = NonNullable<ContenidoAprendizaje['learning_sections']>[number];
 type CartaRuta = { titulo: string; explicacion: string; ejemplo: string; svg?: string; indagacion?: string; esEsquema?: boolean };
 
-// ruta -> cinco cartas de microlearning y una carta final con el mapa de conexiones
+// ruta -> cartas de microlearning y mapa de conexiones
 function crearCartasRuta(parte: ParteRuta): CartaRuta[] {
   const unidades = Array.isArray(parte.microlearning) ? parte.microlearning : [];
   const conceptos = Array.isArray(parte.conceptos) ? parte.conceptos : [];
@@ -239,7 +233,6 @@ async function esperarRetroalimentacion(materialId: string, quizId: string, alRe
         return;
       }
     } catch {
-      // todavia no esta lista, se reintenta
     }
   }
 }
@@ -257,7 +250,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const [contenidoError, setContenidoError] = useState(false);
   const [contenidoErrorDetalle, setContenidoErrorDetalle] = useState('');
   const [resumen, setResumen] = useState<ResumenAprendizaje | null>(null);
-  const [resumenLoading, setResumenLoading] = useState(false);
+  const [, setResumenLoading] = useState(false);
   const [pantallaResumen, setPantallaResumen] = useState(false);
   const [reto, setReto] = useState<RetoAprendizaje | null>(null);
   const [seccionRetoActual, setSeccionRetoActual] = useState<string | undefined>();
@@ -268,11 +261,11 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const cargaMovimiento = useRef(new Animated.Value(0)).current;
   const cargaPulso = useRef(new Animated.Value(0)).current;
   const [respuestas, setRespuestas] = useState<Record<string, string>>({});
-  const [opcionSeleccionada, setOpcionSeleccionada] = useState<string | null>(null);
+  const [, setOpcionSeleccionada] = useState<string | null>(null);
   const [parejaSeleccionada, setParejaSeleccionada] = useState<string | null>(null);
-  const [parejas, setParejas] = useState<Record<string, string>>({});
+  const [, setParejas] = useState<Record<string, string>>({});
   const [conexiones, setConexiones] = useState<Record<string, string>>({});
-  const [resultadoParejas, setResultadoParejas] = useState<Record<string, { correct: boolean; expected?: string; explanation?: string }>>({});
+  const [, setResultadoParejas] = useState<Record<string, { correct: boolean; expected?: string; explanation?: string }>>({});
   const [textoLibre, setTextoLibre] = useState('');
   const [posicion, setPosicion] = useState(0);
   const [resultadoReto, setResultadoReto] = useState<{ puntosGanados: number; bonusSpeedrun: number; speedrun: boolean; tiempoTotalMs: number; correctas: number; total: number; answers: ResultadoReto['answers']; feedback?: ResultadoReto['learning_feedback'] } | null>(null);
@@ -294,7 +287,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const zonaVisualRef = useRef<any>(null);
   const [temaRutaAbierto, setTemaRutaAbierto] = useState<number | null>(null);
 
-  // Indagación LLM: respuesta del profesor virtual a preguntas de investigación
+  // indagación -> respuesta del profesor virtual
   const [indagacionRespuesta, setIndagacionRespuesta] = useState<string | null>(null);
   const [indagacionCargando, setIndagacionCargando] = useState(false);
   const [preguntaIndagacionActiva, setPreguntaIndagacionActiva] = useState<string | null>(null);
@@ -329,7 +322,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     }
   };
 
-  // Progreso por tema: clave = numero del tema, valor = { porcentaje, completado, puntos }
+  // progreso -> porcentaje y puntos por tema
   const [progresoTemas, setProgresoTemas] = useState<Record<string, { porcentaje: number; completado: boolean; puntos: number }>>({});
 
   const claveProgresoTema = (numero: number) => `${tema?.id ?? 'tema'}:${numero}`;
@@ -585,7 +578,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     try {
       setReto(await aprendizajeApi.reto(tema.id, 5, sectionId));
       inicioRetoRef.current = Date.now();
-      // gamificacion -> iniciar racha diaria al comenzar una actividad (no bloquea la UI)
+      // racha -> registra el inicio de la actividad diaria
       if (user?.estudianteId || user?.id) {
         void gamificacionApi.registrarProgresoEstudio({
           contentId: tema.id,
@@ -594,7 +587,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           completo: false,
           investigacion: false,
         }).catch(() => {
-          // no bloquear la UI si falla el registro de racha/puntos
         });
       }
     } catch (error) {
@@ -610,9 +602,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const falladasReto = (resultadoReto?.answers ?? []).filter((a) => !a.correct);
   const acertadasReto = (resultadoReto?.answers ?? []).filter((a) => a.correct);
   const feedbackCargando = retoSubmitting || (resultadoReto?.feedback?.pending ?? !resultadoReto?.feedback);
-  const tiempoTotalReto = Date.now() - inicioRetoRef.current;
-  const totalReto = resultadoReto?.total ?? 0;
-  const respondioRapidoReto = totalReto > 0 ? tiempoTotalReto / totalReto < 15000 : false;
   const partesRuta: ParteRuta[] = Array.isArray(contenido?.learning_sections) && contenido.learning_sections.length ? contenido.learning_sections : contenido ? [{
     numero: 1,
     titulo: contenido.title,
@@ -822,7 +811,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
       if (parteRutaActual) {
         marcarTemaCompletado(parteRutaActual.numero, puntosGanados);
       }
-      // feedback -> siempre obtener la retroalimentacion del LLM con pantalla de carga destacada
+      // feedback -> consulta la retroalimentación del LLM
       if (porcentajeAcierto < 0.8) {
         void esperarRetroalimentacion(tema!.id, reto.quiz_id, (retroalimentacion) => {
           if (!feedbackVivoRef.current) return;
@@ -1080,7 +1069,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
       );
     }
 
-    // COMPLETAR -> seleccion grafica con opciones en fichas y hueco visual interactivo
+    // completar -> selección gráfica sobre fichas
     const pregunta = activity.question || '';
     const partes = pregunta.split(/_{3,}|\[___+\]/);
     const tieneHueco = partes.length > 1;
@@ -1381,7 +1370,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               </TouchableOpacity>
             </View>
 
-            {/* Último tema: al terminar las cartas, mostrar ejercicios finales + preguntas de indagación */}
             {cartaRutaSeleccionada + 1 === cartasRutaActual.length && parteRutaSeleccionada === partesRuta.length - 1 ? (
               <BentoCard className="gap-3 border border-emerald-200 bg-emerald-50 p-5 mt-2">
                 <View className="flex-row items-center gap-2">
@@ -1390,7 +1378,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 </View>
                 <Text className="text-xs text-emerald-800 leading-5">Has terminado el último tema. Pon a prueba tu comprensión con los ejercicios finales.</Text>
 
-                {/* Preguntas de inquiry-based learning (POR ENCIMA del botón de actividades) */}
                 {parteRutaActual?.preguntas_indagacion?.length && (
                   <View className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
                     <View className="flex-row items-center gap-2 mb-2">
@@ -1431,7 +1418,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                       ))}
                     </View>
 
-                    {/* Respuesta del LLM */}
                     {indagacionRespuesta && preguntaIndagacionActiva && (
                       <View className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                         <View className="flex-row items-center gap-2 mb-2">
@@ -1464,7 +1450,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               </BentoCard>
             ) : null}
 
-            {/* Botón siguiente tema (al final de CADA tema, excepto el último) */}
             {parteRutaSeleccionada + 1 < partesRuta.length && cartaRutaSeleccionada + 1 === cartasRutaActual.length ? (
               <TouchableOpacity
                 onPress={() => {
@@ -1522,7 +1507,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             <Text className="text-sm text-gray-700">Tiempo total: {formatearDuracion(resultadoReto.tiempoTotalMs)}</Text>
             {resultadoReto.speedrun ? <Text className="text-sm font-black text-amber-700">🏆 Logro Speedrun: +{resultadoReto.bonusSpeedrun} puntos{resultadoReto.bonusSpeedrun < 2 ? ' (límite diario aplicado)' : ''}</Text> : null}
           </BentoCard>
-          {/* 1. RETROALIMENTACION DEL PROFESOR (LLM) */}
           <BentoCard className="p-5 rounded-2xl border-2 border-maroon bg-maroon/5">
             <View className="flex-row items-center gap-2 mb-2">
               <Ionicons name="chatbubbles-outline" size={20} color="#801529" />
@@ -1548,7 +1532,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               </View>
             ) : (
               <View className="gap-4">
-                {/* Explicacion general de por que fallo */}
                 <View className="rounded-xl border border-rose-200 bg-rose-50 p-4">
                   <View className="flex-row items-center gap-2 mb-2">
                     <Ionicons name="alert-circle" size={18} color="#DC2626" />
@@ -1560,8 +1543,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   <MarkdownContent texto={resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'} />
                 </View>
 
-                {/* Grafico SVG del LLM si lo hay */}
-                {/* Grafico o diagrama del LLM si lo hay */}
                 {resultadoReto.feedback?.explanation_svg && (
                   <View className="mt-2 overflow-hidden rounded-2xl border border-slate-200 bg-white p-3">
                     <Text className="text-[10px] font-black uppercase text-slate-500 mb-2 px-1">Esquema o gráfico de repaso</Text>
@@ -1569,7 +1550,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   </View>
                 )}
 
-                {/* Aspectos a mejorar / next_step */}
                 <View className="rounded-xl border border-amber-200 bg-amber-50 p-4">
                   <View className="flex-row items-center gap-2 mb-2">
                     <Ionicons name="bulb" size={18} color="#D97706" />
@@ -1579,7 +1559,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     {resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'}
                   </Text>
                   <MarkdownContent texto={resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'} />
-                  {/* Temas para repasar segun conceptos fallados */}
                   {falladasReto.length > 0 && (
                     <View className="mt-3 gap-1">
                       <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Temas que te sugiero repasar:</Text>
@@ -1596,7 +1575,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             )}
           </BentoCard>
 
-          {/* 2. Preguntas falladas (en rojo, errores marcados graficamente) */}
           {falladasReto.length > 0 && (
             <BentoCard className="border-2 border-rose-500 bg-rose-50 p-4">
               <View className="flex-row items-center gap-2 mb-3">
@@ -1649,7 +1627,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             </BentoCard>
           )}
 
-          {/* 3. Preguntas acertadas (en verde) */}
           {acertadasReto.length > 0 && (
             <BentoCard className="border-2 border-emerald-500 bg-emerald-50 p-4">
               <View className="flex-row items-center gap-2 mb-3">
@@ -1670,7 +1647,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             </BentoCard>
           )}
 
-          {/* Botones de acción */}
           <View className="flex-row gap-2">
             <TouchableOpacity
               onPress={() => void iniciarReto(seccionRetoActual)}
@@ -1785,7 +1761,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     </Modal>
   </>;
 
-  // Helper: agrupar materiales por temaId
+  // agrupar -> materiales por tema
   const materialesPorTema = materiales.reduce((acc, mat) => {
     const key = mat.temaId || 'sin_tema';
     if (!acc[key]) acc[key] = [];
@@ -1793,7 +1769,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
     return acc;
   }, {} as Record<string, MaterialItem[]>);
 
-  // Helper: obtener unidades únicas ordenadas
+  // unidades -> únicos ordenados
   const unidades = [...new Set(malla.map(t => t.unidad))].sort((a, b) => a - b);
   const temasMallaIds = new Set(malla.map((item) => String(item.id)));
   const materialesSinTemaMalla = materiales.filter((item) => !item.temaId || !temasMallaIds.has(String(item.temaId)));
@@ -1810,7 +1786,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
       <View className="gap-4">
         {unidades.map((unidadNum) => {
           const temasUnidad = malla.filter(t => t.unidad === unidadNum);
-          const temasConMateriales = temasUnidad.filter(t => materialesPorTema[t.id]?.length);
           return (
             <BentoCard key={`unidad-${unidadNum}`} className="p-4 bg-white border border-gray-100">
               <View className="flex-row items-center justify-between mb-3">
@@ -1865,7 +1840,6 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           );
         })}
 
-        {/* Materiales sin tema asignado */}
         {materialesSinTemaMalla.length > 0 && (
           <BentoCard className="p-4 bg-white border border-gray-100">
             <View className="flex-row items-center justify-between mb-3">

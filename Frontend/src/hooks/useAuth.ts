@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { authApi } from '../api/auth.api';
 import { storage } from '../utils/storage';
-import type { AuthUsuario, LoginRequest, LoginResponse } from '../types';
+import type { LoginRequest, LoginResponse } from '../types';
 
 interface UseAuthReturn {
   loading: boolean;

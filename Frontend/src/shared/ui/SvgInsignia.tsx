@@ -1,6 +1,6 @@
-// insignia_svg -> medalla con cinta/liston; dorada si la tiene, gris si no
+// SvgInsignia -> medalla con cinta, dorada o gris
 import { Svg, Circle, Path, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Modal, TouchableOpacity, View, Text as RNText } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -25,7 +25,6 @@ export function SvgInsignia({
   const radioMedalla = tamano * 0.26;
   const oroOscuro = obtenida ? '#B45309' : '#94A3B8';
   const brillo = obtenida ? '#FCD34D' : '#E5E7EB';
-  const textoColor = obtenida ? '#0F172A' : '#6B7280';
   const iconColor = obtenida ? '#78350F' : '#6B7280';
 
   return (
@@ -42,7 +41,6 @@ export function SvgInsignia({
           </LinearGradient>
         </Defs>
 
-        {/* Colas de la cinta (detras de la medalla) */}
         <Path
           d={`M ${cx - tamano * 0.14} ${tamano * 0.04}
                L ${cx - tamano * 0.14} ${tamano * 0.16}
@@ -60,7 +58,6 @@ export function SvgInsignia({
           fill={oroOscuro}
         />
 
-        {/* Cinta principal (liston horizontal) */}
         <Rect
           x={cx - tamano * 0.30}
           y={tamano * 0.06}
@@ -72,7 +69,6 @@ export function SvgInsignia({
           strokeWidth={2}
         />
 
-        {/* Medalla circular */}
         <Circle
           cx={cx}
           cy={cy}
@@ -93,7 +89,6 @@ export function SvgInsignia({
         />
       </Svg>
 
-      {/* Icono dentro de la medalla */}
       <Ionicons
         name={icono as any}
         size={radioMedalla * 0.8}
@@ -105,7 +100,6 @@ export function SvgInsignia({
         }}
       />
 
-      {/* Nombre de la insignia debajo */}
       <RNText style={{ marginTop: 8, textAlign: 'center' }}
         className={obtenida ? 'text-[#0F172A] text-[11px] font-bold' : 'text-[#6B7280] text-[11px] font-bold'}>
         {nombre}

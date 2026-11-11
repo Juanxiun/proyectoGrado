@@ -18,7 +18,6 @@ interface SidebarProps {
 export function Sidebar({ items, activeRoute, onNavigate }: SidebarProps) {
   return (
     <View className="w-64 bg-maroon h-full py-5 px-3 flex-col justify-between border-r border-maroon-dark">
-      {/* Cabecera / Marca */}
       <View className="flex-row items-center gap-3 px-3 mb-5 pb-4 border-b border-white/10">
         <View className="w-10 h-10 rounded-xl bg-white/15 items-center justify-center border border-white/20 shadow-sm">
           <Ionicons name="school" size={22} color="#FFFFFF" />
@@ -31,7 +30,6 @@ export function Sidebar({ items, activeRoute, onNavigate }: SidebarProps) {
         </View>
       </View>
 
-      {/* Lista Navegable Scrollable Bento */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false} contentContainerClassName="gap-1.5 pb-4">
         {items.map((item) => {
           const active = activeRoute === item.route;
@@ -72,7 +70,6 @@ export function Sidebar({ items, activeRoute, onNavigate }: SidebarProps) {
         })}
       </ScrollView>
 
-      {/* Pie de Barra */}
       <View className="pt-3 border-t border-white/10">
         <Text className="text-white/40 text-[10px] text-center font-mono">
           v{APP_VERSION}

@@ -1,4 +1,4 @@
-// insignia_estudiante -> ficha de insignia obtenida o bloqueada
+// InsigniaEstudiante -> ficha de insignia obtenida o bloqueada
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 

@@ -1,6 +1,5 @@
 import { apiRequest, buildQuery, safe } from './client';
 
-/** Escala de riesgo del seguimiento académico. */
 export type NivelRiesgo = 'sin_riesgo' | 'observacion' | 'riesgo' | 'riesgo_alto';
 
 export interface ResumenAsistencia {
@@ -9,7 +8,7 @@ export interface ResumenAsistencia {
   atrasos: number;
   justificadas: number;
   total: number;
-  /** Porcentaje de asistencia efectiva; null si no hay registros. */
+  // tasa -> null cuando no hay registros
   tasa: number | null;
 }
 
@@ -35,7 +34,7 @@ export interface LineaLibro {
   pesoTotal: number;
   tareasCalificadas: number;
   tareasPublicadas: number;
-  /** Porcentaje de la materia aún sin calificar. */
+  // desercion -> porcentaje aún sin calificar
   desercion: number | null;
   asistencia: ResumenAsistencia;
   indice: number | null;
@@ -151,11 +150,7 @@ export interface UmbralesSeguimiento {
   pesoPromedio: number;
 }
 
-/**
- * Seguimiento académico. Las notas se calculan en el backend a partir de las
- * calificaciones y su ponderación, así que no hay nada que promediar aquí:
- * esta capa sólo muestra lo que devuelve ServiceAcademic.
- */
+// seguimientoApi -> solo expone lo que calcula ServiceAcademic
 export const seguimientoApi = {
   async libro(params: {
     cursoPeriodoId: string | number;
@@ -215,7 +210,7 @@ export const seguimientoApi = {
   },
 };
 
-/** Etiqueta y color del nivel de riesgo, para reutilizar en toda la interfaz. */
+// RIESGO_META -> etiqueta y color por nivel de riesgo
 export const RIESGO_META: Record<NivelRiesgo, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' }> = {
   sin_riesgo: { label: 'En regla', variant: 'success' },
   observacion: { label: 'En observación', variant: 'info' },

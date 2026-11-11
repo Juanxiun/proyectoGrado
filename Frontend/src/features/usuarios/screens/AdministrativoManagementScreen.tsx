@@ -11,7 +11,6 @@ import { useAuth } from '../../../context/AuthContext';
 import { BirthDatePicker } from '../components/BirthDatePicker';
 import { DocumentInput } from '../components/DocumentInput';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
-import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { InlineInput } from '../components/InlineInput';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { UserAvatar } from '../../../shared/ui';
@@ -52,7 +51,7 @@ export function AdministrativoManagementScreen() {
 
   const { data, loading, error, fetchList } = useUsuariosList();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<EstadoUsuario | undefined>(undefined);
+  const [statusFilter] = useState<EstadoUsuario | undefined>(undefined);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState<Usuario | null>(null);
@@ -338,7 +337,6 @@ export function AdministrativoManagementScreen() {
         key={adm.id}
         className="w-full md:w-[48%] lg:w-[31.5%] p-5 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between"
       >
-        {/* Cabecera con Foto MinIO ampliada a 80px e indicador online/offline */}
         <View>
           <View className="flex-row items-start justify-between mb-3">
             <View className="relative">
@@ -359,7 +357,6 @@ export function AdministrativoManagementScreen() {
             <StatusBadge status={adm.estado} />
           </View>
 
-          {/* Datos del administrativo */}
           <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
             {admFullName}
           </Text>
@@ -367,7 +364,6 @@ export function AdministrativoManagementScreen() {
             @{adm.username || 'sin-cuenta'}
           </Text>
 
-          {/* Píldoras Bento de cargo y CI */}
           <View className="flex-row flex-wrap gap-1.5 mt-3">
             <View className="bg-maroon/10 px-2.5 py-1 rounded-lg border border-maroon/20">
               <Text className="text-xs font-bold text-maroon">{cargo}</Text>
@@ -377,7 +373,6 @@ export function AdministrativoManagementScreen() {
             </View>
           </View>
 
-          {/* Contacto rápido */}
           <View className="mt-3 pt-3 border-t border-gray-100 gap-1">
             {adm.email ? (
               <View className="flex-row items-center gap-1.5">
@@ -396,7 +391,6 @@ export function AdministrativoManagementScreen() {
           </View>
         </View>
 
-        {/* Acciones Bento */}
         <View className="flex-row items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100 flex-wrap">
           <TouchableOpacity
             onPress={() => handleEdit(adm)}
@@ -438,7 +432,6 @@ export function AdministrativoManagementScreen() {
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-12" showsVerticalScrollIndicator={false}>
-      {/* Cabecera Bento */}
       <BentoCard className="p-5 bg-card border-l-4 border-maroon">
         <View className="flex-row items-center justify-between mb-4 flex-wrap gap-3">
           <View>
@@ -483,7 +476,6 @@ export function AdministrativoManagementScreen() {
         </View>
       </BentoCard>
 
-      {/* Modal Dialog Overlay para Registro o Edición */}
       <Modal
         visible={showModal}
         transparent
@@ -716,7 +708,6 @@ export function AdministrativoManagementScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* GRID DE CARTAS BENTO PARA ADMINISTRATIVOS SEGÚN PESTAÑA ACTIVA */}
       <BentoCard className="p-5 bg-white">
         <View className="flex-row items-center justify-between mb-4">
           <View className="flex-row items-center gap-2">

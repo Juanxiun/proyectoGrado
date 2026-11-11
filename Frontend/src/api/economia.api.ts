@@ -1,7 +1,7 @@
 import { apiRequest, buildQuery, safe } from './client';
 import type { CuotaPlanPago, PagoRealizado, PlanPago } from './billing.api';
 
-// reexportar -> conservar superficie de economia tras dedup con billing
+// economia -> reexporta billing sin duplicar
 export { MONEDA, formatearMonto, getEstadoBadge, getEstadoColor } from './billing.api';
 export type { CuotaPlanPago, Page, PagoRealizado, PlanPago } from './billing.api';
 

@@ -1,5 +1,4 @@
-import React from 'react';
-import { Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../components/BentoCard';
 import { useAuth } from '../../context/AuthContext';

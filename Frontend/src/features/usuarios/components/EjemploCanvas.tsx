@@ -1,4 +1,3 @@
-import React from 'react';
 import { Text, View } from 'react-native';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { MarkdownContent } from '../../../shared/ui/MarkdownContent';

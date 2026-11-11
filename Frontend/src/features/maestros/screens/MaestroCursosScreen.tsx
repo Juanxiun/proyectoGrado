@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -42,34 +42,32 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
   const { isMobile } = useResponsive();
 
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [, setRefreshing] = useState(false);
   const [cursos, setCursos] = useState<CursoGroup[]>([]);
   const [selectedCurso, setSelectedCurso] = useState<CursoGroup | null>(null);
   const [selectedMateria, setSelectedMateria] = useState('');
   const [selectedNivel, setSelectedNivel] = useState<'Primaria' | 'Secundaria' | ''>('');
   const [selectedCursoId, setSelectedCursoId] = useState('');
 
-  // Modal de estudiantes
   const [studentsModalOpen, setStudentsModalOpen] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
   const [students, setStudents] = useState<EstudianteInscrito[]>([]);
   const [searchStudent, setSearchStudent] = useState('');
 
+  // carga cursos -> filtra asignaciones y agrupa por curso
   const loadCursos = async () => {
     try {
       setLoading(true);
-      // Intentar cargar asignaciones desde el backend
       const res = await academicServicesApi.list('asignaciones', {
         limit: 200,
       });
 
       const allAsignaciones = res.data as any[];
 
-      // Filtrar por el maestro autenticado (por maestroId, usuarioId o nombre)
       const teacherAsignaciones = allAsignaciones.filter((asig) => {
         if (!user) return false;
         const m = asig.maestro;
-        if (!m) return true; // Fallback seguro
+        if (!m) return true;
         if (user.maestroId && String(asig.maestroId) === String(user.maestroId)) return true;
         if (String(m.usuarioId) === String(user.id)) return true;
         if (
@@ -83,7 +81,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         return false;
       });
 
-      // Si no encontró por filtro estricto pero el usuario tiene cursos en el token:
       const sourceAsignaciones = teacherAsignaciones.length > 0
         ? teacherAsignaciones
         : (user?.cursos?.map((c) => ({
@@ -97,7 +94,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
             },
           })) ?? allAsignaciones);
 
-      // Agrupar por cursoPeriodoId
       const map = new Map<string, CursoGroup>();
 
       for (const item of sourceAsignaciones) {
@@ -144,13 +140,13 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
     loadCursos();
   }, [user?.id]);
 
+  // abre nómina -> carga estudiantes inscritos en el curso
   const handleOpenCourseStudents = async (curso: CursoGroup) => {
     setSelectedCurso(curso);
     setStudentsModalOpen(true);
     setLoadingStudents(true);
     setSearchStudent('');
     try {
-      // Buscar nómina de alumnos inscritos en este cursoPeriodo
       const res = await academicServicesApi.list('inscripciones', {
         cursoPeriodoId: curso.cursoPeriodoId,
         limit: 150,
@@ -201,7 +197,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
 
   return (
     <View className="flex-1 gap-4">
-      {/* Header Banner */}
       <BentoCard className="p-5">
         <View className="flex-row items-center justify-between">
           <View>
@@ -222,7 +217,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         </View>
       </BentoCard>
 
-      {/* Selección de materia */}
       {!loading && materias.length > 0 ? (
         <BentoCard className="p-5">
           <Text className="text-lg font-bold text-gray-900">Selecciona una materia</Text>
@@ -244,7 +238,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         </BentoCard>
       ) : null}
 
-      {/* Listado de cursos */}
       {loading ? (
         <View className="p-12 items-center justify-center">
           <ActivityIndicator size="large" color="#801529" />
@@ -305,7 +298,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
                   />
                 </View>
 
-                {/* Materias asignadas en este curso */}
                 <View className="mt-4 pt-3 border-t border-gray-100">
                   <Text className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
                     Materias que impartes:
@@ -323,7 +315,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
                   </View>
                 </View>
 
-                {/* Acción para ver detalle de estudiantes */}
                 <TouchableOpacity
                   onPress={() => setSelectedCursoId(selectedCursoId === curso.cursoPeriodoId ? '' : curso.cursoPeriodoId)}
                   className="mt-5 bg-maroon rounded-xl py-2.5 px-4 flex-row items-center justify-center gap-2 shadow-sm"
@@ -356,7 +347,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
         </View>
       )}
 
-      {/* Modal de Detalle de Estudiantes */}
       <Modal
         visible={studentsModalOpen}
         animationType="slide"
@@ -365,7 +355,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
           <View className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl">
-            {/* Header del Modal */}
             <View className="p-5 border-b border-gray-100 flex-row items-center justify-between bg-gray-50">
               <View>
                 <Text className="text-lg font-bold text-gray-900">
@@ -383,7 +372,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
               </TouchableOpacity>
             </View>
 
-            {/* Buscador de estudiantes */}
             <View className="p-4 border-b border-gray-100 bg-white">
               <View className="flex-row items-center bg-gray-100 rounded-xl px-3 py-2 gap-2">
                 <Ionicons name="search" size={18} color="#6B7280" />
@@ -410,7 +398,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
               </View>
             </View>
 
-            {/* Lista de Estudiantes */}
             <ScrollView className="p-4 max-h-[50vh]">
               {loadingStudents ? (
                 <View className="py-12 items-center justify-center">
@@ -457,7 +444,6 @@ export function MaestroCursosScreen({ onNavigate }: { onNavigate?: (route: strin
               )}
             </ScrollView>
 
-            {/* Footer Modal */}
             <View className="p-4 border-t border-gray-100 bg-gray-50 flex-row justify-end">
               <TouchableOpacity
                 onPress={() => setStudentsModalOpen(false)}

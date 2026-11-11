@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
@@ -113,7 +113,6 @@ export function EstudianteCursosScreen() {
         </View>
       </BentoCard>
 
-      {/* Tarjeta resumen del curso */}
       <BentoCard className="p-6 bg-cream border border-gold/20 overflow-hidden">
         <View className="flex-row items-center gap-4">
           <View className="w-16 h-16 rounded-2xl bg-maroon items-center justify-center shadow-md">
@@ -172,7 +171,6 @@ export function EstudianteCursosScreen() {
         </TouchableOpacity>
       </BentoCard>
 
-      {/* Compañeros de curso */}
       <BentoCard className="p-5 overflow-hidden">
         <Text className="text-lg font-bold text-gray-900 mb-3">
           Compañeros de Paralelo ({compañeros.length > 0 ? compañeros.length : 'En aula'})

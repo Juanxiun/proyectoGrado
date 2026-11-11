@@ -118,7 +118,7 @@ export function AcademicManagementPanel({ onNavigate }: { onNavigate?: (route: s
       .catch(() => undefined);
   }, []);
 
-  // Escuchar cambios de datos vía SignalR/Webhooks en tiempo real
+  // tiempo real -> recarga gestiones y estado
   useRealtimeResource('periodos', () => {
     void loadPeriods();
     if (selectedId) void loadState(selectedId);
@@ -248,13 +248,11 @@ export function AcademicManagementPanel({ onNavigate }: { onNavigate?: (route: s
                   try {
                     setState(await academicManagementApi.getState(nextId));
                   } catch {
-                    // La eliminación ya se confirmó; una falla al refrescar la
-                    // gestión siguiente no debe mostrarse como eliminación fallida.
+                    // refresco fallido -> no es un fallo de eliminación
                   }
                 }
               } catch {
-                // La eliminación ya se confirmó; si falla el refresco, se
-                // recarga la pantalla la próxima vez que se abra el panel.
+                // refresco fallido -> se reintenta al abrir el panel
               }
               Alert.alert(
                 'Gestión eliminada',
@@ -415,7 +413,6 @@ export function AcademicManagementPanel({ onNavigate }: { onNavigate?: (route: s
             </View>
           )}
 
-          {/* Bloque 1: Datos Generales de la Gestión */}
           <View className="bg-gray-50/70 p-4 rounded-2xl border border-gray-200/80 gap-3">
             <View className="flex-row items-center gap-1.5 mb-1">
               <Ionicons name="calendar" size={16} color="#801529" />
@@ -496,7 +493,6 @@ export function AcademicManagementPanel({ onNavigate }: { onNavigate?: (route: s
             </View>
           </View>
 
-          {/* Bloque 2: Rangos Trimestrales Rediseñados con Cajas Segmentadas UX */}
           <View className="gap-2.5">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center gap-1.5">
@@ -554,7 +550,6 @@ export function AcademicManagementPanel({ onNavigate }: { onNavigate?: (route: s
             ))}
           </View>
 
-          {/* Bloque 3: Monto Único General para Todos los Grados */}
           <View className="bg-gray-50/70 p-4 rounded-2xl border border-gray-200/80 gap-2">
             <View className="flex-row items-center gap-1.5">
               <Ionicons name="cash-outline" size={16} color="#801529" />

@@ -1,8 +1,8 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { billingApi, formatearMonto, type EstudianteDeuda, type PagoRealizado, type CuotaPlanPago, type PlanPago } from '../../../api/billing.api';
-import { BentoCard, StatusBadge, Button } from '../../../shared/ui';
+import { BentoCard, StatusBadge } from '../../../shared/ui';
 import { useAuth } from '../../../context/AuthContext';
 
 export function BillingStudentScreen() {
@@ -31,7 +31,6 @@ export function BillingStudentScreen() {
         setPlan(planRes);
         setCuotas(planRes ? await billingApi.listCuotas(planRes.id) : []);
       }
-      // Verificar si hay notificación de pago reciente
       if ((deudaRes?.cuotas_pendientes ?? 0) > 0 && pagosRes?.length > 0) {
         const ultimaPago = pagosRes[0];
         setNotificacion(
@@ -80,7 +79,6 @@ export function BillingStudentScreen() {
         />
       }
     >
-      {/* Resumen de Deuda */}
       <View className="rounded-2xl bg-[#801F3F] p-5">
         <View className="flex-row items-center justify-between"><View className="bg-[#F3D9B7] rounded-full px-2.5 py-1"><Text className="text-[#801F3F] text-[9px] font-extrabold">ESTADO DE CUENTA</Text></View><Ionicons name="shield-checkmark-outline" size={22} color="#F3D9B7" /></View>
         <Text className="text-white text-xl font-black mt-2">Resumen de pagos</Text>
@@ -106,7 +104,6 @@ export function BillingStudentScreen() {
         <View className="flex-1 rounded-2xl bg-[#FBF5EC] p-4"><View className="w-8 h-8 rounded-lg bg-[#801F3F]/10 items-center justify-center"><Ionicons name="trending-up-outline" size={17} color="#801F3F" /></View><Text className="text-gray-500 text-[9px] font-bold mt-3">SALDO PENDIENTE</Text><Text className="text-[#801F3F] text-base font-black mt-1">{formatearMonto(deuda.total_deuda)}</Text><Text className="text-gray-500 text-[9px] mt-1">Consulta vencimientos</Text></View>
       </View>
 
-      {/* Historial de Pagos */}
       <BentoCard className="p-4 bg-[#FBF5EC] border border-[#EFE6DB]">
         <View className="flex-row items-center justify-between mb-3">
           <View>
@@ -141,7 +138,6 @@ export function BillingStudentScreen() {
         )}
       </BentoCard>
 
-      {/* Estado de Cuotas */}
       <BentoCard className="p-4">
         <View className="flex-row items-center justify-between mb-3">
           <View>
@@ -168,7 +164,6 @@ export function BillingStudentScreen() {
         )}
       </BentoCard>
 
-      {/* Notificación de pago */}
       {notificacion ? (
         <BentoCard className="p-4 border border-amber-200 bg-amber-50">
           <View className="flex-row items-start gap-3">

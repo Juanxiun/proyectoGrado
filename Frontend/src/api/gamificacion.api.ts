@@ -1,4 +1,4 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest } from './client';
 
 export interface RachasDiarias {
   id: string;

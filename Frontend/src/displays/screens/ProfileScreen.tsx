@@ -1,6 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import { ActivityIndicator, Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
@@ -12,7 +11,6 @@ import { TextField, UserAvatar } from '../../shared/ui';
 import { PASSWORD_MAX, USERNAME_MAX, sanitizePassword, sanitizeUsername } from '../../shared/validation/credentials';
 import { BirthDatePicker } from '../../features/usuarios/components/BirthDatePicker';
 import { DocumentInput } from '../../features/usuarios/components/DocumentInput';
-import { ProfilePhotoPicker } from '../../features/usuarios/components/ProfilePhotoPicker';
 import { NotificationsInboxCard } from '../../features/usuarios/components/NotificationsInboxCard';
 import { confirmLogout } from '../../utils/confirmLogout';
 import type { Genero, UsuarioCont, UsuarioDoc, Usuario } from '../../types';

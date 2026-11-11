@@ -4,7 +4,7 @@ export type Periodo = { id: string; nombre: string; anio: number; activo: boolea
 
 export type Vista = 'cursos' | 'curso' | 'estudiante';
 
-// Resumen por estudiante, armado a partir del libro de cada materia.
+// resumen estudiante -> promedio, asistencia y riesgo
 export interface ResumenEstudiante {
   estudianteId: string;
   nombre: string;

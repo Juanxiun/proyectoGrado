@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
@@ -21,7 +21,7 @@ interface NotificationsModalProps {
   onSelectNotification?: (notif: NotificationItem) => void;
 }
 
-/** Etiqueta legible para notificaciones que no traen `publicoTexto`. */
+// ETIQUETAS -> etiqueta legible por tipo de notificación
 const ETIQUETAS: Record<string, string> = {
   sistema: 'Sistema',
   academico: 'Académico',
@@ -104,7 +104,6 @@ export function NotificationsModal({
     >
       <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
         <View className="bg-white rounded-3xl w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl flex-col border border-gray-100">
-          {/* Header */}
           <View className="p-4 md:p-5 bg-maroon text-white flex-row items-center justify-between">
             <View className="flex-row items-center gap-3">
               <View className="w-10 h-10 rounded-xl bg-white/20 items-center justify-center">
@@ -129,7 +128,6 @@ export function NotificationsModal({
             </TouchableOpacity>
           </View>
 
-          {/* Listado */}
           <ScrollView className="p-4 max-h-[60vh]">
             {loading && notificaciones.length === 0 ? (
               <View className="py-12 items-center justify-center">
@@ -180,7 +178,6 @@ export function NotificationsModal({
                         </Text>
                       </View>
 
-                      {/* Contexto académico para materiales/encargos */}
                       <View className="mt-3 bg-white p-3 rounded-xl border border-gray-100 gap-1">
                         {n.materiaNombre ? (
                           <>
@@ -233,7 +230,6 @@ export function NotificationsModal({
             )}
           </ScrollView>
 
-          {/* Footer */}
           <View className="p-3.5 bg-gray-50 border-t border-gray-200 flex-row items-center justify-between">
             <TouchableOpacity
               onPress={handleMarkAllRead}

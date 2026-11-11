@@ -37,8 +37,6 @@ class AppWebSocketClient {
   private getWsUrl(): string {
     const httpUrl = API_BASE_URL || "http://localhost:5141";
     const wsBase = httpUrl.replace(/^http/, "ws");
-    // El único punto WebSocket público es el Hub SignalR del gateway REST.
-    // Los microservicios nunca se exponen directamente al cliente.
     return `${wsBase.replace(/\/$/, "")}/hub`;
   }
 
@@ -56,7 +54,6 @@ class AppWebSocketClient {
         this.ws = new WebSocket(url);
 
         this.ws.onopen = () => {
-          // Handshake protocolo SignalR JSON
           this.ws?.send(
             JSON.stringify({ protocol: "json", version: 1 }) + this.RECORD_SEP,
           );
@@ -96,6 +93,7 @@ class AppWebSocketClient {
     }, 4000);
   }
 
+  // handleMessage -> mensajes SignalR: handshake, ping e invocación
   private handleMessage(
     rawData: string,
     connectResolve: () => void,
@@ -107,7 +105,6 @@ class AppWebSocketClient {
       try {
         const msg = JSON.parse(msgStr);
 
-        // Handshake inicial exitoso (recibe {})
         if (
           !this.isConnected &&
           (Object.keys(msg).length === 0 || msg.type === undefined)
@@ -117,13 +114,11 @@ class AppWebSocketClient {
           continue;
         }
 
-        // Ping de SignalR
         if (msg.type === 6) {
           this.ws?.send(JSON.stringify({ type: 6 }) + this.RECORD_SEP);
           continue;
         }
 
-        // Invocación devuelta desde el Servidor (type === 1)
         if (msg.type === 1) {
           const target = msg.target;
           const args = msg.arguments || [];
@@ -150,7 +145,6 @@ class AppWebSocketClient {
             }
           }
 
-          // Notificaciones de eventos tipo DataChanged, NotificacionNueva, etc.
           if (target) {
             const listeners = this.eventListeners.get(target);
             if (listeners) {
@@ -170,9 +164,7 @@ class AppWebSocketClient {
     }
   }
 
-  /**
-   * Suscribe una función callback a un evento de SignalR/Webhook (ej: DataChanged)
-   */
+  // on -> suscribe un callback y devuelve la baja
   public on<T = any>(target: string, callback: EventCallback<T>): () => void {
     if (!this.eventListeners.has(target)) {
       this.eventListeners.set(target, new Set());
@@ -180,15 +172,12 @@ class AppWebSocketClient {
     this.eventListeners.get(target)!.add(callback);
     this.connect().catch(() => {});
 
-    // Retorna función para desuscribirse
     return () => {
       this.eventListeners.get(target)?.delete(callback);
     };
   }
 
-  /**
-   * Suscribe a cambios en tiempo real para un recurso específico (o '*' para todos)
-   */
+  // subscribeToDataChanges -> escucha cambios de un recurso
   public subscribeToDataChanges(
     resource: string,
     callback: (payload: DataChangePayload) => void,
@@ -205,11 +194,7 @@ class AppWebSocketClient {
     });
   }
 
-  /**
-   * Entra al grupo de notificaciones del usuario y escucha el push en tiempo
-   * real. El socket se abre sin credenciales, así que la identidad se valida en
-   * el hub con el token que ya está en el SecureStore.
-   */
+  // subscribeToNotifications -> entra al grupo del usuario
   public subscribeToNotifications(
     usuarioId: string | number,
     callback: (notificacion: DataChangePayload & Record<string, unknown>) => void,
@@ -230,13 +215,12 @@ class AppWebSocketClient {
           }) + this.RECORD_SEP,
         );
       })
-      .catch(() => {
-        /* la bandeja HTTP sigue funcionando como respaldo */
-      });
+      .catch(() => {});
 
     return unsub;
   }
 
+  // sendWsRequest -> invoca ExecuteAction y espera respuesta
   public async sendWsRequest<T>(action: string, payload?: unknown): Promise<T> {
     await this.connect();
 
@@ -244,7 +228,6 @@ class AppWebSocketClient {
       Math.random().toString(36).substring(2, 9)
     }`;
 
-    // Adjuntar token de autenticación si existe
     const token = await storage.getToken();
     const fullPayload = {
       ...(payload && typeof payload === "object" ? payload : { data: payload }),
@@ -266,7 +249,6 @@ class AppWebSocketClient {
 
       this.pendingRequests.set(requestId, { resolve, reject, timer });
 
-      // SignalR invocation message: type 1, target "ExecuteAction", arguments [requestId, action, payload]
       const invocation = {
         type: 1,
         target: "ExecuteAction",

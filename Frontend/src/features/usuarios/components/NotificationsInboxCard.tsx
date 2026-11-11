@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -8,7 +8,7 @@ import { useAuth } from '../../../context/AuthContext';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { NotificationsModal } from './NotificationsModal';
 
-/** Etiqueta legible para notificaciones que no traen `publicoTexto`. */
+// ETIQUETAS -> etiqueta legible por tipo de notificación
 const ETIQUETAS: Record<string, string> = {
   sistema: 'Sistema',
   academico: 'Académico',

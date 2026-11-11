@@ -1,16 +1,9 @@
 import { apiRequest, safe } from './client';
 
-/**
- * Bandeja de notificaciones.
- *
- * La-central de notificaciones vive en ServiceNotification (puerto 8884); el
- * gateway expone `/api/notificaciones` y lo sirve en tiempo real por el hub
- * SignalR. Este módulo sólo habla con el gateway: nunca con el servicio directo.
- */
+// notificaciones -> bandeja del gateway, nunca el servicio directo
 export interface NotificationItem {
   id: string;
 
-  /** material, actividad, calificacion, horario, materia, usuario, seguridad… */
   tipo: string;
   canal: 'sistema' | 'academico' | 'usuarios' | 'horarios';
   prioridad: 'baja' | 'media' | 'alta' | 'critica';
@@ -19,7 +12,6 @@ export interface NotificationItem {
   mensaje: string;
   textoPlano: string;
 
-  /** Contexto académico; presente en materiales, encargos y calificaciones. */
   materiaNombre?: string;
   profesorNombre?: string;
   cursoParalelo?: string;
@@ -29,7 +21,6 @@ export interface NotificationItem {
   cursoPeriodoId?: string;
   itemId?: string;
 
-  /** "ServiceHomework:materiales.create" */
   origen: string;
 
   fechaCreacion: string;

@@ -54,7 +54,6 @@ export function BirthDatePicker({
   const [showYearPicker, setShowYearPicker] = useState(false);
   const [showMonthPicker, setShowMonthPicker] = useState(false);
 
-  // Selector de década para evitar el listado extenso de 100+ años
   const [decadeStart, setDecadeStart] = useState(() => Math.floor(initial.getFullYear() / 10) * 10);
 
   useEffect(() => {
@@ -105,7 +104,6 @@ export function BirthDatePicker({
 
   const isSelected = (day: number) => displayValue === iso(new Date(selectedYear, selectedMonth, day));
 
-  // Años a mostrar en la década actual (máximo 10 o 12 botones compactos)
   const decadeYears = useMemo(() => {
     const years: number[] = [];
     const end = Math.min(maxYear, decadeStart + 9);
@@ -129,7 +127,6 @@ export function BirthDatePicker({
       <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <View className="flex-1 bg-black/40 justify-center items-center p-4">
           <View className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-xl border border-gray-100">
-            {/* Cabecera del selector (Año / Mes) */}
             <View className="flex-row items-center justify-between mb-4 gap-2">
               <TouchableOpacity
                 onPress={() => {
@@ -160,7 +157,6 @@ export function BirthDatePicker({
               </TouchableOpacity>
             </View>
 
-            {/* Selector de Años con navegación por décadas (Limpio y compacto, no listado extenso) */}
             {showYearPicker && (
               <View className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
                 <View className="flex-row justify-between items-center mb-3">
@@ -212,7 +208,6 @@ export function BirthDatePicker({
               </View>
             )}
 
-            {/* Selector de Meses (Cuadrícula 3x4 limpia) */}
             {showMonthPicker && (
               <View className="mb-4 p-3 bg-gray-50 rounded-xl border border-gray-200">
                 <Text className="text-xs font-bold text-gray-600 mb-2.5 text-center uppercase">Selecciona el Mes</Text>
@@ -243,7 +238,6 @@ export function BirthDatePicker({
               </View>
             )}
 
-            {/* Vista principal del Calendario mensual */}
             {!showYearPicker && !showMonthPicker && (
               <>
                 <View className="flex-row justify-between items-center mb-3">

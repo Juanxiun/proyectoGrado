@@ -1,6 +1,6 @@
-// markdown_content -> contenido markdown del LLM (explicaciones, resumenes, ejemplos)
-import React, { useMemo, useState } from 'react';
-import { StyleSheet, View, useWindowDimensions, Platform } from 'react-native';
+// MarkdownContent -> render de markdown, LaTeX y tablas
+import { useMemo, useState } from 'react';
+import { View, useWindowDimensions, Platform } from 'react-native';
 import RenderHTML, { MixedStyleRecord } from 'react-native-render-html';
 import { WebView } from 'react-native-webview';
 import { SvgXml } from 'react-native-svg';
@@ -13,18 +13,15 @@ export interface MarkdownContentProps {
   textColor?: string;
 }
 
-// markdown -> convertir expresiones matematicas simples de LaTeX a HTML legible
+// formatearMatematicas -> LaTeX simple a HTML
 function formatearMatematicas(html: string): string {
   let res = html;
 
-  // Fracciones: \frac{a}{b} -> (a)/(b) o estructura con barra
   res = res.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1)/($2)');
 
-  // Raiz cuadrada: \sqrt{x} o \sqrt[n]{x}
   res = res.replace(/\\sqrt\[([^{}]+)\]\{([^{}]+)\}/g, '<sup>$1</sup>√($2)');
   res = res.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
 
-  // Simbolos matematicos comunes
   const simbolos: Record<string, string> = {
     '\\\\pm': '±',
     '\\\\times': '×',
@@ -54,18 +51,16 @@ function formatearMatematicas(html: string): string {
     res = res.replace(new RegExp(pattern, 'g'), repl);
   }
 
-  // Superindices: x^{2} o x^2 -> x<sup>2</sup>
   res = res.replace(/([a-zA-Z0-9_\)\]])\^\{([^{}]+)\}/g, '$1<sup>$2</sup>');
   res = res.replace(/([a-zA-Z0-9_\)\]])\^([0-9a-zA-Z+-]+)/g, '$1<sup>$2</sup>');
 
-  // Subindices: x_{1} o x_1 -> x<sub>1</sub>
   res = res.replace(/([a-zA-Z0-9_\)\]])\_\{([^{}]+)\}/g, '$1<sub>$2</sub>');
   res = res.replace(/([a-zA-Z0-9_\)\]])\_([0-9a-zA-Z+-]+)/g, '$1<sub>$2</sub>');
 
   return res;
 }
 
-// markdown -> procesar tablas en sintaxis markdown
+// procesarTablas -> tablas markdown a HTML
 function procesarTablas(texto: string): string {
   const lineas = texto.split('\n');
   const salida: string[] = [];
@@ -100,7 +95,8 @@ function renderizarTabla(filas: string[]): string {
     .split('|')
     .slice(1, -1)
     .map((celda) => celda.trim());
-  const cuerpo = filas.slice(2); // fila 1 es |---|---|
+  // renderizarTabla -> la fila 1 es el separador |---|
+  const cuerpo = filas.slice(2);
 
   let html = '<div class="table-container"><table><thead><tr>';
   for (const th of encabezado) {
@@ -123,17 +119,15 @@ function renderizarTabla(filas: string[]): string {
   return html;
 }
 
-// markdown -> convertir markdown general a HTML compatible con react-native-render-html
+// markdownToHtml -> markdown a HTML de RenderHTML
 export function markdownToHtml(md: string): string {
   if (!md) return '';
   let str = md.trim();
 
-  // Si ya viene como HTML completo o SVG, no transformar
   if (str.startsWith('<svg') || str.startsWith('<?xml') || str.startsWith('<!DOCTYPE') || str.startsWith('<html')) {
     return str;
   }
 
-  // 1. Guardar bloques de codigo para no alterarlos
   const bloquesCodigo: string[] = [];
   str = str.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (_, lang, codigo) => {
     const indice = bloquesCodigo.length;
@@ -145,10 +139,8 @@ export function markdownToHtml(md: string): string {
     return `___BLOQUE_CODIGO_${indice}___`;
   });
 
-  // 2. Tablas Markdown
   str = procesarTablas(str);
 
-  // 3. Formulas en bloque $$ ... $$ o \\[ ... \\]
   str = str.replace(/\$\$([\s\S]*?)\$\$/g, (_, eq) => {
     const limpia = formatearMatematicas(eq.trim());
     return `<div class="math-block"><span class="math-formula">${limpia}</span></div>`;
@@ -158,7 +150,6 @@ export function markdownToHtml(md: string): string {
     return `<div class="math-block"><span class="math-formula">${limpia}</span></div>`;
   });
 
-  // 4. Formulas en linea $ ... $ o \\( ... \\)
   str = str.replace(/\$([^\$\n]+)\$/g, (_, eq) => {
     const limpia = formatearMatematicas(eq.trim());
     return `<span class="math-inline">${limpia}</span>`;
@@ -168,16 +159,13 @@ export function markdownToHtml(md: string): string {
     return `<span class="math-inline">${limpia}</span>`;
   });
 
-  // 5. Encabezados
   str = str.replace(/^####\s+(.+)$/gm, '<h4>$1</h4>');
   str = str.replace(/^###\s+(.+)$/gm, '<h3>$1</h3>');
   str = str.replace(/^##\s+(.+)$/gm, '<h2>$1</h2>');
   str = str.replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
 
-  // 6. Citas / Blockquotes
   str = str.replace(/^>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
 
-  // 7. Negrita y Cursiva
   str = str.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
   str = str.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   str = str.replace(/__(.+?)__/g, '<strong>$1</strong>');
@@ -185,29 +173,22 @@ export function markdownToHtml(md: string): string {
   str = str.replace(/_([^_\n]+)_/g, '<em>$1</em>');
   str = str.replace(/~~(.+?)~~/g, '<del>$1</del>');
 
-  // 8. Codigo en linea `code`
   str = str.replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
-  // 9. Listas no ordenadas y ordenadas
   str = str.replace(/^\s*[-*+]\s+(.+)$/gm, '<li>$1</li>');
   str = str.replace(/^\s*\d+\.\s+(.+)$/gm, '<li>$1</li>');
 
-  // Agrupar <li> contiguos en <ul>
   str = str.replace(/(<li>[\s\S]*?<\/li>)/g, (match) => {
     return `<ul>${match}</ul>`;
   });
-  // Unificar <ul><ul> contiguos
   str = str.replace(/<\/ul>\s*<ul>/g, '');
 
-  // 10. Separadores
   str = str.replace(/^[-*_]{3,}$/gm, '<hr/>');
 
-  // 11. Restaurar bloques de codigo
   for (let i = 0; i < bloquesCodigo.length; i++) {
     str = str.replace(`___BLOQUE_CODIGO_${i}___`, bloquesCodigo[i]);
   }
 
-  // 12. Parrafos y saltos de linea
   const lineas = str.split(/\n{2,}/);
   str = lineas
     .map((parrafo) => {
@@ -233,7 +214,7 @@ export function markdownToHtml(md: string): string {
   return str;
 }
 
-// webview_template -> plantilla HTML rica para WebView con formulas y diagramas
+// generarHtmlWebView -> plantilla HTML para el WebView
 function generarHtmlWebView(contenido: string, textColor: string): string {
   return `<!doctype html>
 <html>
@@ -336,7 +317,6 @@ export function MarkdownContent({
   const contenidoLimpio = (texto || '').trim();
   if (!contenidoLimpio) return null;
 
-  // Deteccion de SVG directo
   const esSvg = (contenidoLimpio.startsWith('<svg') || contenidoLimpio.startsWith('<?xml')) && !svgError;
   if (esSvg) {
     try {
@@ -351,11 +331,9 @@ export function MarkdownContent({
         </View>
       );
     } catch {
-      // Si falla SvgXml, continuar al renderer de Markdown
     }
   }
 
-  // Detectar si requiere WebView (diagrama Mermaid o peticion explicita)
   const requiereWebView = useWebView || contenidoLimpio.includes('```mermaid') || contenidoLimpio.includes('<iframe');
 
   const htmlFinal = useMemo(() => {
@@ -376,7 +354,6 @@ export function MarkdownContent({
     );
   }
 
-  // Estilos tipograficos para RenderHTML
   const tagsStyles: MixedStyleRecord = {
     body: {
       color: textColor,

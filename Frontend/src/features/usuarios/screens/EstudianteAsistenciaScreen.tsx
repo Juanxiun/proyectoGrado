@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -66,7 +66,6 @@ export function EstudianteAsistenciaScreen() {
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8">
-      {/* Cabecera Principal */}
       <BentoCard className="p-5">
         <View className="flex-row items-center justify-between flex-wrap gap-2">
           <View>
@@ -78,7 +77,6 @@ export function EstudianteAsistenciaScreen() {
             </Text>
           </View>
 
-          {/* Selector de Trimestre */}
           <View className="flex-row bg-gray-100 p-1 rounded-xl">
             {[1, 2, 3].map((t) => (
               <TouchableOpacity
@@ -101,7 +99,6 @@ export function EstudianteAsistenciaScreen() {
         </View>
       </BentoCard>
 
-      {/* Tarjetas KPI de Asistencia */}
       <View className="flex-row flex-wrap gap-3">
         <KpiCard
           label="Tasa Asistencia"
@@ -135,7 +132,6 @@ export function EstudianteAsistenciaScreen() {
         />
       </View>
 
-      {/* Alerta de Inasistencia si aplica */}
       {asistenciaGlobal.ausentes >= 3 && (
         <View className="bg-red-50 border border-red-200 p-4 rounded-2xl flex-row items-center gap-3">
           <Ionicons name="warning" size={24} color="#DC2626" />
@@ -150,7 +146,6 @@ export function EstudianteAsistenciaScreen() {
         </View>
       )}
 
-      {/* Desglose por Materias */}
       {loading ? (
         <View className="py-16 items-center justify-center">
           <ActivityIndicator size="large" color="#801529" />
@@ -199,7 +194,6 @@ export function EstudianteAsistenciaScreen() {
                     />
                   </View>
 
-                  {/* Barra de Porcentaje */}
                   <View className="bg-gray-50 p-3 rounded-2xl gap-2">
                     <View className="flex-row items-center justify-between">
                       <Text className="text-xs text-gray-500 font-medium">Asistencia Efectiva:</Text>
@@ -215,7 +209,6 @@ export function EstudianteAsistenciaScreen() {
                     </View>
                   </View>
 
-                  {/* Resumen Detallado de Clases */}
                   <View className="flex-row items-center justify-around pt-2 border-t border-gray-100">
                     <View className="items-center">
                       <Text className="text-xs font-bold text-emerald-700">{ast?.presentes ?? 0}</Text>

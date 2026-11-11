@@ -10,14 +10,7 @@ import type {
   UsuariosQueryParams,
 } from '../types';
 
-/**
- * Trae TODOS los usuarios, no sólo la primera página.
- *
- * El backend topa `limit` en 100 por pedido (`Math.min(100, ...)` en
- * ServiceUser/Controller/usuarios/views.ts) sin avisar, así que pedir
- * `limit: 300` devuelve 100 y la pantalla llega a mostrar un tercio del
- * alumnado. Esto recorre las páginas hasta cubrirlas todas.
- */
+// listAllUsuarios -> trae todas las páginas de usuarios
 const listAllUsuarios = async (params: UsuariosQueryParams = {}): Promise<Usuario[]> => {
   const porPagina = 100;
   const primera = await usuariosApi.list({ ...params, page: 1, limit: porPagina });
@@ -36,7 +29,6 @@ export const usuariosApi = {
   list: (params: UsuariosQueryParams = {}) =>
     apiRequest<UsuariosListResponse>(`/api/usuarios${buildQuery(params as Record<string, string | number | undefined>)}`),
 
-  /** Igual que `list`, pero devuelve todas las páginas aplanadas. */
   listAll: listAllUsuarios,
 
   getById: (id: string) => apiRequest<Usuario>(`/api/usuarios/${id}`),
@@ -110,9 +102,7 @@ function getNameAndType(
   return { name, type };
 }
 
-/**
- * Convierte URIs locales a archivos compatibles con Expo Fetch y FormData.
- */
+// buildFilePart -> convierte una URI local en archivo
 async function buildFilePart(
   uri: string,
   name: string,
@@ -120,7 +110,6 @@ async function buildFilePart(
 ): Promise<Blob> {
   const needsBlob = Platform.OS === 'web' || uri.startsWith('blob:') || uri.startsWith('data:');
 
-  // Expo Fetch no convierte las partes FormData con solo `uri` en archivos.
   if (!needsBlob) return new ExpoFile(uri);
 
   try {
@@ -135,7 +124,6 @@ async function buildFilePart(
     fileBlob.type = mime;
     return fileBlob;
   } catch {
-    // Fallback para data-uri en caso de que fetch falle
     if (uri.startsWith('data:')) {
       const parts = uri.split(',');
       const mime = parts[0].match(/:(.*?);/)?.[1] || type;
@@ -152,6 +140,7 @@ async function buildFilePart(
   throw new Error(`No se pudo leer el archivo ${name}`);
 }
 
+// sendMultipart -> arma el FormData y evita documentos vacíos
 async function sendMultipart<T = { message: string; id: string; fotoUrl: string | null }>(
   endpoint: string,
   method: 'POST' | 'PUT',
@@ -160,9 +149,6 @@ async function sendMultipart<T = { message: string; id: string; fotoUrl: string 
 ): Promise<T> {
   const form = new FormData();
 
-  // No enviar `documentos: []` cuando el payload no contempla documentos.
-  // Para estudiantes esa distinción protege la edición de sus documentos,
-  // mientras les permite enviar una foto mediante multipart.
   const includesDocuments = Object.prototype.hasOwnProperty.call(payload, 'documentos');
   const documentos = (payload.documentos ?? []).map(({ fileUri, fileName, ...doc }) => doc);
   const datos = includesDocuments ? { ...payload, documentos } : payload;

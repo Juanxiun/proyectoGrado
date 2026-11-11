@@ -63,7 +63,7 @@ function Indicador({
   );
 }
 
-/** Resumen de desempeño de todo el curso: promedios, asistencia y riesgo. */
+// panel del curso -> promedios, asistencia y riesgo
 export function PanelCursoRendimiento({
   panel,
   loading,
@@ -182,7 +182,7 @@ export function PanelCursoRendimiento({
   );
 }
 
-/** Lista de estudiantes del curso con su resumen; al tocar, se abre su panel. */
+// lista estudiantes -> resumen y acceso al panel
 export function ListaEstudiantesCurso({
   estudiantes,
   onSelect,

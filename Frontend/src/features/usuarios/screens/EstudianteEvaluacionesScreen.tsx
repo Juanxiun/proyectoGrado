@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
@@ -17,7 +17,6 @@ export function EstudianteEvaluacionesScreen() {
     async function loadExamenes() {
       try {
         setLoading(true);
-        // Traer encargos y filtrar por evaluaciones/exámenes
         const res = await academicServicesApi.list('encargos', { limit: 150 });
         setEvaluaciones(extraerEvaluaciones(res.data, 'Asignatura'));
       } catch (err) {
@@ -32,7 +31,6 @@ export function EstudianteEvaluacionesScreen() {
 
   return (
     <View className="flex-1 gap-4">
-      {/* Cabecera Informativa de Solo Lectura */}
       <BentoCard className="p-5">
         <View className="flex-row items-center justify-between">
           <View>
@@ -48,7 +46,6 @@ export function EstudianteEvaluacionesScreen() {
         </View>
       </BentoCard>
 
-      {/* Listado de Evaluaciones */}
       {loading ? (
         <View className="py-12 items-center justify-center">
           <ActivityIndicator size="large" color="#801529" />
@@ -95,7 +92,6 @@ export function EstudianteEvaluacionesScreen() {
                   </View>
                 </View>
 
-                {/* Parámetros temporales en modo sólo lectura */}
                 <View className="flex-row flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500">
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />

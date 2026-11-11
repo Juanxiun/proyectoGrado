@@ -22,11 +22,7 @@ interface GestionWizardModalProps {
 
 const GRADOS = ['1°', '2°', '3°', '4°', '5°', '6°'];
 
-// La heurística que sugería materias por grado ("Sugerencia Bolivia") se
-// eliminó junto con la selección manual: las materias se configuran una vez por
-// curso en Estructura Académica → Cursos base y esta pantalla sólo las informa.
-
-/** Materias ya asignadas a un curso base. Sólo lectura: se configuran en otro lado. */
+// materias del curso -> lista de sólo lectura
 function MateriasDelCurso({
   cursoId,
   cargando,
@@ -99,7 +95,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
   const [loading, setLoading] = useState(false);
   const [loadingStepText, setLoadingStepText] = useState('');
 
-  // ── Paso 1: Configuración Base ──────────────────────────────────────────
   const [anio, setAnio] = useState(String(currentYear));
   const [nombre, setNombre] = useState(`Gestión Escolar ${currentYear}`);
   const [inicioGestion, setInicioGestion] = useState(dateString(currentYear, 2, 2));
@@ -113,7 +108,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
   const [turnoGeneral, setTurnoGeneral] = useState<'manana' | 'tarde'>('manana');
   const [montoCuota, setMontoCuota] = useState('350');
 
-  // ── Paso 2: Cursos y Paralelos ──────────────────────────────────────────
   const [primariaGrados, setPrimariaGrados] = useState<Record<string, boolean>>({
     '1°': true, '2°': true, '3°': true, '4°': true, '5°': true, '6°': true,
   });
@@ -126,10 +120,7 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
   });
   const [capacidadPorCurso, setCapacidadPorCurso] = useState('30');
 
-  // ── Paso 3: Vista previa de los cursos y sus materias ───────────────────
-  // Las materias están asignadas por GRADO, así que este paso sólo informa: la
-  // malla la arma el backend al generar la estructura. La clave es el id del
-  // curso para poder pintar cada fila, pero la lista es la del grado completo.
+  // materias por grado -> el backend arma la malla
   const [cursosBase, setCursosBase] = useState<Array<Record<string, any>>>([]);
   const [cursoMaterias, setCursoMaterias] = useState<
     Record<string, Array<{ codigo: string; nombre: string; cargaHorariaSemanal: number; tipoMateria: string }>>
@@ -149,7 +140,7 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
       .catch(() => setCursosBase([]));
   }, [visible]);
 
-  // Las materias de cada curso se piden al abrir el paso 3, no antes.
+  // materias por grado -> se piden al abrir el paso 3
   useEffect(() => {
     if (!visible || step !== 3) return;
 
@@ -169,8 +160,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
 
     Promise.allSettled(
       faltantes.map(async () => {
-        // Las materias son por GRADO: 1°A y 1°B comparten la misma lista, así
-        // que alcanza con pedirla una vez por grado.
         const materias = await academicServicesApi.gradoMaterias(
           nivel as NivelEducativo,
           grado,
@@ -189,8 +178,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
               cargaHorariaSemanal: m.cargaHorariaSemanal,
               tipoMateria: m.tipoMateria,
             }));
-            // Se guarda bajo cada clave de curso para que el paso 3 pueda
-            // leerlo sin volver a preguntar.
             for (const curso of delGrado) next[String(curso.id)] = resumen;
           } else {
             for (const curso of delGrado) next[String(curso.id)] = [];
@@ -216,7 +203,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
     [cursosBase, selectedGradoTab, selectedNivelTab],
   );
 
-  // Validaciones de paso 1
   const validateStep1 = () => {
     if (!anio || !nombre.trim()) {
       Alert.alert('Datos incompletos', 'Ingrese el año y nombre de la gestión.');
@@ -237,7 +223,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
     return true;
   };
 
-  // Validaciones de paso 2
   const validateStep2 = () => {
     const hasPrimaria = Object.values(primariaGrados).some(Boolean);
     const hasSecundaria = Object.values(secundariaGrados).some(Boolean);
@@ -251,7 +236,7 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
       return false;
     }
 
-    // Asegurar que el grado seleccionado en el paso 3 pertenezca a los habilitados
+    // grado inicial -> asegura uno habilitado
     if (hasPrimaria) {
       setSelectedNivelTab('primaria');
       const firstPri = Object.keys(primariaGrados).find((g) => primariaGrados[g]) || '1°';
@@ -264,11 +249,10 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
     return true;
   };
 
-  // Validaciones de paso 3 y Finalización
+  // guardar gestión -> crea período, cursos y plan de pagos
   const handleFinalSubmit = async () => {
     setLoading(true);
     try {
-      // 1. Crear Gestión Base
       setLoadingStepText('1/4 Registrando gestión base y trimestres...');
       const periodoRes = await academicManagementApi.create({
         anio: Number(anio),
@@ -283,9 +267,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
       });
       const periodoId = String((periodoRes as { id?: string }).id ?? '');
 
-      // 2. Construir niveles y cursos. La malla curricular NO se envía: el
-      // backend la arma con las materias que cada curso base ya tiene
-      // asignadas, y omite los cursos que no tengan ninguna.
       setLoadingStepText('2/4 Configurando cursos y paralelos...');
       const nivelesInput: Array<{ nivel: string; grados: string[]; paralelos: Record<string, number> }> = [];
 
@@ -317,7 +298,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
         turnoPorNivel: { primaria: turnoGeneral, secundaria: turnoGeneral },
       });
 
-      // 3. Generar Plan de Pagos Mensual
       setLoadingStepText('3/4 Creando plan de pagos institucionales...');
       await academicManagementApi.generatePaymentPlan(periodoId, {
         montosPorNivel: {
@@ -327,7 +307,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
         diaVencimiento: 10,
       });
 
-      // 4. Entregar la gestión al constructor de horarios.
       setLoadingStepText('4/4 Redirigiendo a construcción de horarios...');
       Alert.alert(
         '¡Gestión Configurada con Éxito!',
@@ -350,7 +329,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
         <View className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex-col">
-          {/* Header */}
           <View className="p-5 bg-maroon flex-row items-center justify-between">
             <View className="flex-1 mr-2">
               <View className="flex-row items-center gap-2">
@@ -372,7 +350,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
             </TouchableOpacity>
           </View>
 
-          {/* Stepper Indicator */}
           <View className="flex-row border-b border-gray-200 bg-gray-50 px-5 py-3">
             {[
               { num: 1, label: '1. Configuración Base' },
@@ -402,7 +379,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
             ))}
           </View>
 
-          {/* Body */}
           <ScrollView className="p-5 max-h-[65vh]" contentContainerStyle={{ gap: 16 }}>
             {loading ? (
               <View className="py-16 items-center justify-center">
@@ -412,7 +388,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
               </View>
             ) : (
               <>
-                {/* ── PASO 1: CONFIGURACIÓN BASE ── */}
                 {step === 1 && (
                   <View className="gap-4">
                     <View className="bg-maroon/5 border border-maroon/20 p-3.5 rounded-2xl">
@@ -469,7 +444,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                       </View>
                     </View>
 
-                    {/* 3 Trimestres */}
                     <Text className="text-xs font-bold text-gray-800 uppercase mt-2">
                       Límites de los Tres Trimestres
                     </Text>
@@ -509,7 +483,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                       ))}
                     </View>
 
-                    {/* Turno y Plan de Pagos */}
                     <View className="flex-row flex-wrap gap-3 mt-2">
                       <View className="flex-1 min-w-[160px]">
                         <Text className="text-xs font-semibold text-gray-700 mb-1">Turno General *</Text>
@@ -544,7 +517,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                   </View>
                 )}
 
-                {/* ── PASO 2: CURSOS Y PARALELOS ── */}
                 {step === 2 && (
                   <View className="gap-4">
                     <View className="bg-maroon/5 border border-maroon/20 p-3.5 rounded-2xl">
@@ -614,7 +586,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                   </View>
                 )}
 
-                {/* ── PASO 3: ASIGNACIÓN DE MATERIAS POR CURSO ── */}
                 {step === 3 && (
                   <View className="gap-4">
                     <View className="bg-maroon/5 border border-maroon/20 p-3.5 rounded-2xl flex-row items-start gap-2.5">
@@ -669,7 +640,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
                       </View>
                     </ScrollView>
 
-                    {/* Cursos del grado con las materias que cada uno tiene. */}
                     {cursosDelGrado.length === 0 ? (
                       <View className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex-row items-start gap-3">
                         <Ionicons name="warning" size={22} color="#B45309" />
@@ -729,7 +699,6 @@ export function GestionWizardModal({ visible, onClose, onSuccess }: GestionWizar
               </>
             )}
           </ScrollView>
-          {/* Footer Buttons */}
           {!loading && (
             <View className="p-4 border-t border-gray-200 bg-gray-50 flex-row items-center justify-between gap-3">
               {step > 1 ? (

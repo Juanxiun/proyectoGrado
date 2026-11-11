@@ -90,38 +90,34 @@ export function EstudiantesManagementScreen() {
   const userRol = user?.rol?.toLowerCase() ?? '';
   const canEdit = ROLES_EDITOR.includes(userRol);
 
-  const { data, loading, error, fetchAll } = useUsuariosList();
+  const { data, loading, fetchAll } = useUsuariosList();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EstadoUsuario | undefined>(undefined);
 
-  // ── Filtros de Estudiantes ──
   const [selectedLevel, setSelectedLevel] = useState<'primaria' | 'secundaria'>('primaria');
   const [selectedGrado, setSelectedGrado] = useState<string>('all');
   const [selectedParalelo, setSelectedParalelo] = useState<string>('all');
 
   const [cursosPeriodo, setCursosPeriodo] = useState<Array<any>>([]);
   const [inscripciones, setInscripciones] = useState<Array<any>>([]);
-  const [loadingCursos, setLoadingCursos] = useState(false);
+  const [, setLoadingCursos] = useState(false);
 
-  // Paginación
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Modal de Creación / Edición
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingStudent, setEditingStudent] = useState<Usuario | null>(null);
-  const [editingTutorId, setEditingTutorId] = useState<string | null>(null);
+  const [, setEditingTutorId] = useState<string | null>(null);
   const [editTab, setEditTab] = useState<'student' | 'tutor'>('student');
 
-  // Estado para el Paso 3: Inscripción de estudiante
   const [modalNivelInscripcion, setModalNivelInscripcion] = useState<'primaria' | 'secundaria'>('primaria');
   const [modalSelectedCursoId, setModalSelectedCursoId] = useState<string>('');
-  const [fechaInscripcion, setFechaInscripcion] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [tipoObservacion, setTipoObservacion] = useState<'Sin observación' | 'Debe entregar documentos' | 'Otros'>('Sin observación');
-  const [observacionManual, setObservacionManual] = useState<string>('');
+  const [fechaInscripcion] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [tipoObservacion] = useState<'Sin observación' | 'Debe entregar documentos' | 'Otros'>('Sin observación');
+  const [observacionManual] = useState<string>('');
 
   const [tutorForm, setTutorForm] = useState(emptyTutorForm);
   const [tutorDocs, setTutorDocs] = useState<UsuarioDoc[]>([{ tipoDoc: 'CI', numeroDoc: '' }]);
@@ -161,7 +157,7 @@ export function EstudiantesManagementScreen() {
     }
   };
 
-  // Cargar cursos e inscripciones
+  // estructura -> carga cursos e inscripciones
   const loadCursosAndInscripciones = async () => {
     try {
       setLoadingCursos(true);
@@ -206,8 +202,7 @@ export function EstudiantesManagementScreen() {
     return () => clearTimeout(timer);
   }, [search, statusFilter]);
 
-  // Mapeo de inscripciones y cursos por estudiante
-  const { inscripcionesMap, studentCourseMap } = useMemo(() => {
+  const { studentCourseMap } = useMemo(() => {
     const map: Record<string, number> = {};
     const studentIdsByCurso: Record<string, Set<string>> = {};
     const stCourseMap: Record<string, { cpId: string; cursoLabel: string; nivel: string; grado: string; paralelo: string }> = {};
@@ -241,7 +236,6 @@ export function EstudiantesManagementScreen() {
     return { inscripcionesMap: { countMap: map, studentIdsByCurso }, studentCourseMap: stCourseMap };
   }, [inscripciones, cursosPeriodo]);
 
-  // Grados disponibles según nivel seleccionado
   const availableGrados = useMemo(() => {
     const set = new Set<string>();
     cursosPeriodo.forEach((cp) => {
@@ -261,7 +255,6 @@ export function EstudiantesManagementScreen() {
     });
   }, [cursosPeriodo, selectedLevel]);
 
-  // Paralelos disponibles según nivel y grado seleccionado
   const availableParalelos = useMemo(() => {
     const set = new Set<string>();
     cursosPeriodo.forEach((cp) => {
@@ -278,7 +271,6 @@ export function EstudiantesManagementScreen() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [cursosPeriodo, selectedLevel, selectedGrado]);
 
-  // Estudiantes filtrados por nivel, grado, paralelo, estado y búsqueda
   const filteredStudents = useMemo(() => {
     const students = (data?.data ?? []).filter((u: Usuario) => {
       const rol = (u.rol || (u as any).rol_nombre || '').toLowerCase();
@@ -323,7 +315,6 @@ export function EstudiantesManagementScreen() {
     });
   }, [data, statusFilter, selectedLevel, selectedGrado, selectedParalelo, studentCourseMap, search]);
 
-  // Paginación
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const paginatedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -376,7 +367,7 @@ export function EstudiantesManagementScreen() {
     if (!studentForm.nombre.trim()) errors.studentNombre = 'El nombre es obligatorio.';
     if (!studentForm.apellidoPaterno.trim()) errors.studentApellidoPaterno = 'El apellido paterno es obligatorio.';
     if (!studentForm.nacimiento) errors.studentNacimiento = 'La fecha de nacimiento es obligatoria.';
-    // Al editar no se exigen documentos: el estudiante ya existe y puede no tener RUDE registrado.
+    // edición -> no exige documentos al estudiante
     if (!editingStudent) {
       const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
       const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
@@ -407,7 +398,7 @@ export function EstudiantesManagementScreen() {
     return { message, handled: Object.keys(errors).length > 0 };
   };
 
-  // Autogenerar username limpio
+  // username -> autogenerar limpio
   const handleAutoFillStudentUsername = (
     nombre: string,
     paterno: string,
@@ -478,7 +469,6 @@ export function EstudiantesManagementScreen() {
 
   const handleSaveStudent = async () => {
     if (!validateStudent()) return;
-    const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
 
 
     if (editingStudent) {
@@ -565,7 +555,7 @@ export function EstudiantesManagementScreen() {
 
       const res = await usuariosApi.createWithFiles(createPayload, studentPhoto);
 
-      // Inscribir automáticamente al estudiante en el curso
+      // inscripción -> matrícula automática en el curso
       const obsFinal = tipoObservacion === 'Otros' ? observacionManual : tipoObservacion;
       await academicServicesApi.create('inscripciones', {
         estudianteId: res.id,
@@ -610,7 +600,7 @@ export function EstudiantesManagementScreen() {
     ]);
     setStudentPhoto(st.fotoUrl || undefined);
 
-    // Cargar datos de tutor vinculado para permitir edición completa
+    // tutor -> carga datos del apoderado
     try {
       const full = await usuariosApi.getById(st.id);
       const apod = full.apoderados?.[0];
@@ -688,7 +678,6 @@ export function EstudiantesManagementScreen() {
         setSelectedTutorDetail(tutorUser);
       }
     } catch {
-      // Ignorar fallback
     } finally {
       setLoadingStudentDetail(false);
     }
@@ -696,7 +685,6 @@ export function EstudiantesManagementScreen() {
 
   return (
     <ScrollView className="flex-1 bg-cream/30 p-4 md:p-6" contentContainerStyle={{ gap: 20, minWidth: 0 }}>
-      {/* Cabecera Principal */}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <View className="flex-1 min-w-0">
           <Text className="text-2xl font-black text-gray-900">Control Estudiantil</Text>
@@ -719,11 +707,8 @@ export function EstudiantesManagementScreen() {
         )}
       </View>
 
-      {/* ── BARRA DE FILTROS Y SELECTS ESTRUCTURADOS ── */}
       <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm gap-4">
-        {/* Fila 1: Búsqueda y Selector de Nivel */}
         <View className="flex-row flex-wrap items-center justify-between gap-3">
-          {/* Buscador */}
           <View className="flex-1 min-w-[240px] max-w-lg flex-row items-center bg-gray-100 rounded-xl px-3.5 py-2.5 border border-gray-200">
             <Ionicons name="search" size={16} color="#9CA3AF" />
             <TextInput
@@ -743,7 +728,6 @@ export function EstudiantesManagementScreen() {
             ) : null}
           </View>
 
-          {/* Selector de Nivel (Primaria / Secundaria) */}
           <View className="flex-row items-center bg-gray-100 p-1 rounded-xl gap-1">
             <TouchableOpacity
               onPress={() => {
@@ -789,9 +773,7 @@ export function EstudiantesManagementScreen() {
           </View>
         </View>
 
-        {/* Fila 2: Selects estructurados de Grados y Paralelos */}
         <View className="pt-3 border-t border-gray-100 flex-row flex-wrap items-center justify-between gap-3">
-          {/* Select de Grados */}
           <View className="flex-row flex-wrap items-center gap-2">
             <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide mr-1">Grado:</Text>
             <TouchableOpacity
@@ -833,7 +815,6 @@ export function EstudiantesManagementScreen() {
             })}
           </View>
 
-          {/* Select de Paralelos (dinámico) */}
           <View className="flex-row flex-wrap items-center gap-2">
             <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide mr-1">Paralelo:</Text>
             <TouchableOpacity
@@ -873,7 +854,6 @@ export function EstudiantesManagementScreen() {
             })}
           </View>
 
-          {/* Filtro de Estado */}
           <View className="flex-row items-center gap-1.5 ml-auto">
             <TouchableOpacity
               onPress={() => {
@@ -920,7 +900,6 @@ export function EstudiantesManagementScreen() {
         </View>
       </BentoCard>
 
-      {/* ── NÓMINA DE ESTUDIANTES EN CARTAS (GRID RESPONSIVO) ── */}
       <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm">
         {loading ? (
           <View className="py-16 items-center justify-center">
@@ -1057,7 +1036,6 @@ export function EstudiantesManagementScreen() {
           </View>
         )}
 
-        {/* ── CONTROLES DE PAGINACIÓN ── */}
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
@@ -1073,7 +1051,6 @@ export function EstudiantesManagementScreen() {
         />
       </BentoCard>
 
-      {/* ── MODAL DIALOG DE REGISTRO E INSCRIPCIÓN (3 PASOS) ── */}
       <Modal visible={showModal} animationType="fade" transparent onRequestClose={() => setShowModal(false)}>
         <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
           <View className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex-col">
@@ -1096,7 +1073,6 @@ export function EstudiantesManagementScreen() {
             </View>
 
             <ScrollView className="p-5 max-h-[68vh]" contentContainerStyle={{ gap: 16 }}>
-              {/* PASO 1: REGISTRO DEL TUTOR */}
               {step === 1 && (
                 <View className="gap-4">
                   <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1171,10 +1147,8 @@ export function EstudiantesManagementScreen() {
                 </View>
               )}
 
-              {/* PASO 2: DATOS DEL ESTUDIANTE Y TUTOR */}
               {step === 2 && (
                 <View className="gap-4">
-                  {/* Selector de Pestañas en Modo Edición */}
                   {editingStudent && (
                     <View className="flex-row gap-2 bg-gray-100 p-1 rounded-2xl">
                       <TouchableOpacity
@@ -1223,7 +1197,6 @@ export function EstudiantesManagementScreen() {
                     </View>
                   )}
 
-                  {/* Formulario del Estudiante (cuando no se está editando el tutor) */}
                   {(!editingStudent || editTab === 'student') && (
                     <>
                       {tutorSummary && !editingStudent && (
@@ -1313,7 +1286,6 @@ export function EstudiantesManagementScreen() {
                     </>
                   )}
 
-                  {/* Formulario del Tutor / Apoderado (cuando se edita en modo tutor) */}
                   {editingStudent && editTab === 'tutor' && (
                     <>
                       <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1386,7 +1358,6 @@ export function EstudiantesManagementScreen() {
                 </View>
               )}
 
-              {/* PASO 3: ASIGNACIÓN A CURSO PERIODO */}
               {step === 3 && (
                 <View className="gap-4">
                   <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1467,7 +1438,6 @@ export function EstudiantesManagementScreen() {
         </View>
       </Modal>
 
-      {/* FICHA DETALLADA DE CONSULTA DE ESTUDIANTE */}
       {selectedStudentDetail && (
         <Modal
           visible={Boolean(selectedStudentDetail)}
@@ -1562,7 +1532,6 @@ export function EstudiantesManagementScreen() {
         </Modal>
       )}
 
-      {/* Modal de Confirmación de Baja */}
       <BajaConfirmModal
         user={bajaTarget}
         visible={Boolean(bajaTarget)}
@@ -1571,7 +1540,6 @@ export function EstudiantesManagementScreen() {
         onConfirm={confirmBaja}
       />
 
-      {/* Modal de Confirmación de Eliminación Permanente */}
       <ConfirmDeleteModal
         visible={Boolean(deletingStudent)}
         itemName={deletingStudent ? getFullName(deletingStudent.nombre, deletingStudent.apellidoPaterno, deletingStudent.apellidoMaterno) : ''}

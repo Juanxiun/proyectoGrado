@@ -1,6 +1,5 @@
-// medalla_rango_svg -> medallón limpio del rango del estudiante, color sólido sin degradado
+// SvgRangoMedalla -> medallón sólido del rango
 import { Svg, Circle, Text } from 'react-native-svg';
-import React from 'react';
 
 interface SvgRangoMedallaProps {
   rango: string;
@@ -22,7 +21,6 @@ export function SvgRangoMedalla({
 
   return (
     <Svg width={tamano} height={tamano}>
-      {/* Círculo exterior del rango, color sólido */}
       <Circle
         cx={cx}
         cy={cy}
@@ -33,7 +31,6 @@ export function SvgRangoMedalla({
         strokeLinecap="round"
       />
 
-      {/* Anillo decorativo interior sutil */}
       <Circle
         cx={cx}
         cy={cy}
@@ -44,7 +41,6 @@ export function SvgRangoMedalla({
         strokeDasharray="20, 8"
       />
 
-      {/* Letra del rango grande y centrada */}
       <Text
         x={cx}
         y={cy + 6}
@@ -57,7 +53,6 @@ export function SvgRangoMedalla({
         {rango}
       </Text>
 
-      {/* Etiqueta Rango debajo de la letra */}
       <Text
         x={cx}
         y={cy + radioInterno * 0.55}
