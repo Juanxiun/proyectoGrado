@@ -31,10 +31,10 @@ async function resolverPeriodo(estudianteId: string): Promise<string | null> {
 
 // funcion -> publicar avisos riesgo
 export async function avisarRiesgos(panel: PanelRiesgo): Promise<number> {
-  const enRiesgo = panel.nivelRiesgo === "riesgo" || panel.nivelRiesgo === "riesgo_alto";
+  const requiereAtencion = panel.nivelRiesgo !== "sin_riesgo";
   const nombre = `${panel.nombre} ${panel.apellidoPaterno}`.trim();
 
-  if (!enRiesgo) {
+  if (!requiereAtencion) {
     // flujo -> liberar avisos mejora
     for (const periodo of panel.periodos) {
       await limpiarAvisos(panel.estudianteId, trimestreActual(periodo.periodoId));
@@ -91,8 +91,27 @@ export async function reevaluar(
 ): Promise<{ enviados: number }> {
   const estudianteId = String(payload.estudianteId ?? "").trim();
 
-  // valida -> sin estudiante
-  if (!estudianteId) return { enviados: 0 };
+  // query -> alumnos de evaluacion
+  if (!estudianteId) {
+    const encargoId = String(payload.encargoId ?? "").trim();
+    const asignacionId = String(payload.asignacionId ?? "").trim();
+    if (!encargoId && !asignacionId) return { enviados: 0 };
+    const res = await query<{ estudiante_id: bigint }>(
+      `SELECT DISTINCT i.estudiante_id
+       FROM asignaciones_docentes ad
+       JOIN inscripciones i ON i.curso_periodo_id = ad.curso_periodo_id
+       WHERE ad.id = COALESCE($1::bigint, (SELECT asignacion_id FROM encargos WHERE id = $2::bigint))
+         AND ad.estado = 'activo' AND i.estado = 'activo'`,
+      [asignacionId || null, encargoId || null],
+    );
+    let enviados = 0;
+    for (const fila of res.rows) {
+      enviados += (await reevaluar({
+        estudianteId: String(fila.estudiante_id),
+      })).enviados;
+    }
+    return { enviados };
+  }
 
   const periodoId = String(payload.periodoId ?? "").trim() ||
     (await resolverPeriodo(estudianteId));

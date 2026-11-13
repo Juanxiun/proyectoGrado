@@ -1525,8 +1525,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 {resultadoReto.feedback?.next_step && (
                   <View className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                     <Text className="text-[10px] font-black text-emerald-900 uppercase tracking-wider mb-1">Siguiente paso</Text>
-                    <Text className="text-xs text-emerald-800 leading-relaxed">{resultadoReto.feedback.next_step}</Text>
-                    <MarkdownContent texto={resultadoReto.feedback.next_step} />
+                    <MarkdownContent texto={resultadoReto.feedback.next_step} baseFontSize={12} textColor="#065F46" />
                   </View>
                 )}
               </View>
@@ -1537,10 +1536,11 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     <Ionicons name="alert-circle" size={18} color="#DC2626" />
                     <Text className="text-[10px] font-black text-rose-900 uppercase tracking-wider">&iquest;Por qu&eacute; fallaste algunas preguntas?</Text>
                   </View>
-                  <Text className="text-sm text-rose-900 leading-relaxed">
-                    {resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'}
-                  </Text>
-                  <MarkdownContent texto={resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'} />
+                  <MarkdownContent
+                    texto={resultadoReto.feedback?.feedback || 'Hubo preguntas que no respondiste correctamente. Revisa cada una abajo para entender tu error.'}
+                    baseFontSize={14}
+                    textColor="#881337"
+                  />
                 </View>
 
                 {resultadoReto.feedback?.explanation_svg && (
@@ -1555,10 +1555,11 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     <Ionicons name="bulb" size={18} color="#D97706" />
                     <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Aspectos a mejorar</Text>
                   </View>
-                  <Text className="text-sm text-amber-900 leading-relaxed">
-                    {resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'}
-                  </Text>
-                  <MarkdownContent texto={resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'} />
+                  <MarkdownContent
+                    texto={resultadoReto.feedback?.next_step || 'Repasa las preguntas marcadas abajo y vuelve a intentarlas.'}
+                    baseFontSize={14}
+                    textColor="#78350F"
+                  />
                   {falladasReto.length > 0 && (
                     <View className="mt-3 gap-1">
                       <Text className="text-[10px] font-black text-amber-900 uppercase tracking-wider">Temas que te sugiero repasar:</Text>

@@ -501,6 +501,15 @@ async def student_learning_overview(student_id: str, body: StudentLearningOvervi
         raise HTTPException(status_code=503, detail="No se pudo generar la evaluación de aprendizaje") from exc
 
 
+@app.get("/students/{student_id}/learning-overview")
+async def get_student_learning_overview(student_id: str, request: Request, x_webhook_secret: str | None = Header(default=None)):
+    require_internal_secret(x_webhook_secret)
+    overview = await request.app.state.rag.get_student_learning_overview(student_id)
+    if not overview:
+        raise HTTPException(status_code=404, detail="El estudiante aún no tiene un resumen de aprendizaje")
+    return overview
+
+
 @app.post("/students/{student_id}/contents/{content_id}/personalized")
 async def personalized_content(student_id: str, content_id: str, request: Request, x_webhook_secret: str | None = Header(default=None)):
     require_internal_secret(x_webhook_secret)

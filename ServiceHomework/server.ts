@@ -6,7 +6,7 @@ import { oakCors } from "@tajpouria/cors";
 
 import { requireAuth, ROLES_DOCENTES, ROLES_LECTURA } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
-import { comprobarActividad, completarReto, crearResumen, crearReto, evaluarPerfilAprendizaje, explicarSeccion, getContenidoAprendizaje, infoPaginasPdf, obtenerRetroalimentacionReto, paginaPdf, registrarProgresoTema, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
+import { comprobarActividad, completarReto, crearResumen, crearReto, evaluarPerfilAprendizaje, explicarSeccion, getContenidoAprendizaje, infoPaginasPdf, obtenerPerfilEstudiante, obtenerRetroalimentacionReto, paginaPdf, registrarProgresoTema, validarEmparejamiento } from "./controllers/aprendizaje.controller.ts";
 import {
   createMaterial,
   deleteMaterial,
@@ -59,6 +59,7 @@ rt.get("/aprendizaje/materiales/:id/reto/:quizId/feedback", requireAuth(["estudi
 rt.post("/aprendizaje/materiales/:id/reto/:quizId/comprobar-pareja", requireAuth(["estudiante"]), validarEmparejamiento);
 rt.post("/aprendizaje/materiales/:id/reto/:quizId/comprobar", requireAuth(["estudiante"]), comprobarActividad);
 rt.post("/aprendizaje/perfil-aprendizaje", requireAuth(["estudiante"]), evaluarPerfilAprendizaje);
+rt.get("/aprendizaje/estudiantes/:id/perfil-aprendizaje", requireAuth(ROLES_DOCENTES), obtenerPerfilEstudiante);
 rt.get("/aprendizaje/materiales/:id/vista-previa", requireAuth(["estudiante"]), infoPaginasPdf);
 rt.get("/aprendizaje/materiales/:id/pagina/:numero", requireAuth(["estudiante"]), paginaPdf);
 

@@ -1,5 +1,6 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import Svg, { Circle } from 'react-native-svg';
 import { RIESGO_META, type NivelRiesgo, type PanelCurso } from '../../../api/seguimiento.api';
 import { StatusBadge, UserAvatar } from '../../../shared/ui';
 
@@ -7,33 +8,40 @@ function porcentaje(valor: number | null | undefined): string {
   return valor === null || valor === undefined ? '—' : `${valor.toFixed(1)}%`;
 }
 
-function BarrasDistribucion({ panel }: { panel: PanelCurso }) {
-  const maximo = Math.max(1, ...panel.distribucionPromedios.map((r) => r.estudiantes));
-  const colorPorRango = (minimo: number) => {
-    if (minimo < 50) return '#DC2626';
-    if (minimo < 60) return '#EAB308';
-    if (minimo < 70) return '#D97706';
-    if (minimo < 80) return '#2563EB';
-    return '#16A34A';
-  };
+function GraficoDistribucion({ panel }: { panel: PanelCurso }) {
+  const colores = ['#DC2626', '#EAB308', '#D97706', '#2563EB', '#16A34A'];
+  const total = panel.distribucionPromedios.reduce((suma, item) => suma + item.estudiantes, 0);
+  const radio = 42;
+  const circunferencia = 2 * Math.PI * radio;
+  let desplazamiento = 0;
 
   return (
-    <View className="gap-2">
-      {panel.distribucionPromedios.map((rango) => (
-        <View key={rango.rango} className="flex-row items-center gap-3">
-          <Text className="w-20 text-xs text-gray-500 font-mono">{rango.rango}</Text>
-          <View className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-            <View
-              className="h-full rounded-full"
-              style={{
-                width: `${(rango.estudiantes / maximo) * 100}%`,
-                backgroundColor: colorPorRango(rango.minimo),
-              }}
-            />
-          </View>
-          <Text className="w-8 text-right text-xs font-bold text-gray-700">{rango.estudiantes}</Text>
+    <View className="flex-row flex-wrap items-center gap-5">
+      <View className="w-28 h-28 items-center justify-center">
+        <Svg width={112} height={112} viewBox="0 0 112 112">
+          <Circle cx="56" cy="56" r={radio} fill="none" stroke="#F3F4F6" strokeWidth="14" />
+          {total > 0 ? panel.distribucionPromedios.map((rango, indice) => {
+            const longitud = (rango.estudiantes / total) * circunferencia;
+            const circulo = <Circle key={rango.rango} cx="56" cy="56" r={radio} fill="none" stroke={colores[indice % colores.length]} strokeWidth="14" strokeDasharray={`${longitud} ${circunferencia - longitud}`} strokeDashoffset={-desplazamiento} transform="rotate(-90 56 56)" />;
+            desplazamiento += longitud;
+            return circulo;
+          }) : null}
+        </Svg>
+        <View className="absolute items-center">
+          <Text className="text-xl font-black text-gray-900">{total}</Text>
+          <Text className="text-[9px] text-gray-500">estudiantes</Text>
         </View>
-      ))}
+      </View>
+      <View className="flex-1 min-w-[180px] gap-2">
+        {panel.distribucionPromedios.map((rango, indice) => (
+          <View key={rango.rango} className="flex-row items-center gap-2">
+            <View className="w-3 h-3 rounded-full" style={{ backgroundColor: colores[indice % colores.length] }} />
+            <Text className="flex-1 text-xs text-gray-600">Promedio {rango.rango}</Text>
+            <Text className="text-xs font-bold text-gray-900">{rango.estudiantes}</Text>
+            <Text className="w-10 text-right text-[10px] text-gray-400">{total ? `${Math.round(rango.estudiantes / total * 100)}%` : '0%'}</Text>
+          </View>
+        ))}
+      </View>
     </View>
   );
 }
@@ -137,8 +145,8 @@ export function PanelCursoRendimiento({
 
       <View className="bg-white border border-gray-100 rounded-2xl p-4">
         <Text className="text-sm font-bold text-gray-900 mb-1">Distribución de promedios</Text>
-        <Text className="text-xs text-gray-500 mb-4">Cantidad de estudiantes por tramo</Text>
-        <BarrasDistribucion panel={panel} />
+        <Text className="text-xs text-gray-500 mb-4">Cada color representa cuántos estudiantes están en ese tramo de notas.</Text>
+        <GraficoDistribucion panel={panel} />
       </View>
 
       <View className="bg-white border border-gray-100 rounded-2xl p-4">

@@ -6,6 +6,8 @@ import { resolveMediaUrl } from "../../connects/Storage/minio.ts";
 import {
   extractDeviceInfo,
   extractLocationInfo,
+  normalizarDispositivo,
+  normalizarUbicacion,
 } from "../../utils/deviceDetector.ts";
 import {
   verify2FACode,
@@ -46,15 +48,21 @@ export async function verify2FA(ctx: Context): Promise<void> {
 
     const sData = verification.sessionData;
 
-    const deviceInfo = extractDeviceInfo(ctx, undefined, body?.dispositivo);
-    const locationInfo = extractLocationInfo(ctx, body);
+    const deviceInfo = normalizarDispositivo(
+      extractDeviceInfo(ctx, undefined, body?.dispositivo),
+      sData.deviceInfo,
+    );
+    const locationInfo = normalizarUbicacion({
+      ...sData.locationInfo,
+      ...extractLocationInfo(ctx, body),
+    });
 
     const { session, closedPreviousSessions } = await createSession({
       usuarioId: sData.userId,
       username: sData.username,
       rol: sData.rol,
       deviceInfo,
-      locationInfo: locationInfo.lat || locationInfo.zona ? locationInfo : sData.locationInfo,
+      locationInfo,
     });
 
     const payload = {

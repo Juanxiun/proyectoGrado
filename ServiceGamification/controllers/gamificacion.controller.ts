@@ -4,7 +4,7 @@ import {
   parseNumericId,
   respond,
 } from "../utils/http.ts";
-import { requireEstudiante } from "../security/auth.ts";
+import { requireAuth, requireEstudiante } from "../security/auth.ts";
 import {
   procesarActividadCompletada,
   salvarRachaConPuntos,
@@ -19,6 +19,8 @@ import {
   getEvidenciaAprendizaje,
 } from "../services/gamification.service.ts";
 import { HttpError } from "../utils/errors.ts";
+import { evaluarRendimientoSesion } from "../services/gamification.alertas.ts";
+import { obtenerResumenEstudianteMateria } from "../services/gamification.ranking.ts";
 
 export async function getResumen(ctx: Context): Promise<void> {
   try {
@@ -71,6 +73,8 @@ export async function completarActividad(ctx: Context): Promise<void> {
       fechaFin: body.fechaFin,
       contexto: body.contexto,
     });
+
+    await evaluarRendimientoSesion(claims.sub, claims.sessionId);
 
     respond(ctx, 201, resultado);
   } catch (err) {
@@ -160,6 +164,23 @@ export async function getRankingController(ctx: Context): Promise<void> {
   }
 }
 
+// controller -> resumen gamificacion estudiante
+export async function getResumenEstudianteMateria(ctx: Context): Promise<void> {
+  try {
+    const estudianteId = String(ctx.params.estudianteId ?? "");
+    const usuarioId = String(ctx.request.url.searchParams.get("usuarioId") ?? "");
+    const cursoPeriodoId = String(ctx.request.url.searchParams.get("cursoPeriodoId") ?? "");
+    const materiaId = String(ctx.request.url.searchParams.get("materiaId") ?? "");
+    if (!estudianteId || !usuarioId || !cursoPeriodoId || !materiaId) {
+      throw new HttpError(400, "estudianteId, usuarioId, cursoPeriodoId y materiaId son requeridos");
+    }
+    const resumen = await obtenerResumenEstudianteMateria(estudianteId, usuarioId, cursoPeriodoId, materiaId);
+    respond(ctx, 200, resumen);
+  } catch (err) {
+    handleControllerError(ctx, err, "Error al consultar gamificación del estudiante");
+  }
+}
+
 export async function getInfo(ctx: Context): Promise<void> {
   try {
     const claims = ctx.state.auth;
@@ -200,6 +221,7 @@ export const routes = [
   { method: "POST", path: "/gamificacion/pista", handler: usarPista, middleware: [requireEstudiante()] },
   { method: "GET", path: "/gamificacion/tienda", handler: getTiendaController, middleware: [requireEstudiante()] },
   { method: "POST", path: "/gamificacion/tienda/canjear", handler: canjearRecompensaController, middleware: [requireEstudiante()] },
-  { method: "GET", path: "/gamificacion/ranking", handler: getRankingController, middleware: [requireEstudiante()] },
+  { method: "GET", path: "/gamificacion/ranking", handler: getRankingController, middleware: [requireAuth(["estudiante", "profesor", "director", "control"])] },
+  { method: "GET", path: "/gamificacion/estudiante/:estudianteId/resumen", handler: getResumenEstudianteMateria, middleware: [requireAuth(["profesor", "director", "control"])] },
   { method: "GET", path: "/gamificacion/info", handler: getInfo, middleware: [requireEstudiante()] },
 ];

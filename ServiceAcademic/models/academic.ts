@@ -464,6 +464,7 @@ export interface DesempenoMateriaResumen {
 
 export interface PanelEstudiante {
   estudianteId: string;
+  usuarioId: string;
   nombre: string;
   apellidoPaterno: string;
   apellidoMaterno?: string | null;

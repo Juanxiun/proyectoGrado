@@ -366,7 +366,7 @@ const REGLAS: ReglaNotificacion[] = [
     tipo: "desempeno",
     canal: "academico",
     prioridad: "alta",
-    titulo: (p) => `Alerta de desempeño: ${texto(p.nombre, "estudiante")}`,
+    titulo: (p) => `${p.nivelRiesgo === "observacion" ? "Seguimiento académico" : "Alerta de desempeño"}: ${texto(p.nombre, "estudiante")}`,
     mensaje: (p) => {
       const partes: string[] = [];
       if (p.promedio !== undefined && p.promedio !== null) {
@@ -377,10 +377,24 @@ const REGLAS: ReglaNotificacion[] = [
       }
       const detalle = partes.length > 0 ? ` (${partes.join(", ")})` : "";
       const materia = texto(p.materia, "");
-      return `Riesgo ${texto(p.nivelRiesgo, "detectado")}${materia ? ` en ${materia}` : ""}${detalle}`;
+      const estado = p.nivelRiesgo === "observacion"
+        ? "requiere observación"
+        : p.nivelRiesgo === "riesgo_alto"
+        ? "presenta riesgo alto de pérdida de año"
+        : "presenta riesgo académico";
+      const sinPromedio = p.promedio === null || p.promedio === undefined;
+      return `${texto(p.nombre, "El estudiante")} ${estado}${materia ? ` en ${materia}` : ""}${detalle}${sinPromedio ? ". Aún no cuenta con promedio registrado; revisar sus evaluaciones" : ". Revisar su avance y brindarle apoyo oportuno"}.`;
     },
-    audiencia: "rol",
-    roles: ROLES_GESTION,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const estudianteId = numero(p.estudianteId);
+      const periodoId = numero(p.periodoId);
+      const docentes = estudianteId && periodoId
+        ? await NotificationService.resolveEstudianteDocentes(estudianteId, periodoId)
+        : [];
+      const gestion = await NotificationService.resolveUsuariosPorRol(ROLES_GESTION);
+      return [...new Set([...docentes, ...gestion])];
+    },
   },
   {
     evento: "seguimiento.riesgo-estudiante",
@@ -396,8 +410,16 @@ const REGLAS: ReglaNotificacion[] = [
       if (p.asistencia !== undefined && p.asistencia !== null) {
         partes.push(`tu asistencia es ${texto(p.asistencia)}%`);
       }
-      const detalle = partes.length > 0 ? ` y ${partes.join(", ")}` : "";
-      return `Varios indicadores están por debajo del mínimo esperado${detalle}. Habla con tu tutor o con control académico.`;
+      const detalle = partes.length > 0 ? `; ${partes.join(", ")}` : "";
+      if (p.nivelRiesgo === "observacion") {
+        return p.promedio === null || p.promedio === undefined
+          ? "Aún no tienes un promedio registrado en este período. Consulta con tu maestro para revisar tus evaluaciones y recibir apoyo."
+          : `Tu rendimiento necesita seguimiento${detalle}. Conversa con tu maestro para acordar cómo mejorar.`;
+      }
+      const estado = p.nivelRiesgo === "riesgo_alto"
+        ? "Estás en riesgo alto de perder el año"
+        : "Estás en riesgo académico";
+      return `${estado}${detalle}. Habla con tu maestro para recibir apoyo y mejorar tu rendimiento.`;
     },
     audiencia: "usuario",
     usuarios: async (p) => {

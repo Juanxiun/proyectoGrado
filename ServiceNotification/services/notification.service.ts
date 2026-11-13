@@ -323,6 +323,24 @@ class CentralNotificationService {
     return res.rows[0] ? String(res.rows[0].usuario_id) : null;
   }
 
+  // query -> docentes estudiante periodo
+  async resolveEstudianteDocentes(
+    estudianteId: string | number,
+    periodoId: string | number,
+  ): Promise<string[]> {
+    const res = await query<{ usuario_id: bigint }>(
+      `SELECT DISTINCT u.id AS usuario_id
+       FROM inscripciones i
+       JOIN asignaciones_docentes ad ON ad.curso_periodo_id = i.curso_periodo_id
+       JOIN maestros ma ON ma.id = ad.maestro_id
+       JOIN usuarios u ON u.id = ma.usuario_id
+       WHERE i.estudiante_id = $1 AND i.periodo_id = $2
+         AND i.estado = 'activo' AND ad.estado = 'activo'`,
+      [estudianteId, periodoId],
+    );
+    return res.rows.map((r) => String(r.usuario_id));
+  }
+
   // query -> docentes materia
   async resolveMateriaDocentes(materiaId: string | number): Promise<string[]> {
     const res = await query<{ usuario_id: bigint }>(

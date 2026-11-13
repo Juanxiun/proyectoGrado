@@ -16,6 +16,7 @@ import {
   logout,
   getMySessions,
   getUserSessionsById,
+  getUserSessionAlertsById,
   revokeSession,
 } from "./Controller/auth/session.ts";
 import { requireAuth, getClaimsFromToken } from "./middleware/auth.ts";
@@ -61,6 +62,7 @@ rt.post("/auth/logout", requireAuth(), logout);
 // rutas -> sesiones y dispositivos
 rt.get("/auth/sessions/me", requireAuth(), getMySessions);
 rt.get("/auth/sessions/user/:id", requireAuth(["director", "control", "profesor"]), getUserSessionsById);
+rt.get("/auth/sessions/user/:id/alerts", requireAuth(["director", "control", "profesor"]), getUserSessionAlertsById);
 rt.delete("/auth/sessions/:sessionId", requireAuth(["director", "control"]), revokeSession);
 
 rt.post("/webhook", handleWebhookEvent);

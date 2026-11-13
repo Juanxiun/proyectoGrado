@@ -179,6 +179,7 @@ services:
       - JWT_SECRET=${JWT_SECRET:-nosexd}
       - EVENTOS_CANAL=notificaciones:eventos
       - GATEWAY_PUBLIC_URL=http://rest-api:5141
+      - GATEWAY_INTERNAL_URL=http://rest-api:5141
       - INTERNAL_PUSH_TOKEN=shalom-internal-push
       - ACADEMIC_SERVICE_URL=http://service-academic:8881
       - SEG_TRIMESTRE_ACTUAL=${SEG_TRIMESTRE_ACTUAL:-1}
@@ -346,8 +347,8 @@ services:
       # Redis RAG (vectorial) -> contenedor redis_rag_server en host:6380 (mapeado a 6379 interno)
       - REDIS_HOST=host.docker.internal
       - REDIS_PORT=6380
-      - REDIS_USERNAME=default
-      - REDIS_PASSWORD=AdminRagPass123
+      - REDIS_USERNAME=${REDIS_RAG_USERNAME:-default}
+      - REDIS_PASSWORD=${REDIS_RAG_PASSWORD:-AdminRagPass123}
       - REDIS_DB=0
       # Redis principal notificaciones -> host:6379
       - NOTIFY_REDIS_HOST=host.docker.internal
@@ -390,7 +391,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5141
-      - Gateway__PublicUrl=http://localhost:5141
+      - Gateway__PublicUrl=http://rest-api:5141
       - Jwt__Secret=${JWT_SECRET:-nosexd}
       - Internal__PushToken=shalom-internal-push
       - Services__UserService=http://service-user:8880

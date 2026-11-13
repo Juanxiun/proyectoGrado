@@ -131,6 +131,55 @@ export async function getUserSessionsById(
   }
 }
 
+// ruta -> alertas resumidas para seguimiento docente
+export async function getUserSessionAlertsById(
+  ctx: RouterContext<"/auth/sessions/user/:id/alerts">,
+): Promise<void> {
+  try {
+    const userId = ctx.params.id;
+    if (!userId) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "El parámetro :id es obligatorio" };
+      return;
+    }
+    const data = await getUserSessions(userId);
+    const alertas = (data.cheatAlerts ?? []).map((valor) => {
+      if (!valor || typeof valor !== "object") return null;
+      const incidente = valor as Record<string, unknown>;
+      const dispositivo = incidente.dispositivo && typeof incidente.dispositivo === "object"
+        ? incidente.dispositivo as Record<string, unknown>
+        : {};
+      const ubicacion = incidente.ubicacion && typeof incidente.ubicacion === "object"
+        ? incidente.ubicacion as Record<string, unknown>
+        : {};
+      return {
+        tipo: incidente.tipo,
+        timestamp: incidente.timestamp,
+        alerta: incidente.alerta,
+        promedioSesion: incidente.promedioSesion,
+        promedioHabitual: incidente.promedioHabitual,
+        actividadesSesion: incidente.actividadesSesion,
+        dispositivo: {
+          device: dispositivo.device,
+          os: dispositivo.os,
+          browser: dispositivo.browser,
+        },
+        ubicacion: {
+          zona: ubicacion.zona,
+          ciudad: ubicacion.ciudad,
+          pais: ubicacion.pais,
+        },
+      };
+    }).filter((alerta) => alerta !== null);
+    ctx.response.status = 200;
+    ctx.response.body = serialize(alertas);
+  } catch (err) {
+    console.error("[getUserSessionAlertsById]", err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "Error interno al consultar alertas de sesión" };
+  }
+}
+
 // ruta -> revocar sesion remota
 export async function revokeSession(
   ctx: RouterContext<"/auth/sessions/:sessionId">,

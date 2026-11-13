@@ -4,6 +4,45 @@ import * as Device from "expo-device";
 import { Platform } from "react-native";
 import type { LoginRequest, LoginResponse } from "../types";
 
+export interface DatosDispositivoSesion {
+  device?: string;
+  os?: string;
+  browser?: string;
+  ip?: string;
+}
+
+export interface UbicacionSesion {
+  lat?: number;
+  lon?: number;
+  zona?: string;
+  ciudad?: string;
+  pais?: string;
+}
+
+export interface SesionRedis {
+  sessionId?: string;
+  inicioConexion?: string;
+  activo?: boolean;
+  dispositivo?: DatosDispositivoSesion;
+  ubicacion?: UbicacionSesion;
+  posibleTrampa?: boolean;
+  alertaTrampa?: string | null;
+}
+
+export interface AlertaAcceso {
+  tipo?: string;
+  alerta?: string;
+  timestamp?: string;
+  dispositivo?: DatosDispositivoSesion;
+  ubicacion?: UbicacionSesion;
+}
+
+export interface SesionesUsuarioDetalle {
+  activeSessions?: SesionRedis[];
+  historySessions?: SesionRedis[];
+  cheatAlerts?: AlertaAcceso[];
+}
+
 async function locationForLogin(): Promise<Record<string, unknown>> {
   try {
     let permission = await Location.getForegroundPermissionsAsync();
@@ -63,4 +102,8 @@ export const authApi = {
     }),
   logout: () =>
     apiRequest<{ message?: string }>("/api/auth/logout", { method: "POST" }),
+  sesionesUsuario: (usuarioId: string) =>
+    apiRequest<Array<Record<string, unknown>>>(`/api/auth/sessions/user/${encodeURIComponent(usuarioId)}/alerts`),
+  sesionesUsuarioDetalle: (usuarioId: string) =>
+    apiRequest<SesionesUsuarioDetalle>(`/api/auth/sessions/user/${encodeURIComponent(usuarioId)}`),
 };

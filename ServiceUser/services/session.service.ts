@@ -1,6 +1,7 @@
 import { getRedis } from "../connects/Redis/redis.ts";
-import { DeviceInfo, LocationInfo } from "../utils/deviceDetector.ts";
+import { DeviceInfo, LocationInfo, normalizarDispositivo, normalizarUbicacion } from "../utils/deviceDetector.ts";
 import {
+  calculateHaversineDistanceKm,
   evaluateStudentDistanceCheating,
   PreviousSessionGeo,
 } from "../utils/geoDistance.ts";
@@ -38,6 +39,50 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
+// sesion -> normalizar datos guardados
+function normalizarSesion(valor: unknown): SessionRecord | null {
+  if (!valor || typeof valor !== "object") return null;
+  const fila = valor as Record<string, unknown>;
+  const sessionId = typeof fila.sessionId === "string" ? fila.sessionId : "";
+  const usuarioId = typeof fila.usuarioId === "string" ? fila.usuarioId : "";
+  const inicioConexion = typeof fila.inicioConexion === "string" ? fila.inicioConexion : "";
+  if (!sessionId || !usuarioId || !Number.isFinite(Date.parse(inicioConexion))) return null;
+  return {
+    ...(fila as unknown as SessionRecord),
+    sessionId,
+    usuarioId,
+    username: typeof fila.username === "string" ? fila.username : "",
+    rol: typeof fila.rol === "string" ? fila.rol : "",
+    dispositivo: normalizarDispositivo(fila.dispositivo ?? fila.deviceInfo),
+    ubicacion: normalizarUbicacion(fila.ubicacion ?? fila.locationInfo),
+    inicioConexion,
+    finalConexion: typeof fila.finalConexion === "string" ? fila.finalConexion : null,
+    tiempoConectado: typeof fila.tiempoConectado === "string" ? fila.tiempoConectado : "",
+    tiempoConectadoSegundos: Number.isFinite(Number(fila.tiempoConectadoSegundos))
+      ? Math.max(0, Number(fila.tiempoConectadoSegundos))
+      : 0,
+    activo: fila.activo === true,
+    posibleTrampa: fila.posibleTrampa === true,
+    alertaTrampa: typeof fila.alertaTrampa === "string" ? fila.alertaTrampa : null,
+    motivoCierre: typeof fila.motivoCierre === "string" ? fila.motivoCierre : null,
+    ultimaActividad: typeof fila.ultimaActividad === "string" ? fila.ultimaActividad : inicioConexion,
+  };
+}
+
+// sesion -> detectar cambio conjunto de dispositivo y direccion
+function cambioDispositivoYDireccion(actual: DeviceInfo, actualUbicacion: LocationInfo | undefined, anterior: SessionRecord): boolean {
+  const dispositivoNuevo = actual.device.trim().toLowerCase() !== anterior.dispositivo.device.trim().toLowerCase();
+  const ipNueva = Boolean(actual.ip && anterior.dispositivo.ip && actual.ip !== anterior.dispositivo.ip);
+  const ubicacionAnterior = anterior.ubicacion;
+  const coordenadasDistintas = actualUbicacion?.lat !== undefined && actualUbicacion.lon !== undefined &&
+    ubicacionAnterior?.lat !== undefined && ubicacionAnterior.lon !== undefined &&
+    calculateHaversineDistanceKm(actualUbicacion.lat, actualUbicacion.lon, ubicacionAnterior.lat, ubicacionAnterior.lon) >= 10;
+  const zonaActual = (actualUbicacion?.zona || actualUbicacion?.ciudad || "").trim().toLowerCase();
+  const zonaAnterior = (ubicacionAnterior?.zona || ubicacionAnterior?.ciudad || "").trim().toLowerCase();
+  const zonaDistinta = Boolean(zonaActual && zonaAnterior && zonaActual !== zonaAnterior);
+  return dispositivoNuevo && (ipNueva || coordenadasDistintas || zonaDistinta);
+}
+
 // sesion -> crear con reglas anti trampa
 export async function createSession(params: {
   usuarioId: string;
@@ -52,6 +97,8 @@ export async function createSession(params: {
   const nowIso = now.toISOString();
   const cleanRol = (params.rol || "").trim().toLowerCase();
   const isEstudiante = cleanRol === "estudiante";
+  const deviceInfo = normalizarDispositivo(params.deviceInfo);
+  const locationInfo = normalizarUbicacion(params.locationInfo);
 
   const closedPreviousSessions: string[] = [];
   let posibleTrampa = false;
@@ -65,11 +112,14 @@ export async function createSession(params: {
     try {
       const activeIds = await redis.smembers(activeSessionsKey);
       const previousGeoSessions: PreviousSessionGeo[] = [];
+      const previousRecords: SessionRecord[] = [];
 
       for (const sid of activeIds) {
         const sRaw = await redis.get(`session:${sid}`);
         if (sRaw) {
-          const sObj: SessionRecord = JSON.parse(sRaw);
+          const sObj = normalizarSesion(JSON.parse(sRaw));
+          if (!sObj) continue;
+          previousRecords.push(sObj);
           previousGeoSessions.push({
             sessionId: sObj.sessionId,
             ubicacion: sObj.ubicacion,
@@ -79,9 +129,39 @@ export async function createSession(params: {
         }
       }
 
-      if (params.locationInfo) {
+      const recentIds: string[] = await redis.lrange(historySessionsKey, 0, 10);
+      for (const sid of recentIds) {
+        if (activeIds.includes(sid)) continue;
+        const sRaw = await redis.get(`session:${sid}`);
+        if (!sRaw) continue;
+        const previous = normalizarSesion(JSON.parse(sRaw));
+        if (!previous) continue;
+        previousRecords.push(previous);
+        break;
+      }
+
+      const anotherDeviceAndAddress = previousRecords.some((previous) =>
+        cambioDispositivoYDireccion(deviceInfo, locationInfo, previous)
+      );
+      if (anotherDeviceAndAddress) {
+        const incident = {
+          tipo: "acceso_dispositivo_direccion_distintos",
+          usuarioId: params.usuarioId,
+          username: params.username,
+          sessionId,
+          timestamp: nowIso,
+          alerta: "Inicio de sesión desde un dispositivo y una dirección de conexión distintos a una sesión reciente. Verificar con el estudiante.",
+          dispositivo: deviceInfo,
+          ubicacion: locationInfo,
+        };
+        await redis.lpush(`student_cheat_alerts:${params.usuarioId}`, JSON.stringify(incident));
+        await redis.ltrim(`student_cheat_alerts:${params.usuarioId}`, 0, 19);
+        await redis.lpush(`global_cheat_alerts`, JSON.stringify(incident));
+      }
+
+      if (locationInfo) {
         const cheatEval = evaluateStudentDistanceCheating(
-          params.locationInfo,
+          locationInfo,
           previousGeoSessions,
           now,
         );
@@ -97,8 +177,8 @@ export async function createSession(params: {
             sessionId,
             timestamp: nowIso,
             alerta: alertaTrampa,
-            dispositivo: params.deviceInfo,
-            ubicacion: params.locationInfo,
+            dispositivo: deviceInfo,
+            ubicacion: locationInfo,
           };
           await redis.lpush(`student_cheat_alerts:${params.usuarioId}`, JSON.stringify(alertIncident));
           await redis.lpush(`global_cheat_alerts`, JSON.stringify(alertIncident));
@@ -147,8 +227,8 @@ export async function createSession(params: {
     usuarioId: params.usuarioId,
     username: params.username,
     rol: params.rol,
-    dispositivo: params.deviceInfo,
-    ubicacion: params.locationInfo,
+    dispositivo: deviceInfo,
+    ubicacion: locationInfo,
     inicioConexion: nowIso,
     finalConexion: null,
     tiempoConectado: "En curso",
@@ -186,7 +266,8 @@ export async function closeSession(
   const raw = await redis.get(sessionKey);
   if (!raw) return null;
 
-  const session: SessionRecord = JSON.parse(raw);
+  const session = normalizarSesion(JSON.parse(raw));
+  if (!session) return null;
   if (!session.activo) return session;
 
   const now = new Date();
@@ -215,7 +296,7 @@ export async function getSession(sessionId: string): Promise<SessionRecord | nul
   const redis = getRedis();
   const raw = await redis.get(`session:${sessionId}`);
   if (!raw) return null;
-  return JSON.parse(raw);
+  return normalizarSesion(JSON.parse(raw));
 }
 
 // sesion -> listar historial y alertas
@@ -234,7 +315,8 @@ export async function getUserSessions(usuarioId: string): Promise<{
   for (const sid of activeIds) {
     const raw = await redis.get(`session:${sid}`);
     if (raw) {
-      const s: SessionRecord = JSON.parse(raw);
+      const s = normalizarSesion(JSON.parse(raw));
+      if (!s) continue;
       if (s.activo) {
         const durationMs = Date.now() - new Date(s.inicioConexion).getTime();
         s.tiempoConectado = formatDuration(durationMs);
@@ -250,7 +332,8 @@ export async function getUserSessions(usuarioId: string): Promise<{
     if (activeIds.includes(sid)) continue;
     const raw = await redis.get(`session:${sid}`);
     if (raw) {
-      historySessions.push(JSON.parse(raw));
+      const session = normalizarSesion(JSON.parse(raw));
+      if (session) historySessions.push(session);
     }
   }
 

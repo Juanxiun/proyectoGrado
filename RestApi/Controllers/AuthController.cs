@@ -72,6 +72,14 @@ public sealed class AuthController : ControllerBase
         return await ProxyResult(response);
     }
 
+    /// <summary>Consulta alertas de acceso resumidas.</summary>
+    [HttpGet("sessions/user/{id:long}/alerts")]
+    public async Task<IActionResult> GetUserSessionAlerts(long id)
+    {
+        var response = await _client.GetUserSessionAlertsAsync(id, Request);
+        return await ProxyResult(response);
+    }
+
     /// <summary>Revoca una sesión remotamente.</summary>
     [HttpDelete("sessions/{sessionId}")]
     public async Task<IActionResult> RevokeSession(string sessionId)

@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     # redis RAG (vectorial) -> contenedor redis_rag_server en puerto 6380
     redis_host: str = "redis_rag_server"
     redis_port: int = 6380
-    redis_username: str = "default"
+    redis_username: str = "admin"
     redis_password: str = "AdminRagPass123"
     redis_db: int = 0
     # redis principal notificaciones -> en Docker usa host.docker.internal:6379

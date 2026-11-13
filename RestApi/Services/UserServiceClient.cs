@@ -68,6 +68,10 @@ public sealed class UserServiceClient
     public Task<HttpResponseMessage> GetUserSessionsAsync(long userId, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Get, $"/auth/sessions/user/{userId}", request);
 
+    // proxy -> listar alertas resumidas
+    public Task<HttpResponseMessage> GetUserSessionAlertsAsync(long userId, HttpRequest request)
+        => ForwardRequestAsync(HttpMethod.Get, $"/auth/sessions/user/{userId}/alerts", request);
+
     // proxy -> revocar sesion
     public Task<HttpResponseMessage> RevokeSessionAsync(string sessionId, HttpRequest request)
         => ForwardRequestAsync(HttpMethod.Delete, $"/auth/sessions/{sessionId}", request);

@@ -15,6 +15,7 @@ import { CursosPorNivel, type CursoHabilitado } from '../components/CursosPorNiv
 import { Miga } from '../components/Miga';
 import { PanelCursoRendimiento, ListaEstudiantesCurso } from '../components/PanelCursoRendimiento';
 import { PanelEstudianteRendimiento } from '../components/PanelEstudianteRendimiento';
+import { RankingRachasCurso } from '../components/RankingRachasCurso';
 import { NIVEL_LABEL, nivelDe } from '../utils/niveles';
 import {
   ORDEN_RIESGO,
@@ -355,6 +356,11 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
           </View>
 
           <PanelCursoRendimiento panel={panel} loading={panelLoading} />
+
+          <View className="bg-white border border-gray-100 rounded-2xl p-4">
+            <Text className="text-sm font-bold text-gray-900 mb-3">Participación en la aplicación</Text>
+            {cursoPeriodoId ? <RankingRachasCurso cursoPeriodoId={cursoPeriodoId} /> : null}
+          </View>
 
           <View className="bg-white border border-gray-100 rounded-2xl p-4">
             <Text className="text-sm font-bold text-gray-900 mb-1">Estudiantes del curso</Text>

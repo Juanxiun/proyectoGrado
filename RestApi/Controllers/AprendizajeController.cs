@@ -48,6 +48,10 @@ public sealed class AprendizajeController : ControllerBase
     public Task<IActionResult> LearningProfile()
         => Proxy(_client.ForwardAsync(HttpMethod.Post, "/aprendizaje/perfil-aprendizaje", Request));
 
+    [HttpGet("estudiantes/{id:long}/perfil-aprendizaje")]
+    public Task<IActionResult> StudentLearningProfile(long id)
+        => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/aprendizaje/estudiantes/{id}/perfil-aprendizaje", Request));
+
     [HttpGet("materiales/{id:long}/vista-previa")]
     public Task<IActionResult> PdfPreviewInfo(long id)
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/aprendizaje/materiales/{id}/vista-previa", Request));

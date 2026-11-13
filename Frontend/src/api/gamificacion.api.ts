@@ -109,11 +109,24 @@ export interface RankingEstudiante {
   calidadPromedio: number;
   tiempoPromedioMs: number;
   puntosIndividuales: number;
+  actividadesCompletadas: number;
   nivel: number;
   rango: 'D' | 'C' | 'B' | 'A' | 'S';
   insigniasCount: number;
   trofeosCount: number;
   posicion: number;
+}
+
+export interface ResumenGamificacionMateria {
+  actividadesCompletadas: number;
+  intentos: number;
+  promedioAcierto: number | null;
+  puntosGanados: number;
+  puntosCurso: number;
+  rachaActual: number;
+  mejorRacha: number;
+  rachaCompletadaHoy: boolean;
+  rachaSalvadaConPuntos: boolean;
 }
 
 export interface RankingParalelo {
@@ -301,5 +314,21 @@ export const gamificacionApi = {
 
   getRanking: async (cursoPeriodoId: string): Promise<RankingParalelo[]> => {
     return apiRequest<RankingParalelo[]>(`/api/gamificacion/ranking?cursoPeriodoId=${encodeURIComponent(cursoPeriodoId)}`);
+  },
+
+  getResumenEstudianteMateria: async (params: {
+    estudianteId: string;
+    usuarioId: string;
+    cursoPeriodoId: string;
+    materiaId: string;
+  }): Promise<ResumenGamificacionMateria> => {
+    const query = new URLSearchParams({
+      usuarioId: params.usuarioId,
+      cursoPeriodoId: params.cursoPeriodoId,
+      materiaId: params.materiaId,
+    });
+    return apiRequest<ResumenGamificacionMateria>(
+      `/api/gamificacion/estudiante/${encodeURIComponent(params.estudianteId)}/resumen?${query.toString()}`,
+    );
   },
 };

@@ -2,6 +2,7 @@
 import { ActivityIndicator, Text, View } from 'react-native';
 import { RIESGO_META, type PanelEstudiante } from '../../../api/seguimiento.api';
 import { StatusBadge, UserAvatar } from '../../../shared/ui';
+import { FichaAprendizajeEstudiante } from './FichaAprendizajeEstudiante';
 
 function Barra({ valor, sufijo = '%' }: { valor: number | null; sufijo?: string }) {
   const esNota = sufijo === '';
@@ -159,6 +160,8 @@ export function PanelEstudianteRendimiento({
           </Text>
         )}
       </View>
+
+      <FichaAprendizajeEstudiante usuarioId={panel.usuarioId} />
     </View>
   );
 }

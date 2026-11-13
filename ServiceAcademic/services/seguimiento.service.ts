@@ -131,10 +131,6 @@ function clasificarRiesgo(
     umbralAsistenciaObservacion,
   } = seguimientoConfig;
 
-  if (promedio === null && tasa === null) {
-    return { nivel: "sin_riesgo", observaciones: [] };
-  }
-
   const observaciones: string[] = [];
   const notaCritica = promedio !== null && promedio < umbralNotaRiesgoAlto;
   const asistenciaCritica = tasa !== null && tasa < umbralAsistenciaRiesgoAlto;
@@ -163,6 +159,11 @@ function clasificarRiesgo(
   if (fallaAsistencia) {
     observaciones.push(`Asistencia ${tasa}% por debajo de ${umbralAsistenciaRiesgo}%`);
     return { nivel: "riesgo", observaciones };
+  }
+
+  if (promedio === null) {
+    observaciones.push("Sin promedio registrado en el período");
+    return { nivel: "observacion", observaciones };
   }
 
   // riesgo -> observacion cerca limite
@@ -322,9 +323,11 @@ export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
     };
   });
 
-  const asistenciaPorEstudiante = new Map<string, { estado: string; total: number }>();
+  const asistenciaPorEstudiante = new Map<string, Map<string, { estado: string; total: number }>>();
   for (const fila of asistenciaRes.rows) {
-    asistenciaPorEstudiante.set(String(fila.estudiante_id), {
+    const estudianteId = String(fila.estudiante_id);
+    if (!asistenciaPorEstudiante.has(estudianteId)) asistenciaPorEstudiante.set(estudianteId, new Map());
+    asistenciaPorEstudiante.get(estudianteId)!.set(fila.estado, {
       estado: fila.estado,
       total: Number(fila.total),
     });
@@ -353,7 +356,7 @@ export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
       ? redondear(((pesoTotal - pesoAcumulado) / pesoTotal) * 100, 1)
       : null;
 
-    const asistencia = construirResumen(asistenciaPorEstudiante);
+    const asistencia = construirResumen(asistenciaPorEstudiante.get(clave) ?? new Map());
     const { nivel, observaciones } = clasificarRiesgo(promedio, asistencia.tasa);
 
     if (desercion !== null && desercion > 0) {
@@ -664,7 +667,20 @@ export async function obtenerPanelEstudiante(
     ? redondear(tasas.reduce((a, b) => a + b, 0) / tasas.length, 1)
     : null;
 
-  const { nivel } = clasificarRiesgo(promediosAcumulados, tasaAcumulada);
+  const prioridad: Record<NivelRiesgo, number> = {
+    sin_riesgo: 0,
+    observacion: 1,
+    riesgo: 2,
+    riesgo_alto: 3,
+  };
+  const nivelMaterias = materias.reduce<NivelRiesgo>(
+    (peor, materia) => prioridad[materia.nivelRiesgo] > prioridad[peor]
+      ? materia.nivelRiesgo
+      : peor,
+    "sin_riesgo",
+  );
+  const { nivel: nivelAgregado } = clasificarRiesgo(promediosAcumulados, tasaAcumulada);
+  const nivel = prioridad[nivelMaterias] > prioridad[nivelAgregado] ? nivelMaterias : nivelAgregado;
 
   const periodoResumen: PanelEstudiantePeriodo = {
     periodoId,
@@ -682,6 +698,7 @@ export async function obtenerPanelEstudiante(
 
   return {
     estudianteId,
+    usuarioId: String(est.usuario_id),
     nombre: est.nombre,
     apellidoPaterno: est.apellido_paterno,
     apellidoMaterno: est.apellido_materno,

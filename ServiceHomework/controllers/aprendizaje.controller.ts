@@ -182,6 +182,14 @@ export async function evaluarPerfilAprendizaje(ctx: Context): Promise<void> {
   ));
 }
 
+// aprendizaje -> resumen cacheado para docentes
+export function obtenerPerfilEstudiante(ctx: Context): Promise<void> {
+  const estudianteId = routeParam(ctx, "id") ?? "";
+  return responder(ctx, llamarServicioLlm(
+    `/students/${encodeURIComponent(estudianteId)}/learning-overview`,
+  ));
+}
+
 // quiz -> validar pareja elegida
 export async function validarEmparejamiento(ctx: Context): Promise<void> {
   const body = await ctx.request.body.json().catch(() => ({}));

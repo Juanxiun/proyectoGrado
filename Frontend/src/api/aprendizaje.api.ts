@@ -182,4 +182,5 @@ export const aprendizajeApi = {
   completarReto: (materialId: string, quizId: string, answers: Array<{ activity_id: string; response: string }>, elapsedMs = 0, contexto?: { topic_id: string; topic_number: number; topic_title: string }) => apiRequest<ResultadoReto>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/completar`, { method: 'POST', body: { answers, elapsed_ms: elapsedMs, contexto }, signal: AbortSignal.timeout(90000) }),
   retroalimentacionReto: (materialId: string, quizId: string) => apiRequest<RetroalimentacionReto>(`/api/aprendizaje/materiales/${encodeURIComponent(materialId)}/reto/${encodeURIComponent(quizId)}/feedback`, { method: 'GET', signal: AbortSignal.timeout(15000) }),
   evaluarPerfilAprendizaje: (evidence: unknown) => apiRequest<PerfilAprendizajeEstudiante>('/api/aprendizaje/perfil-aprendizaje', { method: 'POST', body: { evidence }, signal: AbortSignal.timeout(90000) }),
+  perfilEstudiante: (usuarioId: string) => apiRequest<PerfilAprendizajeEstudiante>(`/api/aprendizaje/estudiantes/${encodeURIComponent(usuarioId)}/perfil-aprendizaje`, { signal: AbortSignal.timeout(15000) }),
 };

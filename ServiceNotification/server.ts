@@ -101,4 +101,4 @@ console.log(`   POST   /notificaciones/emitir`);
 console.log(`   GET    /eventos/estado`);
 console.log(`   GET    /health`);
 
-await app.listen({ port: PORT });
+await app.listen({ hostname: "0.0.0.0", port: PORT });

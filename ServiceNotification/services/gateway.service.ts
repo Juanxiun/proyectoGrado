@@ -16,20 +16,33 @@ function pushEndpoint(): string {
 async function enviar(body: PushBody): Promise<void> {
   if (!notificationConfig.pushHabilitado) return;
 
-  const response = await fetch(pushEndpoint(), {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-Token": notificationConfig.internalPushToken,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(5000),
-  });
+  const endpoint = pushEndpoint();
+  let ultimoError: unknown;
 
-  if (!response.ok) {
-    throw new Error(`El gateway respondió ${response.status}`);
+  for (let intento = 1; intento <= 5; intento++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Token": notificationConfig.internalPushToken,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`El gateway respondió ${response.status}`);
+      }
+      return;
+    } catch (err) {
+      ultimoError = err;
+      if (intento < 5) await new Promise((resolve) => setTimeout(resolve, intento * 1000));
+    }
   }
+
+  throw new Error(`No se pudo comunicar con ${endpoint} después de 5 intentos: ${String(ultimoError)}`);
 }
 
 // funcion -> entregar push usuario

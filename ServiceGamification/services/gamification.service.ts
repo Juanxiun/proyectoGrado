@@ -1,5 +1,4 @@
 import { query, sTransaction } from "../connects/Database/transaction.ts";
-import { withRetry } from "../connects/Database/reintento.ts";
 import { HttpError, mapDbError } from "../utils/errors.ts";
 import { asDateTimeString, toNumber } from "../utils/serialize.ts";
 import { publicarEventoAsync } from "../utils/events.ts";
@@ -10,48 +9,17 @@ import {
   InsigniaEstudiante,
   Trofeo,
   TrofeoEstudiante,
-  RecompensaTienda,
-  CompraEstudiante,
   ActividadGamificada,
-  RankingParalelo,
   RankingEstudiante,
-  EstudianteGamificacion,
 } from "../models/gamification.ts";
 import { gamificationConfig } from "../config/gamification.config.ts";
+import { calcularProgresion, calcularPuntos, calcularPuntuacion, diaAnterior, fechaLocal, inicioSemana } from "./gamification.calculo.ts";
+import { getInfoEstudianteGamificacion, upsertEstudianteGamificacion } from "./gamification.estudiantes.ts";
+
+export { calcularProgresion, calcularPuntos, calcularPuntuacion, diaAnterior, fechaLocal, inicioSemana } from "./gamification.calculo.ts";
+export { getInfoEstudianteGamificacion, requerirPerfil, upsertEstudianteGamificacion } from "./gamification.estudiantes.ts";
 import { getRedis } from "../connects/Redis/redis.ts";
-
-// fecha -> dia local de gamificacion
-function fechaLocal(): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/La_Paz",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-}
-
-// fecha -> dia local anterior
-function diaAnterior(fecha: string): string {
-  const [year, month, day] = fecha.split("-").map(Number);
-  const utc = new Date(Date.UTC(year, month - 1, day - 1));
-  return `${utc.getUTCFullYear()}-${String(utc.getUTCMonth() + 1).padStart(2, "0")}-${String(utc.getUTCDate()).padStart(2, "0")}`;
-}
-
-// nivel -> calcular rango y progreso del curso actual
-function calcularProgresion(puntosCurso: number): { nivel: number; rango: "D" | "C" | "B" | "A" | "S"; puntosSiguienteNivel: number } {
-  const nivel = Math.min(gamificationConfig.progresion.nivelMaximo, Math.floor(Math.max(0, puntosCurso) / gamificationConfig.progresion.puntosPorNivel));
-  const rango = nivel < 10 ? "D" : nivel < 20 ? "C" : nivel < 45 ? "B" : nivel < 60 ? "A" : "S";
-  return { nivel, rango, puntosSiguienteNivel: nivel >= gamificationConfig.progresion.nivelMaximo ? 0 : gamificationConfig.progresion.puntosPorNivel - (Math.max(0, puntosCurso) % gamificationConfig.progresion.puntosPorNivel) };
-}
-
-// fecha -> lunes local de la semana
-function inicioSemana(fecha: string): string {
-  const [year, month, day] = fecha.split("-").map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const offset = (date.getUTCDay() + 6) % 7;
-  date.setUTCDate(date.getUTCDate() - offset);
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
-}
+import { calcularRankingParalelo } from "./gamification.ranking.ts";
 
 // repo -> rachas diarias
 function normalizarRacha(row: RachasDiarias | undefined): RachasDiarias | null {
@@ -315,63 +283,6 @@ async function otorgarTrofeoDiario(usuarioId: string, codigo: string, metadata: 
   return otorgado ? [otorgado] : [];
 }
 
-// repo -> tienda recompensas
-async function getRecompensasActivas(): Promise<RecompensaTienda[]> {
-  const res = await query<RecompensaTienda>(`SELECT id, nombre, descripcion,
-      costo_puntos_individuales AS "costoPuntosIndividuales", tipo, icono_url AS "iconoUrl", stock, activa
-    FROM tienda_recompensas WHERE activa = true AND lower(nombre) IN ('multiplicadores de puntos', 'salvar racha diaria') AND (stock IS NULL OR stock > 0) ORDER BY id`);
-  return res.rows;
-}
-
-async function comprarRecompensa(
-  usuarioId: string,
-  recompensaId: string,
-): Promise<CompraEstudiante> {
-  const recompensaRes = await query<RecompensaTienda>(`SELECT id, nombre, descripcion,
-      costo_puntos_individuales AS "costoPuntosIndividuales", tipo, icono_url AS "iconoUrl", stock, activa
-    FROM tienda_recompensas WHERE id = $1`, [recompensaId]);
-  const recompensa = recompensaRes.rows[0];
-  if (!recompensa) throw new HttpError(404, "Recompensa no encontrada");
-  if (!recompensa.activa) throw new HttpError(400, "Recompensa no disponible");
-  if (!["multiplicadores de puntos", "salvar racha diaria"].includes(recompensa.nombre.trim().toLocaleLowerCase("es"))) throw new HttpError(400, "Recompensa no disponible en la tienda");
-  const perfil = await getInfoEstudianteGamificacion(usuarioId);
-  if (!perfil) throw new HttpError(409, "Primero debes inicializar tu perfil de gamificación");
-
-  return await sTransaction(async (tx) => {
-    await tx.queryObject(`SELECT pg_advisory_xact_lock($1::bigint)`, [usuarioId]);
-    const balance = await tx.queryObject<{ total: string }>(
-      `SELECT COALESCE(SUM(puntos), 0) AS total FROM puntos_individuales
-       WHERE usuario_id = $1 AND curso_periodo_id = $2 AND paralelo = $3`,
-      [usuarioId, perfil.cursoPeriodoId, perfil.paralelo],
-    );
-    if (Number(balance.rows[0]?.total ?? 0) < recompensa.costoPuntosIndividuales) throw new HttpError(400, "Puntos insuficientes");
-    if (recompensa.nombre.trim().toLocaleLowerCase("es") === "multiplicadores de puntos") {
-      const usados = await tx.queryObject<{ total: string }>(
-        `SELECT COUNT(*) AS total FROM compras_estudiante
-         WHERE usuario_id = $1 AND recompensa_id = $2
-           AND (fecha_compra AT TIME ZONE 'America/La_Paz')::date >= $3::date`,
-        [usuarioId, recompensaId, inicioSemana(fechaLocal())],
-      );
-      if (Number(usados.rows[0]?.total ?? 0) >= gamificationConfig.progresion.multiplicadoresMaximosSemanales) {
-        throw new HttpError(400, "Ya alcanzaste el límite de dos multiplicadores esta semana");
-      }
-    }
-    await tx.queryObject(
-      `INSERT INTO puntos_individuales (usuario_id, curso_periodo_id, paralelo, fecha, tipo, puntos, descripcion, metadata)
-       VALUES ($1,$2,$3,$4,'canje_tienda',$5,$6,$7)`,
-      [usuarioId, perfil.cursoPeriodoId, perfil.paralelo, fechaLocal(), -recompensa.costoPuntosIndividuales, `Compra: ${recompensa.nombre}`, JSON.stringify({ recompensaId })],
-    );
-    const res = await tx.queryObject<CompraEstudiante>(
-      `INSERT INTO compras_estudiante (usuario_id, curso_periodo_id, paralelo, recompensa_id, puntos_gastados) VALUES ($1,$2,$3,$4,$5)
-       RETURNING id, usuario_id AS "usuarioId", curso_periodo_id AS "cursoPeriodoId", paralelo, recompensa_id AS "recompensaId",
-                 puntos_gastados AS "puntosGastados", fecha_compra AS "fechaCompra",
-                 usada, fecha_uso AS "fechaUso"`,
-      [usuarioId, perfil.cursoPeriodoId, perfil.paralelo, recompensaId, recompensa.costoPuntosIndividuales],
-    );
-    return res.rows[0];
-  });
-}
-
 // repo -> actividades gamificadas
 async function registrarActividad(actividad: Omit<ActividadGamificada, "id" | "creadaEn">): Promise<ActividadGamificada> {
   try {
@@ -435,103 +346,6 @@ async function getActividadesEstudiante(usuarioId: string, limite = 50): Promise
   return res.rows.map(normalizarActividad);
 }
 
-// repo -> ranking estudiantes paralelo
-async function calcularRankingParalelo(cursoPeriodoId: string): Promise<RankingParalelo[]> {
-  const res = await query<{
-    usuario_id: string;
-    estudiante_id: string;
-    tag: string;
-    nombre: string;
-    apellido_paterno: string;
-    avatar_url: string | null;
-    paralelo: "A" | "B";
-    racha_actual: number;
-    mejor_racha: number;
-    promedio_rendimiento: number;
-    calidad_promedio: number;
-    tiempo_promedio_ms: number;
-    puntos_individuales: number;
-    insignias_count: number;
-    trofeos_count: number;
-  }>(`
-    SELECT
-      eg.usuario_id,
-      eg.estudiante_id,
-      eg.tag,
-      eg.nombre,
-      eg.apellido_paterno,
-      eg.avatar_url,
-      eg.paralelo,
-      COALESCE(rd.racha_actual, 0) AS racha_actual,
-      COALESCE(rd.mejor_racha, 0) AS mejor_racha,
-      COALESCE(ap.promedio_rendimiento, 0) AS promedio_rendimiento,
-      COALESCE(ap.calidad_promedio, 0) AS calidad_promedio,
-      COALESCE(ap.tiempo_promedio_ms, 0) AS tiempo_promedio_ms,
-      COALESCE(pi.total_puntos, 0) AS puntos_individuales,
-      COALESCE(ie.count, 0) AS insignias_count,
-      COALESCE(te.count, 0) AS trofeos_count
-    FROM estudiantes_gamificacion eg
-    LEFT JOIN (
-      SELECT usuario_id, racha_actual, mejor_racha
-      FROM rachas_diarias rd1
-      WHERE fecha = (SELECT MAX(fecha) FROM rachas_diarias WHERE usuario_id = rd1.usuario_id)
-    ) rd ON rd.usuario_id = eg.usuario_id
-    LEFT JOIN (
-      SELECT usuario_id, paralelo,
-             AVG(porcentaje_acierto) AS promedio_rendimiento,
-             AVG(CASE WHEN tiempo_total_ms > 0 THEN 1.0 ELSE 0.5 END) AS calidad_promedio,
-             AVG(tiempo_total_ms) AS tiempo_promedio_ms
-      FROM actividades_gamificadas
-      WHERE completada = true AND curso_periodo_id = $1
-      GROUP BY usuario_id, paralelo
-    ) ap ON ap.usuario_id = eg.usuario_id AND ap.paralelo = eg.paralelo
-    LEFT JOIN (
-      SELECT usuario_id, paralelo,
-             SUM(GREATEST(puntos, 0)) AS total_puntos
-      FROM puntos_individuales
-      WHERE curso_periodo_id = $1
-      GROUP BY usuario_id, paralelo
-    ) pi ON pi.usuario_id = eg.usuario_id AND pi.paralelo = eg.paralelo
-    LEFT JOIN (
-      SELECT usuario_id, COUNT(*) AS count FROM insignias_estudiante GROUP BY usuario_id
-    ) ie ON ie.usuario_id = eg.usuario_id
-    LEFT JOIN (
-      SELECT usuario_id, COUNT(*) AS count FROM trofeos_estudiante GROUP BY usuario_id
-    ) te ON te.usuario_id = eg.usuario_id
-    WHERE eg.curso_periodo_id = $1 AND eg.estado = 'activo'
-    ORDER BY
-      pi.total_puntos DESC,
-      ap.promedio_rendimiento DESC,
-      ap.calidad_promedio DESC,
-      ap.tiempo_promedio_ms ASC
-  `, [cursoPeriodoId]);
-
-  const paralelos = ["A", "B"] as const;
-  return paralelos.map((paralelo) => {
-    const estudiantes = res.rows
-      .filter((r) => r.paralelo === paralelo)
-      .map((r, i) => ({
-        usuarioId: String(r.usuario_id),
-        estudianteId: String(r.estudiante_id),
-        tag: r.tag,
-        nombre: r.nombre,
-        apellidoPaterno: r.apellido_paterno,
-        avatarUrl: r.avatar_url,
-        rachaActual: Number(r.racha_actual ?? 0),
-        mejorRacha: Number(r.mejor_racha ?? 0),
-        promedioRendimiento: Number(Number(r.promedio_rendimiento ?? 0).toFixed(2)),
-        calidadPromedio: Number(Number(r.calidad_promedio ?? 0).toFixed(2)),
-        tiempoPromedioMs: Number(r.tiempo_promedio_ms ?? 0),
-        puntosIndividuales: Number(r.puntos_individuales ?? 0),
-        ...calcularProgresion(Number(r.puntos_individuales ?? 0)),
-        insigniasCount: Number(r.insignias_count ?? 0),
-        trofeosCount: Number(r.trofeos_count ?? 0),
-        posicion: i + 1,
-      }));
-    return { paralelo, cursoPeriodoId, estudiantes, actualizadaEn: new Date().toISOString() };
-  });
-}
-
 // service -> logica principal
 // desafio -> calcular estado diario persistente
 async function actualizarDesafiosDiarios(usuarioId: string, fecha = fechaLocal()): Promise<{
@@ -543,7 +357,7 @@ async function actualizarDesafiosDiarios(usuarioId: string, fecha = fechaLocal()
   if (!perfil) return { desafios: [], bonoOtorgado: false, bonoNuevo: false };
   const [actividad, resumen, puntos] = await Promise.all([
     query<{ total: string }>(`SELECT COUNT(*) AS total FROM actividades_gamificadas WHERE usuario_id = $1 AND curso_periodo_id = $3 AND paralelo = $4 AND completada = true AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2`, [usuarioId, fecha, perfil.cursoPeriodoId, perfil.paralelo]),
-    query<{ formatos: string[]; total: string }>(`SELECT COALESCE(ARRAY_AGG(DISTINCT metadata->>'formato') FILTER (WHERE metadata->>'evento' = 'resumen_completado'), ARRAY[]::text[]) AS formatos, COUNT(*) FILTER (WHERE metadata->>'evento' = 'resumen_completado') AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND curso_periodo_id = $3 AND paralelo = $4`, [usuarioId, fecha, perfil.cursoPeriodoId, perfil.paralelo]),
+    query<{ formatos: string[]; total: string }>(`SELECT COALESCE(ARRAY_AGG(DISTINCT metadata->>'formato') FILTER (WHERE metadata->>'evento' IN ('resumen_completado', 'tema_completado')), ARRAY[]::text[]) AS formatos, COUNT(*) FILTER (WHERE metadata->>'evento' IN ('resumen_completado', 'tema_completado')) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND curso_periodo_id = $3 AND paralelo = $4`, [usuarioId, fecha, perfil.cursoPeriodoId, perfil.paralelo]),
     query<{ total: string }>(`SELECT COALESCE(SUM(GREATEST(puntos, 0)), 0) AS total FROM puntos_individuales WHERE usuario_id = $1 AND fecha = $2 AND curso_periodo_id = $3 AND paralelo = $4`, [usuarioId, fecha, perfil.cursoPeriodoId, perfil.paralelo]),
   ]);
   const formatos = resumen.rows[0]?.formatos ?? [];
@@ -551,10 +365,10 @@ async function actualizarDesafiosDiarios(usuarioId: string, fecha = fechaLocal()
   const hayResumen = Number(resumen.rows[0]?.total ?? 0) > 0;
   const puntosBase = Number(puntos.rows[0]?.total ?? 0);
   const desafios = [
-    { codigo: "resumen", nombre: "Complete un resumen de un tema.", completado: hayResumen },
+    { codigo: "resumen", nombre: "Complete un tema o su resumen.", completado: hayResumen },
     { codigo: "actividad", nombre: "Realice una actividad.", completado: hayActividad },
     { codigo: "puntos", nombre: `Consiga ${gamificationConfig.puntosDiarios.maximo} puntos en el día.`, completado: puntosBase >= gamificationConfig.puntosDiarios.maximo },
-    { codigo: "cartas", nombre: "Complete el resumen en Cartas.", completado: formatos.includes("CARTAS_EXPLICATIVAS") },
+    { codigo: "cartas", nombre: "Complete un tema o resumen en Cartas.", completado: formatos.includes("CARTAS_EXPLICATIVAS") },
     { codigo: "esquema", nombre: "Complete el resumen en Esquema.", completado: formatos.includes("ESQUEMA_GEMMA") },
   ];
   let bonoOtorgado = false;
@@ -715,68 +529,6 @@ export async function procesarActividadCompletada(input: {
   });
   const estadoDiario = await actualizarDesafiosDiarios(input.usuarioId, fecha);
   return { ...resultado, bonoDesafios: estadoDiario.bonoNuevo ? gamificationConfig.puntosDiarios.bonoDesafios : 0 };
-}
-
-function calcularPuntos(
-  respuestas: ActividadGamificada["respuestas"],
-  preguntas: ActividadGamificada["preguntas"],
-  tiempoTotalMs: number,
-) {
-  let aciertos = 0;
-  let puntosCalidad = 0;
-  let puntosTiempo = 0;
-
-  const preguntaMap = new Map(preguntas.map((p) => [p.id, p]));
-
-  for (const r of respuestas) {
-    if (r.correcta) {
-      aciertos++;
-      const pregunta = preguntaMap.get(r.preguntaId);
-      const base = pregunta?.puntosBase ?? 5;
-      // calidad: si respondio rapido y bien
-      const tiempoPregunta = r.tiempoMs;
-      const tiempoLimite = pregunta?.tiempoLimiteMs ?? 60000;
-      const factorTiempo = Math.max(0.5, 1 - tiempoPregunta / tiempoLimite);
-      puntosCalidad += Math.round(base * 0.6);
-      puntosTiempo += Math.round(base * 0.4 * factorTiempo);
-    }
-  }
-
-  const total = preguntas.length;
-  const porcentajeAcierto = total > 0 ? aciertos / total : 0;
-  const puntosGanados = aciertos * 5 + puntosCalidad + puntosTiempo;
-
-  return { aciertos, total, porcentajeAcierto, puntosGanados, puntosCalidad, puntosTiempo };
-}
-
-// gamificacion -> puntos 2-10
-export function calcularPuntuacion(
-  aciertos: number,
-  total: number,
-  tiempoMs: number,
-  mediaTiempoOtros: number,
-): number {
-  if (total === 0) return 2;
-  const porcentaje = aciertos / total;
-  let puntuacion = 2; // mínimo 2
-  
-  // Base por aciertos (2-6 puntos)
-  if (porcentaje >= 0.9) puntuacion += 4;
-  else if (porcentaje >= 0.7) puntuacion += 3;
-  else if (porcentaje >= 0.5) puntuacion += 2;
-  else if (porcentaje >= 0.3) puntuacion += 1;
-  
-  // Bonus por velocidad relativa (0-2 puntos)
-  if (tiempoMs > 0 && mediaTiempoOtros > 0) {
-    const ratio = tiempoMs / mediaTiempoOtros;
-    if (ratio <= 0.5) puntuacion += 2;
-    else if (ratio <= 0.75) puntuacion += 1;
-  }
-  
-  // Bonus por perfección (0-2 puntos)
-  if (aciertos === total) puntuacion += 2;
-  
-  return Math.min(10, Math.max(2, puntuacion));
 }
 
 // gamificacion -> insignia dinamica
@@ -1010,10 +762,10 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
          FROM actividades_gamificadas
          WHERE usuario_id = $1 AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2
          UNION ALL
-         SELECT CASE WHEN metadata->>'evento' = 'investigacion' THEN 'Investigación diaria: ' || COALESCE(metadata->>'titulo', 'tema') ELSE COALESCE(metadata->>'titulo', 'Resumen ' || COALESCE(metadata->>'formato', 'estudiado')) END,
+         SELECT CASE WHEN metadata->>'evento' = 'investigacion' THEN 'Investigación diaria: ' || COALESCE(metadata->>'titulo', 'tema') WHEN metadata->>'evento' = 'tema_completado' THEN 'Tema completado: ' || COALESCE(metadata->>'tituloTema', metadata->>'titulo', 'tema') ELSE COALESCE(metadata->>'titulo', 'Resumen ' || COALESCE(metadata->>'formato', 'estudiado')) END,
                 COALESCE(metadata->>'materiaNombre', 'Estudio personal'), 1.0, 1, 1, creada_en, NULL::text, creada_en
          FROM puntos_individuales
-         WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' IN ('resumen_completado', 'investigacion')
+         WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' IN ('resumen_completado', 'investigacion', 'tema_completado')
        ) aprendizaje ORDER BY orden DESC LIMIT 10`,
       [usuarioId, fecha],
     ),
@@ -1052,116 +804,10 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
   };
 }
 
-// service -> evidencia de aprendizaje
-export async function getEvidenciaAprendizaje(usuarioId: string): Promise<Record<string, unknown>> {
-  const [actividades, eventos, temas, conteos] = await Promise.all([
-    query<{ titulo: string; tipo: string; porcentaje_acierto: number; tiempo_total_ms: number; total: number; puntos_ganados: number; fecha_inicio: string; material_id: string | null; tema_ruta_id: string | null; numero_tema: string | null; titulo_tema: string | null; preguntas: unknown[]; respuestas: unknown[] }>(
-      `SELECT titulo, tipo, porcentaje_acierto::float8 AS porcentaje_acierto, tiempo_total_ms, total, puntos_ganados, fecha_inicio,
-              preguntas->0->'contexto'->>'materialId' AS material_id,
-              preguntas->0->'contexto'->>'temaRutaId' AS tema_ruta_id,
-              preguntas->0->'contexto'->>'numeroTema' AS numero_tema,
-              preguntas->0->'contexto'->>'tituloTema' AS titulo_tema,
-              preguntas, respuestas
-       FROM actividades_gamificadas WHERE usuario_id = $1 ORDER BY fecha_inicio DESC LIMIT 500`,
-      [usuarioId],
-    ),
-    query<{ evento: string; content_id: string; titulo: string; formato: string | null; fecha: string; material_id: string | null; tema_ruta_id: string | null; numero_tema: number | null; titulo_tema: string | null; veces_repetido: number | null; tiempo_lectura_ms: number | null; partes_explicadas: string[] | null; pregunta_indagacion: string | null }>(
-      `SELECT metadata->>'evento' AS evento, metadata->>'contentId' AS content_id,
-              COALESCE(metadata->>'titulo', '') AS titulo, metadata->>'formato' AS formato,
-              metadata->>'materialId' AS material_id, metadata->>'temaRutaId' AS tema_ruta_id,
-              NULLIF(metadata->>'numeroTema','')::int AS numero_tema,
-              metadata->>'tituloTema' AS titulo_tema,
-              NULLIF(metadata->>'vecesRepetido','')::int AS veces_repetido,
-              NULLIF(metadata->>'tiempoLecturaMs','')::bigint::float8 AS tiempo_lectura_ms,
-              ARRAY(SELECT jsonb_array_elements_text(COALESCE(metadata->'partesExplicadas','[]'::jsonb))) AS partes_explicadas,
-              metadata->>'preguntaIndagacion' AS pregunta_indagacion,
-              creada_en AS fecha
-       FROM puntos_individuales WHERE usuario_id = $1
-         AND metadata->>'evento' IN ('resumen_completado', 'investigacion', 'tema_completado')
-       ORDER BY creada_en DESC LIMIT 300`,
-      [usuarioId],
-    ),
-    query<{ tema: string }>(
-      `SELECT DISTINCT metadata->>'titulo' AS tema FROM puntos_individuales
-       WHERE usuario_id = $1 AND metadata->>'evento' = 'investigacion'
-         AND NULLIF(BTRIM(metadata->>'titulo'), '') IS NOT NULL ORDER BY tema`,
-      [usuarioId],
-    ),
-    query<{ total_investigaciones: string; resumenes_completados: string }>(
-      `SELECT COUNT(*) FILTER (WHERE metadata->>'evento' = 'investigacion') AS total_investigaciones,
-              COUNT(*) FILTER (WHERE metadata->>'evento' = 'resumen_completado') AS resumenes_completados
-       FROM puntos_individuales WHERE usuario_id = $1
-         AND metadata->>'evento' IN ('resumen_completado', 'investigacion')`,
-      [usuarioId],
-    ),
-  ]);
-  const actualesPorTema = new Map<string, number>();
-  let actividadesSinTema = 0;
-  const actividadesRecientes = actividades.rows.filter((item) => {
-    if (!item.tema_ruta_id) return actividadesSinTema++ < 5;
-    const cuenta = actualesPorTema.get(item.tema_ruta_id) ?? 0;
-    actualesPorTema.set(item.tema_ruta_id, cuenta + 1);
-    return cuenta < 5;
-  });
-  const redis = getRedis();
-  const progresosTemas: Record<string, unknown>[] = [];
-  let cursor = "0";
-  do {
-    const [siguiente, keys] = await redis.scan(cursor, "MATCH", `gamificacion:tema-progreso:${usuarioId}:*`, "COUNT", 100);
-    cursor = String(siguiente);
-    if (keys.length) {
-      const valores = await redis.mget(...keys);
-      for (const valor of valores) {
-        if (!valor) continue;
-        try { progresosTemas.push(JSON.parse(valor)); } catch { /* Redis -> ignorar progreso corrupto */ }
-      }
-    }
-  } while (cursor !== "0");
-  return {
-    actividades: actividadesRecientes.map((item) => ({
-      titulo: item.titulo,
-      tipo: item.tipo,
-      porcentaje: Number(item.porcentaje_acierto),
-      duracionMs: item.tiempo_total_ms,
-      preguntasTotal: item.total,
-      tiempoPorPreguntaMs: item.total > 0 ? Math.round(item.tiempo_total_ms / item.total) : 0,
-      fecha: asDateTimeString(item.fecha_inicio),
-      materialId: item.material_id,
-      temaRutaId: item.tema_ruta_id,
-      numeroTema: item.numero_tema ? Number(item.numero_tema) : undefined,
-      tituloTema: item.titulo_tema,
-      preguntas: item.preguntas,
-      respuestas: item.respuestas,
-    })),
-    eventosEstudio: eventos.rows.map((item) => ({
-      tipo: item.evento,
-      tema: item.titulo,
-      contentId: item.content_id,
-      materialId: item.material_id,
-      temaRutaId: item.tema_ruta_id,
-      numeroTema: item.numero_tema ?? undefined,
-      tituloTema: item.titulo_tema,
-      vecesRepetido: item.veces_repetido ?? undefined,
-      tiempoLecturaMs: item.tiempo_lectura_ms === null ? undefined : Number(item.tiempo_lectura_ms),
-      partesExplicadas: item.partes_explicadas ?? [],
-      preguntaIndagacion: item.pregunta_indagacion,
-      formato: item.formato,
-      fecha: asDateTimeString(item.fecha),
-    })),
-    progresosTemas,
-    totalActividades: actividadesRecientes.length,
-    totalInvestigaciones: Number(conteos.rows[0]?.total_investigaciones ?? 0),
-    temasIndagados: temas.rows.map((item) => item.tema),
-    temasIndagadosCount: temas.rows.length,
-    resumenesCompletados: Number(conteos.rows[0]?.resumenes_completados ?? 0),
-  };
-}
+export { getEvidenciaAprendizaje } from "./gamification.evidencia.ts";
 
-export async function getTienda(): Promise<RecompensaTienda[]> {
-  return getRecompensasActivas();
-}
+export { canjearRecompensa, getTienda } from "./gamification.tienda.ts";
 
-// service -> progreso de estudio diario
 export async function registrarProgresoEstudio(usuarioId: string, input: {
   contentId: string;
   materialId?: string;
@@ -1308,76 +954,4 @@ export async function registrarProgresoEstudio(usuarioId: string, input: {
   return { puntosGanados: puntosRutaGanados, trofeosNuevos, insigniasNuevas, desafiosDiarios: estadoDiario.desafios, bonoDesafios: estadoDiario.bonoNuevo ? gamificationConfig.puntosDiarios.bonoDesafios : 0, vecesRepetido: txResult.vecesRepetido };
 }
 
-export async function canjearRecompensa(usuarioId: string, recompensaId: string): Promise<CompraEstudiante> {
-  return comprarRecompensa(usuarioId, recompensaId);
-}
-
-export async function getRanking(cursoPeriodoId: string): Promise<RankingParalelo[]> {
-  return calcularRankingParalelo(cursoPeriodoId);
-}
-
-// repo -> info estudiante gamificacion
-export async function getInfoEstudianteGamificacion(usuarioId: string): Promise<EstudianteGamificacion | null> {
-  const res = await query<{
-    estudiante_id: string;
-    tag: string;
-    usuario_id: string;
-    curso_periodo_id: string;
-    paralelo: "A" | "B";
-    nombre: string;
-    apellido_paterno: string;
-    avatar_url: string | null;
-  }>(
-    `SELECT estudiante_id, usuario_id, tag, curso_periodo_id, paralelo, nombre, apellido_paterno, avatar_url
-     FROM estudiantes_gamificacion
-     WHERE usuario_id = $1 AND estado = 'activo'
-     LIMIT 1`,
-    [usuarioId],
-  );
-  const row = res.rows[0];
-  if (!row) return null;
-  return {
-    estudianteId: String(row.estudiante_id),
-    usuarioId: String(row.usuario_id),
-    tag: row.tag,
-    cursoPeriodoId: String(row.curso_periodo_id),
-    paralelo: row.paralelo,
-    nombre: row.nombre,
-    apellidoPaterno: row.apellido_paterno,
-    avatarUrl: row.avatar_url,
-  };
-}
-
-// repo -> guardar estudiante gamificacion
-export async function upsertEstudianteGamificacion(data: {
-  usuarioId: string;
-  estudianteId: string;
-  cursoPeriodoId: string;
-  paralelo: "A" | "B";
-  nombre?: string;
-  apellidoPaterno?: string;
-  avatarUrl?: string | null;
-}): Promise<void> {
-  await query(
-    `INSERT INTO estudiantes_gamificacion (
-       usuario_id, estudiante_id, curso_periodo_id, paralelo, nombre, apellido_paterno, avatar_url, estado
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'activo')
-     ON CONFLICT (usuario_id) DO UPDATE SET
-       estudiante_id = EXCLUDED.estudiante_id,
-       curso_periodo_id = EXCLUDED.curso_periodo_id,
-       paralelo = EXCLUDED.paralelo,
-       nombre = CASE WHEN EXCLUDED.nombre <> '' THEN EXCLUDED.nombre ELSE estudiantes_gamificacion.nombre END,
-       avatar_url = COALESCE(EXCLUDED.avatar_url, estudiantes_gamificacion.avatar_url),
-       estado = 'activo',
-       fecha_actualizacion = NOW()`,
-    [
-      data.usuarioId,
-      data.estudianteId,
-      data.cursoPeriodoId,
-      data.paralelo,
-      data.nombre ?? "",
-      data.apellidoPaterno ?? "",
-      data.avatarUrl ?? null,
-    ],
-  );
-}
+export { calcularRankingParalelo as getRanking } from "./gamification.ranking.ts";

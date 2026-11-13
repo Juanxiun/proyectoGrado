@@ -14,6 +14,7 @@ import { BentoCard, StatusBadge, UserAvatar } from '../../../shared/ui';
 import { useResponsive } from '../../../utils/responsive';
 import { PanelCursoRendimiento } from '../../../features/academico/components/PanelCursoRendimiento';
 import { PanelEstudianteRendimiento } from '../../../features/academico/components/PanelEstudianteRendimiento';
+import { RankingRachasCurso } from '../../../features/academico/components/RankingRachasCurso';
 import { Miga } from '../../../features/academico/components/Miga';
 import {
   ORDEN_RIESGO,
@@ -489,6 +490,11 @@ export function MaestroRendimientoScreen() {
           </View>
 
           <PanelCursoRendimiento panel={panel} loading={panelLoading} />
+
+          <BentoCard className="p-4">
+            <Text className="text-sm font-bold text-gray-900 mb-3">Participación en la aplicación</Text>
+            <RankingRachasCurso cursoPeriodoId={cursoPeriodoId} />
+          </BentoCard>
 
           <BentoCard className="p-4">
             <View className="flex-row items-center justify-between mb-3">

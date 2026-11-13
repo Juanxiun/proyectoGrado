@@ -186,6 +186,7 @@ export interface RankingEstudiante {
   calidadPromedio: number;
   tiempoPromedioMs: number;
   puntosIndividuales: number;
+  actividadesCompletadas: number;
   nivel: number;
   rango: "D" | "C" | "B" | "A" | "S";
   insigniasCount: number;

@@ -15,7 +15,6 @@ import { useAuth } from '../../../context/AuthContext';
 import {
   gamificacionApi,
   type InfoEstudianteGamificacion,
-  type RankingParalelo,
   type RecompensaTienda,
   type ResumenGamificacion,
 } from '../../../api/gamificacion.api';
@@ -24,7 +23,6 @@ import {
   BentoCard,
   ModalRespuestaPregunta,
   SvgInsignia,
-  SvgPodio,
   SvgRangoMedalla,
   StatusBadge,
   UserAvatar,
@@ -124,14 +122,11 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [loading, setLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [resumen, setResumen] = useState<ResumenGamificacion | null>(null);
-  const [rankings, setRankings] = useState<RankingParalelo[]>([]);
 
   const puntosAnimado = useRef(new Animated.Value(0)).current;
   const rachaScale = useRef(new Animated.Value(1)).current;
   const rachaRotate = useRef(new Animated.Value(0)).current;
   const rachaBrillo = useRef(new Animated.Value(0)).current;
-  const rankingOpacity = useRef(new Animated.Value(0)).current;
-  const rankingTranslateY = useRef(new Animated.Value(30)).current;
 
   // esPrimeraCarga -> evita animar la racha al primer render
   const esPrimeraCarga = useRef(true);
@@ -179,10 +174,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           console.warn('No se pudo sincronizar el perfil de gamificacion:', error);
         }
       }
-      const [resumenData, rankingData] = await Promise.allSettled([
-        gamificacionApi.getResumen(),
-        gamificacionApi.getRanking(cursoPeriodoId),
-      ]);
+      const [resumenData] = await Promise.allSettled([gamificacionApi.getResumen()]);
 
       if (resumenData.status === 'fulfilled') {
         setResumen(resumenData.value);
@@ -192,11 +184,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         setDashboardError(resumenData.reason instanceof Error ? resumenData.reason.message : 'No se pudo cargar el resumen de gamificación.');
       }
 
-      if (rankingData.status === 'fulfilled') {
-        setRankings(rankingData.value);
-      } else {
-        setRankings([]);
-      }
     } catch (e) {
       setDashboardError(e instanceof Error ? e.message : 'No se pudo conectar con gamificación.');
       console.error('Error cargando gamificacion:', e);
@@ -229,7 +216,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     return () => clearTimeout(temporizador);
   }, [cursoPeriodoId]);
 
-  // animaciones -> puntos, racha y entrada del ranking
+  // animaciones -> puntos y racha
   useEffect(() => {
     if (!resumen) return;
 
@@ -264,11 +251,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       rachaCompletadaAntes.current = resumen.racha?.completada ?? false;
     }
 
-    Animated.parallel([
-      Animated.timing(rankingOpacity, { toValue: 1, duration: 700, useNativeDriver: true }),
-      Animated.timing(rankingTranslateY, { toValue: 0, duration: 700, useNativeDriver: true }),
-    ]).start();
-  }, [resumen, puntosAnimado, rachaScale, rachaRotate, rachaBrillo, rankingOpacity, rankingTranslateY]);
+  }, [resumen, puntosAnimado, rachaScale, rachaRotate, rachaBrillo]);
 
   const handleOpenTienda = async () => {
     setTiendaModalOpen(true);
@@ -352,21 +335,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     return `Repasaste ${totalTemasHoy} tema${totalTemasHoy > 1 ? 's' : ''} de ${temaList}${masTemas} y demostraste un rendimiento ${adjetivo}.`;
   };
 
-  const rankingParalelo = rankings.find((r) => r.paralelo === (user?.paralelo === 'B' ? 'B' : 'A'))?.estudiantes ?? [];
-  const estudianteLogueadoId = user?.estudianteId || user?.id;
-
-  const estudiantesPodio = rankingParalelo
-    .slice(0, 3)
-    .map((st, i) => ({
-      nombre: st.nombre,
-      apellidoPaterno: st.apellidoPaterno,
-      puntosIndividuales: st.puntosIndividuales,
-      posicion: i + 1,
-      color: coloresRango[st.rango ?? 'D'],
-      esLogueado: st.estudianteId === estudianteLogueadoId,
-      avatarUrl: st.avatarUrl ?? undefined,
-    }));
-
   const insigniasObtenidas = resumen?.insignias ?? [];
   const insigniaPorCodigo = (codigo: string) =>
     insigniasObtenidas.some((ins) => ins.codigo === codigo);
@@ -374,7 +342,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const desafiosDiarios = resumen?.desafiosDiarios?.slice(0, 3) ?? [];
 
   const NOMBRE_DESAFIO: Record<string, string> = {
-    resumen: 'Ver un tema (resumen)',
+    resumen: 'Completar tema o resumen',
     actividad: 'Resolver una actividad',
     puntos: 'Sumar puntos',
     cartas: 'Repasar con cartas',
@@ -529,15 +497,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <View className="flex-row items-center justify-between"><Text className="text-gray-500 text-[10px] font-bold">Resumen de aprendizaje</Text><Ionicons name="locate-outline" size={17} color="#801F3F" /></View>
           <Text className="text-[#801F3F] text-xs font-bold mt-3">Revisa tu rendimiento</Text>
         </TouchableOpacity>
-      </View>
-
-      <View className="gap-5 mt-2">
-        <View className="flex-row items-center justify-between px-1">
-          <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
-        </View>
-        <Animated.View style={{ opacity: rankingOpacity, transform: [{ translateY: rankingTranslateY }] }}>
-          <SvgPodio estudiantes={estudiantesPodio} />
-        </Animated.View>
       </View>
 
       <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>
@@ -700,15 +659,6 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           <View className="flex-row items-center justify-between"><Text className="text-gray-500 text-[10px] font-bold">Resumen de aprendizaje</Text><Ionicons name="locate-outline" size={17} color="#801F3F" /></View>
           <Text className="text-[#801F3F] text-xs font-bold mt-3">Revisa tu rendimiento</Text>
         </TouchableOpacity>
-      </View>
-
-      <View className="gap-5 mt-2">
-        <View className="flex-row items-center justify-between px-1">
-          <Text className="text-[#801F3F] font-bold text-sm">Ranking de tu paralelo</Text>
-        </View>
-        <Animated.View style={{ opacity: rankingOpacity, transform: [{ translateY: rankingTranslateY }] }}>
-          <SvgPodio estudiantes={estudiantesPodio} />
-        </Animated.View>
       </View>
 
       <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>

@@ -9,7 +9,8 @@ export const notificationConfig = {
   maxPorConsulta: Number(Deno.env.get("NOTIF_MAX_POR_CONSULTA") ?? 50),
 
   // config -> url gateway push
-  gatewayPublicUrl: Deno.env.get("GATEWAY_PUBLIC_URL") ?? "http://localhost:5141",
+  gatewayPublicUrl: Deno.env.get("GATEWAY_INTERNAL_URL") ??
+    Deno.env.get("GATEWAY_PUBLIC_URL") ?? "http://localhost:5141",
 
   // config -> token push interno
   internalPushToken: Deno.env.get("INTERNAL_PUSH_TOKEN") ?? "shalom-internal-push",
