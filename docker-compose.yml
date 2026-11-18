@@ -1,5 +1,4 @@
 services:
-  # ─── Servicios Deno (con hot reload via volúmenes) ───
   service-user:
     build:
       context: ./ServiceUser
@@ -380,10 +379,10 @@ services:
     networks:
       - shalom_net
 
-  # ─── RestAPI Gateway (ASP.NET Core) ───
+  #  RestAPI Gateway (ASP.NET Core)
   rest-api:
     build:
-      context: ./RestApi
+      context: ./Gateway
       dockerfile: Dockerfile
     container_name: shalom_rest_api
     extra_hosts:
