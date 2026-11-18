@@ -1,11 +1,4 @@
-/**
- * Orden y etiquetas de los niveles educativos.
- *
- * El backend genera los grados como `1°` … `6°` (ver DEFAULT_GRADES en
- * ServiceAcademic/services/gestion.service.ts), pero un curso creado a mano
- * puede traer "1ro", "1°", "1" o "primero". Todo se normaliza a un número
- * para poder ordenar y agrupar sin depender del texto guardado.
- */
+// niveles -> normaliza grados y agrupa cursos
 
 export type Nivel = 'inicial' | 'primaria' | 'secundaria' | 'bachillerato';
 
@@ -47,7 +40,7 @@ const PALABRAS: Record<string, number> = {
   decimo: 10,
 };
 
-/** Extrae el número de grado sea cual sea su notación. `null` si no se entiende. */
+// numeroGrado -> extrae el número de cualquier notación
 export function numeroGrado(grado: string | null | undefined): number | null {
   const texto = String(grado ?? '').trim().toLowerCase();
   if (!texto) return null;
@@ -64,14 +57,14 @@ export function nivelDe(valor: string | null | undefined): Nivel | null {
   return (NIVELES.find((n) => n === texto) as Nivel) ?? null;
 }
 
-/** "1°" + primaria => "1° de Primaria". */
+// etiquetaCurso -> arma "grado de nivel"
 export function etiquetaCurso(grado: string, nivel: string): string {
   const n = nivelDe(nivel);
   const base = `${String(grado ?? '').trim()} de ${n ? NIVEL_LABEL[n] : capitalize(nivel)}`;
   return base.trim();
 }
 
-function capitalize(texto: string): string {
+export function capitalize(texto: string): string {
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : '';
 }
 
@@ -89,11 +82,7 @@ export interface CursoAgrupable {
   [clave: string]: unknown;
 }
 
-/**
- * Agrupa cursos por nivel y grado, ordenado de inicial a bachillerato y de
- * primero a sexto. Los grados que no se pueden interpretar se van al final de
- * su nivel en orden alfabético, para que nunca desaparezcan de la lista.
- */
+// agruparPorNivel -> agrupa y ordena por nivel y grado
 export function agruparPorNivel<T extends CursoAgrupable>(cursos: T[]): GrupoNivel[] {
   const porNivel = new Map<Nivel, Map<string, { numero: number | null; cursos: T[] }>>();
 

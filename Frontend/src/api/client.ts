@@ -73,8 +73,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     let message = `Error ${response.status}`;
     try {
-      const err = (await response.json()) as ApiError;
-      message = err.error ?? message;
+      const err = (await response.json()) as ApiError & { detail?: unknown; message?: string };
+      const detail = typeof err.detail === 'string' ? err.detail : undefined;
+      message = err.error ?? detail ?? err.message ?? message;
     } catch {
       /* respuesta no JSON */
     }
@@ -100,4 +101,14 @@ export function buildQuery(
   });
   const qs = search.toString();
   return qs ? `?${qs}` : "";
+}
+
+// safe -> ejecutar petición con fallback controlado
+export async function safe<T>(tag: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn(tag, err);
+    return fallback;
+  }
 }

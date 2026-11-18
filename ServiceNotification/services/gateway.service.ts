@@ -1,15 +1,9 @@
 import { notificationConfig } from "../config/notification.config.ts";
 import type { NotificationItem } from "../models/notification.ts";
 
-/**
- * Push en tiempo real hacia el gateway.
- *
- * El gateway (RestApi) es el único proceso que mantiene sockets públicos, así
- * que este servicio nunca se conecta al cliente: le entrega la notificación y
- * él la reenvía por el hub SignalR a la banda del usuario.
- */
+// archivo -> push gateway signalr
 interface PushBody {
-  /** Usuario destino. Si se omite, el gateway hace broadcast a todos. */
+  // campo -> usuario destino
   destinatarioId?: string;
   notificacion?: NotificationItem;
   resource: string;
@@ -22,23 +16,36 @@ function pushEndpoint(): string {
 async function enviar(body: PushBody): Promise<void> {
   if (!notificationConfig.pushHabilitado) return;
 
-  const response = await fetch(pushEndpoint(), {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-Token": notificationConfig.internalPushToken,
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(5000),
-  });
+  const endpoint = pushEndpoint();
+  let ultimoError: unknown;
 
-  if (!response.ok) {
-    throw new Error(`El gateway respondió ${response.status}`);
+  for (let intento = 1; intento <= 5; intento++) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        redirect: "error",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Token": notificationConfig.internalPushToken,
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`El gateway respondió ${response.status}`);
+      }
+      return;
+    } catch (err) {
+      ultimoError = err;
+      if (intento < 5) await new Promise((resolve) => setTimeout(resolve, intento * 1000));
+    }
   }
+
+  throw new Error(`No se pudo comunicar con ${endpoint} después de 5 intentos: ${String(ultimoError)}`);
 }
 
-/** Entrega la notificación al usuario indicado. Nunca lanza. */
+// funcion -> entregar push usuario
 export function publishNotification(destinatarioId: string, notif: NotificationItem): void {
   if (!notificationConfig.pushHabilitado) return;
 
@@ -47,7 +54,7 @@ export function publishNotification(destinatarioId: string, notif: NotificationI
   });
 }
 
-/** Difusión a todos los clientes conectados (canal institucional). */
+// funcion -> difundir push todos
 export function broadcastNotification(notif: NotificationItem): void {
   if (!notificationConfig.pushHabilitado) return;
 

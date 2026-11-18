@@ -28,7 +28,7 @@ export interface PaginatedResult<T> {
   totalPages: number;
 }
 
-// ── Materia Materiales ───────────────────────────────────────────────────────
+// interfaces -> modelo materiales
 export interface MateriaMaterial {
   id: string;
   asignacionId: string;
@@ -40,6 +40,8 @@ export interface MateriaMaterial {
   tamanioBytes?: number | null;
   fechaSubida: string;
   activo: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
   asignacion?: {
     id: string;
     maestroId: string;
@@ -59,6 +61,8 @@ export interface CreateMateriaMaterialInput {
   tipoMime?: string | null;
   tamanioBytes?: number | null;
   activo?: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
 }
 
 export interface UpdateMateriaMaterialInput {
@@ -69,9 +73,11 @@ export interface UpdateMateriaMaterialInput {
   tipoMime?: string | null;
   tamanioBytes?: number | null;
   activo?: boolean;
+  temaId?: string | null;
+  tipoMaterial?: 'estudio' | 'actividad' | null;
 }
 
-// ── Encargos (Tareas/Exámenes/Proyectos) ─────────────────────────────────────
+// interfaces -> modelo encargos
 export interface Encargo {
   id: string;
   asignacionId: string;
@@ -117,7 +123,7 @@ export interface UpdateEncargoInput {
   materialIds?: (string | number)[];
 }
 
-// ── Calificaciones ──────────────────────────────────────────────────────────
+// interfaces -> modelo calificaciones
 export interface Calificacion {
   id: string;
   encargoId: string;
@@ -163,7 +169,7 @@ export interface BulkCalificacionInput {
   }>;
 }
 
-// ── Asistencia ──────────────────────────────────────────────────────────────
+// interfaces -> modelo asistencia
 export interface Asistencia {
   id: string;
   estudianteId: string;
@@ -205,7 +211,7 @@ export interface BulkAsistenciaInput {
   }>;
 }
 
-// ── Entregas de Tareas / Deberes ──────────────────────────────────────────
+// interfaces -> modelo entregas
 export type EstadoEntrega = "a_tiempo" | "con_retraso";
 export const ESTADOS_ENTREGA: readonly EstadoEntrega[] = [
   "a_tiempo",

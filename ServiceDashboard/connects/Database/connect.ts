@@ -1,11 +1,7 @@
 import { Pool } from "@db/postgres";
 import { pgConfig } from "../../config/pg.config.ts";
 
-/**
- * Pool de SOLO LECTURA. Este servicio nunca escribe, así que se bloquea el
- * acceso a las sentencias de escritura: un `INSERT` accidental acá es un bug
- * de arquitectura, no algo que queremos permitir por descuido.
- */
+// conexion -> pool solo lectura
 export const pool = new Pool(
   {
     hostname: pgConfig.host,

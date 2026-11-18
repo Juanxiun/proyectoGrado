@@ -1,7 +1,8 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Text, View } from 'react-native';
 import { RIESGO_META, type PanelEstudiante } from '../../../api/seguimiento.api';
-import { StatusBadge } from '../../../shared/ui';
+import { StatusBadge, UserAvatar } from '../../../shared/ui';
+import { FichaAprendizajeEstudiante } from './FichaAprendizajeEstudiante';
 
 function Barra({ valor, sufijo = '%' }: { valor: number | null; sufijo?: string }) {
   const esNota = sufijo === '';
@@ -43,7 +44,7 @@ function FilaResumen({ etiqueta, children }: { etiqueta: string; children: React
   );
 }
 
-/** Desempeño individual: todas las materias del período, con su riesgo. */
+// panel estudiante -> desempeño por materia y riesgo
 export function PanelEstudianteRendimiento({
   panel,
   loading,
@@ -77,11 +78,13 @@ export function PanelEstudianteRendimiento({
     <View className="gap-4">
       <View className="bg-maroon rounded-2xl p-5">
         <View className="flex-row items-center gap-3">
-          <View className="w-12 h-12 rounded-2xl bg-white/20 items-center justify-center">
-            <Text className="text-white font-bold text-lg">
-              {panel.nombre.charAt(0)}{panel.apellidoPaterno.charAt(0)}
-            </Text>
-          </View>
+          <UserAvatar
+            nombre={panel.nombre}
+            apellidoPaterno={panel.apellidoPaterno}
+            className="w-12 h-12 rounded-2xl bg-white/20"
+            textoClassName="text-white font-bold text-lg"
+            bordered
+          />
           <View className="flex-1">
             <Text className="text-white font-bold text-lg">
               {panel.nombre} {panel.apellidoPaterno}
@@ -157,6 +160,8 @@ export function PanelEstudianteRendimiento({
           </Text>
         )}
       </View>
+
+      <FichaAprendizajeEstudiante usuarioId={panel.usuarioId} />
     </View>
   );
 }

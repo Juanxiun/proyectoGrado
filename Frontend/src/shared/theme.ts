@@ -1,12 +1,5 @@
-/**
- * Tokens del diseño institucional. Única fuente de verdad de color, espacio,
- * radio y tipografía; `tailwind.config.js` replica el palette para NativeWind.
- *
- * La identidad visual es "papel marfil + sello granate": superficies claras
- * (gray-50) con acentos maroon, igual que los paneles de administración.
- */
+// theme -> tokens de color, espacio, radio y tipografía
 export const COLORS = {
-  // Marca
   maroon: '#801529',
   maroonDark: '#5c0f1e',
   maroonLight: '#a01d35',
@@ -15,18 +8,15 @@ export const COLORS = {
   bronze: '#8B6914',
   gold: '#D4A74A',
 
-  // Superficies
   background: '#F3F4F6',
   surface: '#FFFFFF',
   surfaceMuted: '#F9FAFB',
 
-  // Texto
   text: '#1F2937',
   textMuted: '#6B7280',
   textSubtle: '#9CA3AF',
   textInverted: '#FFFFFF',
 
-  // Estados
   success: '#16A34A',
   warning: '#EAB308',
   danger: '#DC2626',
@@ -49,7 +39,7 @@ export const GRAY = {
   900: '#111827',
 } as const;
 
-/** Escala de espaciado en múltiplos de 4 (px). */
+// SPACING -> escala en múltiplos de 4 píxeles
 export const SPACING = {
   xs: 4,
   sm: 8,
@@ -70,10 +60,7 @@ export const RADIUS = {
   full: 999,
 } as const;
 
-/**
- * Clases de NativeWind para los roles semánticos. Usar estos roles en vez de
- * escribir colores sueltos es lo que mantiene las pantallas coherentes entre sí.
- */
+// TONE -> clases NativeWind por rol semántico
 export const TONE = {
   surface: 'bg-white border-gray-100',
   surfaceMuted: 'bg-gray-50 border-gray-100',
@@ -89,7 +76,7 @@ export const TONE = {
   body: 'text-sm text-gray-600',
 } as const;
 
-/** Alturas de control para que inputs y botones midan lo mismo en toda la app. */
+// CONTROL_HEIGHT -> altura uniforme de inputs y botones
 export const CONTROL_HEIGHT = {
   sm: 'py-2 px-3 text-sm',
   md: 'py-2.5 px-3.5 text-sm',

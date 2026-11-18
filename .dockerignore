@@ -1,0 +1,63 @@
+#General
+.git
+.gitignore
+README.md
+AGENTS.md
+docker-compose.yml
+.dockerignore
+.vscode
+.vs
+*.md
+
+#OS / IDE
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+#Node / Expo (Frontend)
+Frontend/node_modules
+Frontend/.expo
+Frontend/dist
+Frontend/web-build
+Frontend/expo-env.d.ts
+Frontend/*.log
+Frontend/.metro-health-check*
+
+#.NET (RestApi)
+RestApi/bin
+RestApi/obj
+RestApi/.vs
+RestApi/*.user
+RestApi/appsettings.Development.json
+RestApi/*.env
+
+#Deno (Servicios)
+Service*/.env
+Service*/deno.lock
+Service*/deno_dir
+
+#Volúmenes de datos
+postgres_data/
+redis_data/
+minio_data/
+
+#Logs
+*.log
+logs/
+
+#Build artifacts
+*.dll
+*.pdb
+*.exe
+
+#python
+**/__pycache__/
+**/.pytest_cache/
+
+**/tests/
+**/.venv/
+**/venv/
+
+*/.env

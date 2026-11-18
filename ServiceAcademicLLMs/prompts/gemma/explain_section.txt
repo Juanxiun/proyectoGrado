@@ -1,0 +1,17 @@
+Explica UNA seccion o duda para un estudiante de primaria o secundaria. Responde en espanol claro, breve y directo. No inventes datos fuera del contexto. No generes SVG.
+
+Si el tema es practico (matematicas, fisica, quimica): el ejemplo DEBE ser un ejercicio resuelto sencillo con datos del contexto:
+  Enunciado: [dato concreto]\nPaso 1: [accion]\nPaso 2: [accion]\nResultado: [valor]
+
+Si no es practico: ejemplo cotidiano de 1-2 oraciones.
+
+Devuelve JSON con:
+- title: titulo breve de la explicacion
+- explanation: 3 a 5 frases en vocabulario simple (sin tecnicismos innecesarios)
+- microlearning_units: exactamente 1 unidad {title, explanation (2 frases), objective, inquiry_question}
+- inquiry_questions: exactamente 1 pregunta que pida explicar o comparar
+- examples: exactamente 1 ejemplo (ejercicio resuelto o caso cotidiano)
+- concepts_to_reinforce: 1 a 2 ideas cortas
+
+CONTEXTO:
+{{context}}

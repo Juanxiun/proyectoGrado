@@ -1,10 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Modal,
   Platform,
-  ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
@@ -12,10 +11,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
+import { ALLOWED_TYPES } from '../../../constants/archivos';
+import { formatFechaHora, formatFechaHoraSegundos } from '../../../utils/fechas';
 
 interface EncargoItem {
   id: string;
@@ -44,36 +44,24 @@ interface DeberesTareasSectionProps {
   materiaNombre: string;
 }
 
-const ALLOWED_TYPES = [
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-];
-
 export function DeberesTareasSection({
   asignacionId,
   materiaNombre,
 }: DeberesTareasSectionProps) {
-  const { user } = useAuth();
-
   const [loading, setLoading] = useState(true);
   const [tareas, setTareas] = useState<EncargoItem[]>([]);
   const [myEntregas, setMyEntregas] = useState<Record<string, EntregaItem>>({});
 
-  // Modal Formulario de Entrega
   const [submissionModalOpen, setSubmissionModalOpen] = useState(false);
   const [activeTask, setActiveTask] = useState<EncargoItem | null>(null);
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [comentario, setComentario] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Carga Diferida e Independiente
+  // carga deberes -> encargos y entregas propias
   const loadData = async () => {
     try {
       setLoading(true);
-      // Peticiones independientes para tareas y para entregas propias
       const [encRes, entRes] = await Promise.all([
         academicServicesApi.list('encargos', { asignacionId, limit: 100 }),
         academicServicesApi.list('entregas', { limit: 100 }),
@@ -84,7 +72,6 @@ export function DeberesTareasSection({
       );
       setTareas(tasks);
 
-      // Mapear mis entregas por encargoId
       const map: Record<string, EntregaItem> = {};
       for (const ent of entRes.data as any[]) {
         map[String(ent.encargoId)] = ent;
@@ -115,8 +102,8 @@ export function DeberesTareasSection({
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    if ((asset.size ?? 0) > 150 * 1024 * 1024) {
-      Alert.alert('Límite excedido', 'El archivo no puede pesar más de 150 MB.');
+    if ((asset.size ?? 0) > 25 * 1024 * 1024) {
+      Alert.alert('Límite excedido', 'El archivo no puede pesar más de 25 MB.');
       return;
     }
     setSelectedFile(asset);
@@ -149,7 +136,7 @@ export function DeberesTareasSection({
       const estadoLabel = nuevaEntrega.estadoEntrega === 'a_tiempo' ? 'A tiempo' : 'Con retraso';
       Alert.alert(
         '¡Tarea Entregada!',
-        `Tu entrega ha sido registrada con fecha del sistema (${nuevaEntrega.fechaEntrega?.replace('T', ' ').slice(0, 19)}).\n\nEstado: ${estadoLabel}`,
+        `Tu entrega ha sido registrada con fecha del sistema (${formatFechaHoraSegundos(nuevaEntrega.fechaEntrega)}).\n\nEstado: ${estadoLabel}`,
       );
 
       setSubmissionModalOpen(false);
@@ -223,36 +210,34 @@ export function DeberesTareasSection({
                     ) : null}
                   </View>
 
-                  <View className="bg-gold/20 px-2.5 py-1 rounded-lg">
-                    <Text className="text-xs font-bold text-amber-900">{tarea.ponderacion} pts</Text>
+                  <View className="bg-maroon/10 border border-maroon/20 px-2.5 py-1 rounded-lg">
+                    <Text className="text-xs font-bold text-maroon">{tarea.ponderacion} pts</Text>
                   </View>
                 </View>
 
-                {/* Fechas de disponibilidad */}
                 <View className="flex-row flex-wrap gap-4 mt-3 pt-3 border-t border-gray-100 text-xs">
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                     <Text className="text-xs text-gray-500">
-                      Inicio: {tarea.fechaPublicacion?.replace('T', ' ').slice(0, 16) || 'Inmediato'}
+                      Inicio: {formatFechaHora(tarea.fechaPublicacion) || 'Inmediato'}
                     </Text>
                   </View>
                   <View className="flex-row items-center gap-1">
                     <Ionicons name="alarm-outline" size={14} color="#DC2626" />
                     <Text className="text-xs font-bold text-red-600">
-                      Cierre: {tarea.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                      Cierre: {formatFechaHora(tarea.fechaLimite) || 'Sin límite'}
                     </Text>
                   </View>
                 </View>
 
-                {/* Información de entrega o botón de envío */}
                 {isDelivered ? (
-                  <View className="mt-3 p-3 bg-green-50/80 rounded-xl border border-green-200 flex-row items-center justify-between">
+                  <View className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex-row items-center justify-between">
                     <View className="flex-1 pr-2">
-                      <Text className="text-xs font-bold text-green-900">
-                        ✓ Tarea entregada el {entrega.fechaEntrega.replace('T', ' ').slice(0, 19)}
+                      <Text className="text-xs font-bold text-emerald-900">
+                        ✓ Tarea entregada el {formatFechaHoraSegundos(entrega.fechaEntrega)}
                       </Text>
                       {entrega.nombreArchivo ? (
-                        <Text className="text-[11px] text-green-700 mt-0.5">
+                        <Text className="text-[11px] text-emerald-700 mt-0.5">
                           Archivo: {entrega.nombreArchivo}
                         </Text>
                       ) : null}
@@ -260,7 +245,7 @@ export function DeberesTareasSection({
 
                     <TouchableOpacity
                       onPress={() => handleOpenSubmission(tarea)}
-                      className="px-3 py-1.5 bg-green-700 rounded-lg"
+                      className="px-3 py-1.5 bg-emerald-700 rounded-lg"
                     >
                       <Text className="text-xs font-semibold text-white">Reenviar</Text>
                     </TouchableOpacity>
@@ -268,7 +253,7 @@ export function DeberesTareasSection({
                 ) : (
                   <TouchableOpacity
                     onPress={() => handleOpenSubmission(tarea)}
-                    className="mt-3 bg-maroon rounded-xl py-2.5 px-4 flex-row items-center justify-center gap-2 shadow-sm"
+                    className="mt-3 bg-maroon hover:bg-maroon/90 rounded-xl py-2.5 px-4 flex-row items-center justify-center gap-2 shadow-sm"
                   >
                     <Ionicons name="cloud-upload-outline" size={16} color="#FFFFFF" />
                     <Text className="text-white text-xs font-bold">Subir y Entregar Tarea</Text>
@@ -280,49 +265,44 @@ export function DeberesTareasSection({
         </View>
       )}
 
-      {/* Modal de Envío de Tarea */}
       <Modal
         visible={submissionModalOpen}
-        animationType="slide"
+        animationType="fade"
         transparent
         onRequestClose={() => setSubmissionModalOpen(false)}
       >
-        <View className="flex-1 bg-black/50 items-center justify-center p-4">
-          <View className="bg-white rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl">
-            {/* Header del Modal */}
-            <View className="p-5 border-b border-gray-100 flex-row items-center justify-between bg-gray-50">
+        <View className="flex-1 bg-black/60 items-center justify-center p-4">
+          <View className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
+            <View className="p-5 bg-maroon text-white flex-row items-center justify-between">
               <View className="flex-1 pr-2">
-                <Text className="text-base font-bold text-gray-900">
+                <Text className="text-base font-bold text-white">
                   Entrega de Tarea: {activeTask?.titulo}
                 </Text>
-                <Text className="text-xs text-red-600 font-semibold mt-0.5">
-                  Fecha límite: {activeTask?.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                <Text className="text-xs text-white/80 font-medium mt-0.5">
+                  Fecha límite: {formatFechaHora(activeTask?.fechaLimite) || 'Sin límite'}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setSubmissionModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-gray-200 items-center justify-center"
+                className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 items-center justify-center"
               >
-                <Ionicons name="close" size={18} color="#374151" />
+                <Ionicons name="close" size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
 
-            {/* Cuerpo del Formulario */}
             <View className="p-5 gap-4">
-              {/* Aviso de marca de tiempo y privacidad */}
-              <View className="p-3 bg-blue-50 rounded-xl border border-blue-100 flex-row items-start gap-2">
-                <Ionicons name="shield-checkmark-outline" size={18} color="#1D4ED8" />
+              <View className="p-3 bg-gray-50 rounded-xl border border-gray-200 flex-row items-start gap-2">
+                <Ionicons name="shield-checkmark-outline" size={18} color="#801529" />
                 <View className="flex-1">
-                  <Text className="text-[11px] text-blue-900 font-semibold">
+                  <Text className="text-[11px] text-gray-800 font-semibold">
                     Control de Acceso RBAC y Marca de Tiempo
                   </Text>
-                  <Text className="text-[10px] text-blue-700 mt-0.5">
+                  <Text className="text-[10px] text-gray-600 mt-0.5">
                     El sistema registrará la hora exacta del envío para etiquetarla &quot;A tiempo&quot; o &quot;Con retraso&quot;. Tu entrega es privada y solo visible para ti, el docente y dirección.
                   </Text>
                 </View>
               </View>
 
-              {/* Selector de Archivo */}
               <View>
                 <Text className="text-xs font-semibold text-gray-700 mb-1">Archivo de Tarea *</Text>
                 <TouchableOpacity
@@ -331,15 +311,14 @@ export function DeberesTareasSection({
                 >
                   <Ionicons name="cloud-upload-outline" size={28} color="#801529" />
                   <Text className="text-xs font-bold text-gray-800 mt-2">
-                    {selectedFile ? selectedFile.name : 'Seleccionar Archivo (PDF, Word, Excel)'}
+                    {selectedFile ? selectedFile.name : 'Seleccionar Archivo (PDF, DOCX, Excel; max. 25 MB)'}
                   </Text>
                   <Text className="text-[11px] text-gray-400 mt-0.5">
-                    {selectedFile ? `${Math.round((selectedFile.size ?? 0) / 1024)} KB` : 'Hasta 150 MB'}
+                    {selectedFile ? `${Math.round((selectedFile.size ?? 0) / 1024)} KB` : 'Hasta 25 MB'}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              {/* Comentarios del estudiante */}
               <View>
                 <Text className="text-xs font-semibold text-gray-700 mb-1">Comentario para el profesor (Opcional)</Text>
                 <TextInput
@@ -353,7 +332,6 @@ export function DeberesTareasSection({
                 />
               </View>
 
-              {/* Botón de Confirmación */}
               <TouchableOpacity
                 onPress={handleSubmitTask}
                 disabled={submitting}

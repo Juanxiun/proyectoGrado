@@ -17,12 +17,12 @@ interface AsesorRow {
   maestroId: bigint;
   fechaInicio: Date | string;
   fechaFin: Date | string | null;
-  // Maestro info
+  // fila -> datos maestro
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
-  // Curso Periodo info
+  // fila -> datos curso periodo
   cursoId?: bigint;
   periodoId?: bigint;
   nivel?: string;
@@ -290,7 +290,7 @@ export async function createAsesor(input: CreateCursoAsesorInput): Promise<Curso
   const maestro = await query<{ estado: string }>(`SELECT estado FROM maestros WHERE id = $1`, [maestroId]);
   if (!maestro.rows.length || maestro.rows[0].estado !== "activo") throw new HttpError(409, "El asesor no está activo");
 
-  // Verificar si ya cuenta con asesor asignado
+  // validacion -> asesor ya asignado
   const existingRes = await query<{ id: bigint }>(
     `SELECT id FROM curso_asesor WHERE curso_periodo_id = $1`,
     [cpId],
@@ -340,7 +340,7 @@ export async function updateAsesor(id: string, input: UpdateCursoAsesorInput): P
     fields.push(`maestro_id = $${idx++}`);
     params.push(maestroId);
   }
-  // Las fechas del asesor se derivan de la gestión; el cliente no puede ampliarlas.
+  // regla -> fechas derivan gestion
   fields.push(`fecha_inicio = $${idx++}`, `fecha_fin = $${idx++}`);
   params.push(derivedInicio, derivedFin);
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");

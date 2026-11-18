@@ -10,13 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../theme';
 
-/**
- * Marco común de las pantallas públicas (login y verificación 2FA).
- *
- * Reemplaza el fondo con imagen remota que usaban antes: ahora la pantalla es
- * una superficie clara igual que el panel de administración, con la marca
- * granate concentrada en la cabecera de la tarjeta.
- */
+// AuthLayout -> marco de las pantallas públicas
 export function AuthLayout({
   eyebrow,
   title,
@@ -43,7 +37,6 @@ export function AuthLayout({
             contentContainerClassName="flex-grow justify-center items-center px-4 py-10"
             keyboardShouldPersistTaps="handled"
           >
-            {/* Identidad de la institución */}
             <View className="items-center mb-6 max-w-md w-full">
               <View className="w-14 h-14 rounded-2xl bg-maroon items-center justify-center mb-3">
                 <Ionicons name="school" size={26} color={COLORS.textInverted} />
@@ -53,7 +46,6 @@ export function AuthLayout({
             </View>
 
             <View className="bg-white rounded-2xl border border-gray-100 shadow-sm w-full max-w-md overflow-hidden">
-              {/* Cabecera granate: único acento fuerte, como el HeroBanner */}
               <View className="bg-maroon px-6 py-5">
                 <Text className="text-white/70 text-[10px] font-bold uppercase tracking-widest">
                   {eyebrow}

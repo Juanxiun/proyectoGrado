@@ -28,11 +28,7 @@ async function extractPayloadFromHeader(ctx: Context): Promise<Record<string, an
   }
 }
 
-/**
- * POST /auth/logout
- *
- * Body: { "sessionId": "..." } (opcional si se envía Bearer token)
- */
+// ruta -> cerrar sesion actual
 export async function logout(ctx: Context): Promise<void> {
   try {
     // deno-lint-ignore no-explicit-any
@@ -40,7 +36,6 @@ export async function logout(ctx: Context): Promise<void> {
     try {
       body = await ctx.request.body.json();
     } catch {
-      // Body may be empty if sessionId is in token
     }
 
     let sessionId = body?.sessionId;
@@ -91,10 +86,7 @@ export async function logout(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * GET /auth/sessions/me
- * Obtiene las sesiones del usuario actual a través de su Bearer token.
- */
+// ruta -> listar sesiones propias
 export async function getMySessions(ctx: Context): Promise<void> {
   try {
     const payload = await extractPayloadFromHeader(ctx);
@@ -116,10 +108,7 @@ export async function getMySessions(ctx: Context): Promise<void> {
   }
 }
 
-/**
- * GET /auth/sessions/user/:id
- * Consulta de sesiones y alertas para roles de administración/control/docente.
- */
+// ruta -> listar sesiones usuario
 export async function getUserSessionsById(
   ctx: RouterContext<"/auth/sessions/user/:id">,
 ): Promise<void> {
@@ -142,10 +131,56 @@ export async function getUserSessionsById(
   }
 }
 
-/**
- * DELETE /auth/sessions/:sessionId
- * Invalida/cierra remotamente una sesión específica.
- */
+// ruta -> alertas resumidas para seguimiento docente
+export async function getUserSessionAlertsById(
+  ctx: RouterContext<"/auth/sessions/user/:id/alerts">,
+): Promise<void> {
+  try {
+    const userId = ctx.params.id;
+    if (!userId) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "El parámetro :id es obligatorio" };
+      return;
+    }
+    const data = await getUserSessions(userId);
+    const alertas = (data.cheatAlerts ?? []).map((valor) => {
+      if (!valor || typeof valor !== "object") return null;
+      const incidente = valor as Record<string, unknown>;
+      const dispositivo = incidente.dispositivo && typeof incidente.dispositivo === "object"
+        ? incidente.dispositivo as Record<string, unknown>
+        : {};
+      const ubicacion = incidente.ubicacion && typeof incidente.ubicacion === "object"
+        ? incidente.ubicacion as Record<string, unknown>
+        : {};
+      return {
+        tipo: incidente.tipo,
+        timestamp: incidente.timestamp,
+        alerta: incidente.alerta,
+        promedioSesion: incidente.promedioSesion,
+        promedioHabitual: incidente.promedioHabitual,
+        actividadesSesion: incidente.actividadesSesion,
+        dispositivo: {
+          device: dispositivo.device,
+          os: dispositivo.os,
+          browser: dispositivo.browser,
+        },
+        ubicacion: {
+          zona: ubicacion.zona,
+          ciudad: ubicacion.ciudad,
+          pais: ubicacion.pais,
+        },
+      };
+    }).filter((alerta) => alerta !== null);
+    ctx.response.status = 200;
+    ctx.response.body = serialize(alertas);
+  } catch (err) {
+    console.error("[getUserSessionAlertsById]", err);
+    ctx.response.status = 500;
+    ctx.response.body = { error: "Error interno al consultar alertas de sesión" };
+  }
+}
+
+// ruta -> revocar sesion remota
 export async function revokeSession(
   ctx: RouterContext<"/auth/sessions/:sessionId">,
 ): Promise<void> {

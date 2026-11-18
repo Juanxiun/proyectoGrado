@@ -1,3 +1,4 @@
+// Button -> botón, enlace de texto y fila de metadatos
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import type { ComponentProps } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,7 +43,6 @@ const TEXT: Record<Size, string> = {
   lg: 'text-base',
 };
 
-/** Botón institucional. Reemplaza los `TouchableOpacity` escritos a mano. */
 export function Button({
   label,
   variant = 'primary',
@@ -82,7 +82,6 @@ export function Button({
   );
 }
 
-/** Enlace de texto para acciones secundarias ("Cancelar", "¿Olvidó su clave?"). */
 export function TextLink({
   label,
   onPress,
@@ -112,7 +111,6 @@ export function TextLink({
   );
 }
 
-/** Fila de metadatos con icono, usada en los pies de tarjeta. */
 export function HintRow({ icon, text }: { icon: keyof typeof Ionicons.glyphMap; text: string }) {
   return (
     <View className="flex-row items-center gap-2">

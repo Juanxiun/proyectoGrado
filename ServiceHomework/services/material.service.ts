@@ -21,7 +21,9 @@ interface MaterialRow {
   tamanioBytes?: bigint | number | null;
   fechaSubida: Date | string;
   activo: boolean;
-  // Asignacion info
+  temaId?: bigint | null;
+  tipoMaterial?: string | null;
+  // fila -> datos asignacion
   maestroId?: bigint;
   materiaId?: bigint;
   cursoPeriodoId?: bigint;
@@ -42,6 +44,8 @@ async function mapMaterial(row: MaterialRow): Promise<MateriaMaterial> {
     tamanioBytes: row.tamanioBytes ? Number(row.tamanioBytes) : null,
     fechaSubida: asDateTimeString(row.fechaSubida),
     activo: Boolean(row.activo),
+    temaId: row.temaId ? toId(row.temaId) : null,
+    tipoMaterial: (row.tipoMaterial as 'estudio' | 'actividad' | null) ?? null,
     asignacion: row.materiaId
       ? {
         id: toId(row.asignacionId),
@@ -67,6 +71,8 @@ const SELECT = `
     mm.tamanio_bytes AS "tamanioBytes",
     mm.fecha_subida AS "fechaSubida",
     mm.activo,
+    mm.tema_id AS "temaId",
+    mm.tipo_material AS "tipoMaterial",
     ad.maestro_id AS "maestroId",
     ad.materia_id AS "materiaId",
     ad.curso_periodo_id AS "cursoPeriodoId",
@@ -153,8 +159,8 @@ export async function createMaterial(input: CreateMateriaMaterialInput): Promise
   try {
     const res = await query<{ id: bigint }>(
       `INSERT INTO materia_materiales (
-        asignacion_id, titulo, detalle, archivo_url, nombre_archivo, tipo_mime, tamanio_bytes, activo
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        asignacion_id, titulo, detalle, archivo_url, nombre_archivo, tipo_mime, tamanio_bytes, activo, tema_id, tipo_material
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING id`,
       [
         asigId,
@@ -165,6 +171,8 @@ export async function createMaterial(input: CreateMateriaMaterialInput): Promise
         input.tipoMime?.trim() ?? null,
         input.tamanioBytes ?? null,
         input.activo ?? true,
+        input.temaId ? String(input.temaId) : null,
+        input.tipoMaterial ?? null,
       ],
     );
     return await getMaterialById(toId(res.rows[0].id));
@@ -209,6 +217,14 @@ export async function updateMaterial(id: string, input: UpdateMateriaMaterialInp
     fields.push(`activo = $${idx++}`);
     params.push(input.activo);
   }
+  if (input.temaId !== undefined) {
+    fields.push(`tema_id = $${idx++}`);
+    params.push(input.temaId ? String(input.temaId) : null);
+  }
+  if (input.tipoMaterial !== undefined) {
+    fields.push(`tipo_material = $${idx++}`);
+    params.push(input.tipoMaterial ?? null);
+  }
 
   if (fields.length === 0) throw new HttpError(400, "No hay campos para actualizar");
 
@@ -225,11 +241,11 @@ export async function deleteMaterial(id: string): Promise<void> {
   const current = await getMaterialById(id);
   try {
     await sTransaction(async (client) => {
-      // Remover relaciones de encargo_materiales
+      // delete -> borrar relaciones encargo
       await client.queryObject(`DELETE FROM encargo_materiales WHERE material_id = $1`, [id]);
       await client.queryObject(`DELETE FROM materia_materiales WHERE id = $1`, [id]);
     });
-    // Eliminar archivo físico de MinIO
+    // minio -> borrar archivo fisico
     if (current.archivoUrl) {
       await deleteMaterialFile(current.archivoUrl);
     }

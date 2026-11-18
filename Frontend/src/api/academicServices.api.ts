@@ -135,10 +135,7 @@ export const academicManagementApi = {
     apiRequest<Record<string, unknown>>(`/api/inscripciones/solicitudes/${id}/rechazar`, { method: 'PATCH', body: { observacion } }),
 };
 
-// ── Materias y maya curricular por GRADO ─────────────────────────────────────
-// 1°A y 1°B cursan lo mismo, así que la materia y el temario se configuran una
-// sola vez a nivel de grado. Los paralelos siguen siendo cursos aparte para
-// horarios, inscripciones y asignaciones.
+// materias por grado -> se configuran una vez a nivel de grado
 
 export interface MateriaDelGrado {
   materiaId: string;
@@ -151,7 +148,6 @@ export interface MateriaDelGrado {
   orden: number;
 }
 
-/** Bloque de "Cursos base": un grado con todos sus paralelos juntos. */
 export interface GradoConParalelos {
   nivel: NivelEducativo;
   grado: string;
@@ -184,7 +180,6 @@ export interface TemaMalla {
   orden: number;
 }
 
-/** La maya de un grado: una entrada por materia, con sus temas ya ordenados. */
 export interface MayaPorMateria {
   materia: MateriaDelGrado;
   temas: TemaMalla[];
@@ -202,6 +197,24 @@ export type NivelEducativo = 'inicial' | 'primaria' | 'secundaria' | 'bachillera
 const gradoQuery = (nivel: NivelEducativo, grado: string, extra: Record<string, string> = {}) =>
   buildQuery({ nivel, grado, ...extra });
 
+// listAll -> recorre todas las páginas y las aplana
+async function listAll(
+  resource: ServiceResource,
+  params: Record<string, string | number | undefined> = {},
+): Promise<Record<string, unknown>[]> {
+  const porPagina = 100;
+  const primera = await academicServicesApi.list(resource, { ...params, page: 1, limit: porPagina });
+  const totalPaginas = Math.max(1, Number((primera as { totalPages?: number }).totalPages ?? 1));
+  if (totalPaginas <= 1) return primera.data ?? [];
+
+  const resto = await Promise.all(
+    Array.from({ length: totalPaginas - 1 }, (_, i) =>
+      academicServicesApi.list(resource, { ...params, page: i + 2, limit: porPagina }),
+    ),
+  );
+  return [...(primera.data ?? []), ...resto.flatMap((p) => p.data ?? [])];
+}
+
 export const academicServicesApi = {
   list: (
     resource: ServiceResource,
@@ -210,6 +223,8 @@ export const academicServicesApi = {
     apiRequest<Page>(
       `${paths[resource]}${buildQuery({ page: 1, limit: 100, ...params })}`,
     ),
+
+  listAll,
   create: (resource: ServiceResource, payload: Record<string, unknown>) =>
     apiRequest<Record<string, unknown>>(paths[resource], {
       method: "POST",
@@ -232,7 +247,6 @@ export const academicServicesApi = {
       { method: "PATCH", body: payload },
     ),
 
-  // ── Materias por grado ─────────────────────────────────────────────────────
   listGrados: (nivel?: NivelEducativo) =>
     apiRequest<ListaGrados>(`/api/grados${buildQuery({ nivel })}`),
   gradoMaterias: (nivel: NivelEducativo, grado: string) =>
@@ -260,7 +274,6 @@ export const academicServicesApi = {
       body: { materias },
     }),
 
-  // ── Maya curricular: temas por grado y materia ─────────────────────────────
   getMalla: (nivel: NivelEducativo, grado: string) =>
     apiRequest<MayaPorMateria[]>(`/api/malla${gradoQuery(nivel, grado)}`),
   getResumenMalla: (nivel: NivelEducativo, grado: string) =>

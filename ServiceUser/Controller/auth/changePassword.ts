@@ -4,7 +4,7 @@ import { query } from "../../connects/Database/transaction.ts";
 import bcrypt from "bcryptjs";
 import { publicarEventoAsync } from "../../utils/events.ts";
 
-/** Límites de credenciales. Deben coincidir con Frontend/src/shared/validation/credentials.ts */
+// config -> limites credenciales frontend
 export const USERNAME_MAX = 20;
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 100;
@@ -28,9 +28,7 @@ export function validatePasswordPolicy(password: string): { valid: boolean; erro
   return { valid: true };
 }
 
-/**
- * El usuario sólo admite letras y números (A-Z, a-z, 0-9), hasta 20 caracteres.
- */
+// funcion -> validar politica usuario
 export function validateUsernamePolicy(username: string): { valid: boolean; error?: string } {
   const value = String(username ?? "");
 

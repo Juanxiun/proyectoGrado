@@ -15,12 +15,13 @@ import { KpisDelTablero } from '../components/KpisDelTablero';
 import { PanelRiesgo } from '../components/PanelRiesgo';
 import { PanelAsistencia, PanelAvance } from '../components/PanelesTablero';
 import { PanelEconomico } from '../components/PanelEconomico';
+import { InstitutionDashboard } from '../components/InstitutionDashboard';
+import { useAuth } from '../../../context/AuthContext';
+import { ResumenAvanceDocente } from '../../maestros/components/ResumenAvanceDocente';
 
-/**
- * Página de inicio. Todo lo que muestra viene de ServiceDashboard, que es un
- * servicio de sólo lectura y ya aplicó el recorte por rol.
- */
-export function DashboardScreen() {
+// tablero -> inicio de sólo lectura, ya recortado por rol
+export function DashboardScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
+  const { user } = useAuth();
   const [datos, setDatos] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
@@ -44,7 +45,7 @@ export function DashboardScreen() {
     void cargar();
   }, [cargar]);
 
-  // Si un docente registra una nota o asistencia, el tablero se recalcula.
+  // tiempo real -> recalcula al registrar nota o asistencia
   useRealtimeResource('calificaciones', () => {
     void cargar();
   });
@@ -86,6 +87,19 @@ export function DashboardScreen() {
     );
   }
 
+  const role = (user?.rol ?? '').toLowerCase();
+  const isTeacher = role.includes('docente') || role.includes('maestro') || role.includes('profesor');
+  if (['director', 'admin', 'administrador', 'directores', 'administradores', 'control', 'gerencia', 'secretaria', 'secretario', 'administrativo', 'editor'].includes(role)) {
+    return (
+      <InstitutionDashboard
+        data={datos}
+        role={role}
+        userName={user?.nombre ?? 'Usuario'}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
@@ -101,7 +115,6 @@ export function DashboardScreen() {
         />
       }
     >
-      {/* Contexto: gestión, trimestre y alcance */}
       <BentoCard className="p-4">
         <View className="flex-row items-center justify-between gap-3 flex-wrap">
           <View className="flex-1 min-w-[180px]">
@@ -172,9 +185,10 @@ export function DashboardScreen() {
         </View>
       </BentoCard>
 
+      {isTeacher && datos.contexto.periodo?.id ? <ResumenAvanceDocente periodoId={datos.contexto.periodo.id} /> : null}
+
       <KpisDelTablero kpis={datos.kpis} />
 
-      {/* Avance de las materias */}
       <BentoCard className="p-4">
         <View className="flex-row items-center gap-2 mb-3">
           <Ionicons name="book-outline" size={17} color="#801529" />
@@ -183,7 +197,6 @@ export function DashboardScreen() {
         <PanelAvance academico={datos.academico} />
       </BentoCard>
 
-      {/* Asistencia y faltas */}
       <BentoCard className="p-4">
         <View className="flex-row items-center gap-2 mb-3">
           <Ionicons name="calendar-outline" size={17} color="#801529" />
@@ -192,7 +205,6 @@ export function DashboardScreen() {
         <PanelAsistencia asistencia={datos.asistencia} />
       </BentoCard>
 
-      {/* Estudiantes en riesgo */}
       <BentoCard className="p-4">
         <View className="flex-row items-center gap-2 mb-3">
           <Ionicons name="warning-outline" size={17} color="#801529" />
@@ -201,7 +213,6 @@ export function DashboardScreen() {
         <PanelRiesgo riesgo={datos.riesgo} />
       </BentoCard>
 
-      {/* Estimación económica */}
       {datos.economicoOculto ? (
         <BentoCard className="p-4 opacity-70">
           <View className="flex-row items-center gap-3">

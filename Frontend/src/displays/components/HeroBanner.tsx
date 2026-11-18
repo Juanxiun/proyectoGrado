@@ -1,3 +1,2 @@
-// La implementación vive en src/shared/ui/HeroBanner.tsx.
-// Este archivo se conserva como punto de entrada compatible.
+// HeroBanner -> reexporta la implementación compartida
 export { HeroBanner } from '../../shared/ui/HeroBanner';

@@ -1,4 +1,4 @@
-import React from 'react';
+// ConfirmDeleteModal -> confirma la eliminación de un elemento
 import { ActivityIndicator, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -29,7 +29,6 @@ export function ConfirmDeleteModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
       <View className="flex-1 bg-black/50 items-center justify-center p-4">
         <View className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-gray-100">
-          {/* Header Icon + Title */}
           <View className="flex-row items-center gap-3 mb-4">
             <View className="w-12 h-12 rounded-2xl bg-red-50 border border-red-100 items-center justify-center">
               <Ionicons name="trash-outline" size={24} color="#DC2626" />
@@ -40,7 +39,6 @@ export function ConfirmDeleteModal({
             </View>
           </View>
 
-          {/* Description / Item Name */}
           <View className="mb-5">
             {itemName ? (
               <View className="p-3 bg-red-50/50 rounded-2xl border border-red-100/70 mb-2">
@@ -63,7 +61,6 @@ export function ConfirmDeleteModal({
             ) : null}
           </View>
 
-          {/* Buttons */}
           <View className="flex-row items-center justify-end gap-3 pt-2 border-t border-gray-100">
             <TouchableOpacity
               onPress={onCancel}

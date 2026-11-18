@@ -4,10 +4,7 @@ import { jwtConfig } from "../config/jwt.config.ts";
 import { isSessionValidAndActive } from "../services/session.service.ts";
 
 const secret = new TextEncoder().encode(jwtConfig.secret);
-/**
- * Roles operativos usados para autorizar acciones.
- * Gerencia comparte las facultades de Control y Padres las de Estudiante.
- */
+// tipo -> roles operativos autorizacion
 export type AppRole = "director" | "profesor" | "estudiante" | "control";
 
 export interface AuthClaims extends JWTPayload {

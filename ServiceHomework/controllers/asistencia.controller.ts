@@ -48,9 +48,7 @@ export async function createAsistencia(ctx: Context): Promise<void> {
   }
 }
 
-// La asistencia diaria no genera notificación individual: se emite un solo
-// evento por curso y ServiceNotification lo reparte a los estudiantes.
-
+// asistencia -> evento unico por curso
 export async function updateAsistencia(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(routeParam(ctx, "id") ?? ctx.request.url.searchParams.get("id"));

@@ -1,4 +1,4 @@
-// controllers/webhookHandler.ts
+// archivo -> manejador eventos webhook
 import { Context } from "@oak/oak";
 import { extractBearerToken, getClaimsFromToken } from "../security/auth.ts";
 import { sendWebhookCallback } from "../services/webhook.service.ts";
@@ -24,11 +24,7 @@ export interface WebhookEventPayload {
 
 type Handler = (ctx: Context) => Promise<void>;
 
-/**
- * El dashboard es de sólo lectura: por eso no expone eventos de escritura.
- * `dashboard.cache.invalidate` es la única excepción y existe para que la
- * interfaz fuerce el recálculo si acaba de generar la estructura de una gestión.
- */
+// mapa -> eventos solo lectura
 const EVENT_HANDLERS: Record<string, Handler> = {
   "dashboard.get": getDashboard,
   "dashboard.academico": getAcademico,

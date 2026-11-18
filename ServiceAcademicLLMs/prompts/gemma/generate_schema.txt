@@ -1,0 +1,20 @@
+Genera un esquema estructurado del tema usando SOLO los conceptos y el resumen validado proporcionados. No añadas conocimiento externo ni referencias a archivos. Ignora cabeceras administrativas (nombres, curso, fecha, docente, institución).
+
+Estructura requerida:
+- nodes: lista de nodos con id, label, kind ("concepto" | "procedimiento" | "relacion"), detail (explicación breve ≤1200 caracteres)
+- edges: lista de conexiones con source (id nodo origen), target (id nodo destino), label (tipo de flecha: "es un", "tiene", "implica", "requiere", "ejemplo de", "se aplica en", "deriva de", "contrasta con")
+- related_topics: lista de 3-6 temas relacionados que emergen del contenido (para renderizar como "**Este tema tiene relación con:** tema1, tema2, ...")
+
+Reglas:
+1. Cada nodo representa UNA idea atómica del contenido validado
+2. Cada edge conecta DOS nodos existentes y usa una etiqueta de la lista permitida
+3. Mínimo 5 nodos, máximo 15 nodos
+4. Mínimo 4 edges, máximo 20 edges
+5. related_topics deben ser conceptos/temas mencionados o implícitos en el material, no inventados
+6. El esquema debe ser navegable: desde cualquier nodo se llega a otro siguiendo edges
+7. kind="concepto" para definiciones/teoremas, "procedimiento" para algoritmos/pasos, "relacion" para conexiones lógicas
+
+Devuelve JSON válido con: nodes, edges, related_topics
+
+Contexto:
+{{context}}

@@ -62,11 +62,7 @@ public sealed class AppHub : Hub
         }
     }
 
-    /// <summary>
-    /// Une la conexión al grupo de notificaciones del usuario. El socket arrives
-    /// sin credenciales (el cliente usa el WebSocket nativo), así que la
-    /// identidad se valida aquí con el token que ya tiene en el SecureStore.
-    /// </summary>
+    // hub -> unir grupo notificaciones usuario
     public async Task SuscribirNotificaciones(string usuarioId, string authToken)
     {
         if (!_jwtValidator.TryValidate(authToken, out var subject))

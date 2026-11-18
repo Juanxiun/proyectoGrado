@@ -2,19 +2,7 @@ import { query } from "../connects/Database/transaction.ts";
 import { dashboardConfig } from "../config/dashboard.config.ts";
 import type { ResumenEconomico } from "../models/dashboard.ts";
 
-/**
- * Estimación económica: cobranza real y proyección.
- *
- * Sale de `pensiones` (qué se facturó y cuándo vence), `pagos` +
- * `pago_pensiones` (qué se cobró y a qué cuota se imputó) y `planes_pago`.
- *
- * OJO: esto NO es un módulo de facturación. Es una proyección de lectura para
- * la página de inicio. Los pagos se registran en el módulo económico y
- * ServiceBilling sigue siendo un stub sin trackear.
- *
- * Sólo se considera lo no anulado: una anulación es un flujo distinto al de
- * una deuda impagada y no debe engordar la cartera.
- */
+// servicio -> estimacion economica lectura
 export async function resumenEconomico(periodoId: string): Promise<ResumenEconomico> {
   if (!periodoId) {
     return vacio();

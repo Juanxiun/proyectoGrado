@@ -35,7 +35,7 @@ function Estadistica({
   );
 }
 
-/** Asistencia global, últimos días y los alumnos con más faltas. */
+// panel asistencia -> global, últimos días y faltas
 export function PanelAsistencia({ asistencia }: { asistencia: DashboardData['asistencia'] }) {
   const { global } = asistencia;
 
@@ -135,7 +135,7 @@ export function PanelAsistencia({ asistencia }: { asistencia: DashboardData['asi
   );
 }
 
-/** Avance de calificación por materia, ordenado por los más atrasados. */
+// panel avance -> calificación por materia
 export function PanelAvance({ academico }: { academico: DashboardData['academico'] }) {
   const materias = academico._avance ?? [];
 

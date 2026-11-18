@@ -1,3 +1,2 @@
-// La implementación vive en src/shared/ui/BentoCard.tsx.
-// Este archivo se conserva como punto de entrada compatible.
+// BentoCard -> reexporta la implementación compartida
 export { BentoCard } from '../../shared/ui/BentoCard';

@@ -1,15 +1,13 @@
 import { LocationInfo } from "./deviceDetector.ts";
 
-/**
- * Calcula la distancia en kilómetros entre dos coordenadas usando la fórmula de Haversine.
- */
+// util -> distancia haversine
 export function calculateHaversineDistanceKm(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number,
 ): number {
-  const R = 6371; // Radio de la Tierra en km
+  const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
   const a =
@@ -41,10 +39,7 @@ export interface PreviousSessionGeo {
   };
 }
 
-/**
- * Evalúa si un nuevo inicio de sesión de estudiante presenta discrepancias geográficas
- * sospechosas o indicios de trampa (compartir cuenta, proxies, viajes imposibles).
- */
+// funcion -> detectar trampa geografica
 export function evaluateStudentDistanceCheating(
   currentLocation: LocationInfo,
   activeOrRecentSessions: PreviousSessionGeo[],
@@ -58,7 +53,6 @@ export function evaluateStudentDistanceCheating(
     const prevLoc = prev.ubicacion;
     if (!prevLoc) continue;
 
-    // Caso 1: Coordenadas GPS / geográficas disponibles en ambas sesiones
     if (
       currentLocation.lat !== undefined &&
       currentLocation.lon !== undefined &&
@@ -76,8 +70,6 @@ export function evaluateStudentDistanceCheating(
       const diffHours = Math.max(0.01, (currentTime.getTime() - prevTime.getTime()) / (1000 * 60 * 60));
       const speedKmH = distanceKm / diffHours;
 
-      // Si la distancia es mayor a 25 km y la velocidad de desplazamiento es físicamente inverosímil (>150 km/h)
-      // o si la distancia simultánea es grande (>30 km)
       if (distanceKm > 25 && (speedKmH > 120 || distanceKm > 50 || diffHours < 0.2)) {
         return {
           posibleTrampa: true,
@@ -88,7 +80,6 @@ export function evaluateStudentDistanceCheating(
       }
     }
 
-    // Caso 2: Comparación por zona o ciudad si no hay coordenadas exactas
     const currentZone = (currentLocation.zona || currentLocation.ciudad || "").toLowerCase().trim();
     const prevZone = (prevLoc.zona || prevLoc.ciudad || "").toLowerCase().trim();
 
@@ -96,7 +87,6 @@ export function evaluateStudentDistanceCheating(
       const prevTime = new Date(prev.inicioConexion);
       const diffMinutes = (currentTime.getTime() - prevTime.getTime()) / (1000 * 60);
 
-      // Si inició sesión en zonas/ciudades distintas en menos de 30 minutos
       if (diffMinutes < 30) {
         return {
           posibleTrampa: true,

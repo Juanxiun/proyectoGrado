@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, type ComponentProps } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,10 @@ import { DocumentInput } from '../components/DocumentInput';
 import { BajaConfirmModal } from '../components/BajaConfirmModal';
 import { ConfirmDeleteModal } from '../../../displays/components/ConfirmDeleteModal';
 import { ProfilePhotoPicker } from '../components/ProfilePhotoPicker';
-import { RemoteImage } from '../../../displays/components/RemoteImage';
+import { InlineInput } from '../components/InlineInput';
+import { extraerCI, ROLES_EDITOR } from '../utils/management';
+import { UserAvatar } from '../../../shared/ui';
+import { numeroGrado } from '../../academico/utils/niveles';
 import { generateStudentEmail, generateUsername } from '../../../utils/usernameGenerator';
 import { getFullName, isUsuarioActivo } from '../../../utils/validation';
 import { academicServicesApi } from '../../../api/academicServices.api';
@@ -82,77 +85,39 @@ const emptyStudentForm: {
   referencia: '',
 };
 
-function InlineInput({
-  error,
-  className = '',
-  numericOnly = false,
-  maxLength,
-  onChangeText,
-  ...props
-}: ComponentProps<typeof TextInput> & {
-  error?: string;
-  numericOnly?: boolean;
-}) {
-  const handleChangeText = (v: string) => {
-    if (numericOnly) {
-      const filtered = v.replace(/\D/g, '');
-      if (onChangeText) onChangeText(filtered);
-    } else {
-      if (onChangeText) onChangeText(v);
-    }
-  };
-
-  return (
-    <View className="flex-1 min-w-[150px]">
-      <TextInput
-        {...props}
-        maxLength={maxLength}
-        keyboardType={numericOnly ? 'numeric' : props.keyboardType}
-        onChangeText={handleChangeText}
-        className={`bg-white rounded-xl px-3 py-2.5 border text-sm ${
-          error ? 'border-red-500 bg-red-50/20' : 'border-gray-200'
-        } ${className}`}
-      />
-      {error ? <Text className="text-xs text-red-600 mt-1 font-medium">{error}</Text> : null}
-    </View>
-  );
-}
-
 export function EstudiantesManagementScreen() {
   const { user } = useAuth();
   const userRol = user?.rol?.toLowerCase() ?? '';
-  const canEdit = ['director', 'control', 'gerencia', 'admin', 'administrador', 'administrativo', 'editor', 'secretaria', 'secretario'].includes(userRol);
+  const canEdit = ROLES_EDITOR.includes(userRol);
 
-  const { data, loading, error, fetchList } = useUsuariosList();
+  const { data, loading, fetchAll } = useUsuariosList();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<EstadoUsuario | undefined>(undefined);
 
-  // ── Navegación en Cascada: Primaria / Secundaria -> Cursos -> Estudiantes ──
   const [selectedLevel, setSelectedLevel] = useState<'primaria' | 'secundaria'>('primaria');
+  const [selectedGrado, setSelectedGrado] = useState<string>('all');
+  const [selectedParalelo, setSelectedParalelo] = useState<string>('all');
+
   const [cursosPeriodo, setCursosPeriodo] = useState<Array<any>>([]);
   const [inscripciones, setInscripciones] = useState<Array<any>>([]);
-  const [selectedCursoPeriodoId, setSelectedCursoPeriodoId] = useState<string>('all');
-  const [loadingCursos, setLoadingCursos] = useState(false);
+  const [, setLoadingCursos] = useState(false);
 
-  // Paginación
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(12);
+  const [pageSize, setPageSize] = useState(10);
 
-  // Modal de Creación / Edición
   const [showModal, setShowModal] = useState(false);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [editingStudent, setEditingStudent] = useState<Usuario | null>(null);
-  const [editingTutorId, setEditingTutorId] = useState<string | null>(null);
+  const [, setEditingTutorId] = useState<string | null>(null);
   const [editTab, setEditTab] = useState<'student' | 'tutor'>('student');
 
-  // Estado para el Paso 3: Inscripción de estudiante
   const [modalNivelInscripcion, setModalNivelInscripcion] = useState<'primaria' | 'secundaria'>('primaria');
   const [modalSelectedCursoId, setModalSelectedCursoId] = useState<string>('');
-  const [fechaInscripcion, setFechaInscripcion] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [tipoObservacion, setTipoObservacion] = useState<'Sin observación' | 'Debe entregar documentos' | 'Otros'>('Sin observación');
-  const [observacionManual, setObservacionManual] = useState<string>('');
+  const [fechaInscripcion] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [tipoObservacion] = useState<'Sin observación' | 'Debe entregar documentos' | 'Otros'>('Sin observación');
+  const [observacionManual] = useState<string>('');
 
   const [tutorForm, setTutorForm] = useState(emptyTutorForm);
   const [tutorDocs, setTutorDocs] = useState<UsuarioDoc[]>([{ tipoDoc: 'CI', numeroDoc: '' }]);
@@ -192,16 +157,16 @@ export function EstudiantesManagementScreen() {
     }
   };
 
-  // Cargar Cursos y Periodos para la navegación en cascada
+  // estructura -> carga cursos e inscripciones
   const loadCursosAndInscripciones = async () => {
     try {
       setLoadingCursos(true);
       const [cpRes, insRes] = await Promise.all([
-        academicServicesApi.list('cursos-periodo', { estado: 'activo', limit: 200 }),
-        academicServicesApi.list('inscripciones', { limit: 1000 }),
+        academicServicesApi.listAll('cursos-periodo', { estado: 'activo' }),
+        academicServicesApi.listAll('inscripciones'),
       ]);
-      setCursosPeriodo(cpRes.data || []);
-      setInscripciones(insRes.data || []);
+      setCursosPeriodo(cpRes || []);
+      setInscripciones(insRes || []);
     } catch (e) {
       console.warn('Error cargando estructura académica:', e);
     } finally {
@@ -214,26 +179,30 @@ export function EstudiantesManagementScreen() {
   }, []);
 
   const refresh = () => {
-    fetchList({ buscar: search, estado: statusFilter, limit: 300 }).catch(() => undefined);
+    fetchAll({ buscar: search, estado: statusFilter }).catch(() => undefined);
     loadCursosAndInscripciones();
   };
 
+  // refresco -> callback estable para websocket y debounce de búsqueda
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  const primerMontaje = useRef(true);
+
   useEffect(() => {
-    refresh();
-    return connectUsersWebSocket(refresh);
+    return connectUsersWebSocket(() => refreshRef.current());
+  }, []);
+
+  useEffect(() => {
+    if (primerMontaje.current) {
+      primerMontaje.current = false;
+      refresh();
+      return;
+    }
+    const timer = setTimeout(refresh, 300);
+    return () => clearTimeout(timer);
   }, [search, statusFilter]);
 
-  // Cursos filtrados por el nivel seleccionado (Primaria o Secundaria)
-  const cursosDelNivel = useMemo(() => {
-    return cursosPeriodo.filter((cp) => {
-      const nivel = (cp.curso?.nivel || cp.nivel || '').toLowerCase();
-      if (selectedLevel === 'primaria') return nivel.includes('primaria') || nivel.includes('inicial');
-      return nivel.includes('secundaria') || nivel.includes('bachill');
-    });
-  }, [cursosPeriodo, selectedLevel]);
-
-  // Conteo de estudiantes inscritos por cursoPeriodoId y mapeo de cursos por estudiante
-  const { inscripcionesMap, studentCourseMap } = useMemo(() => {
+  const { studentCourseMap } = useMemo(() => {
     const map: Record<string, number> = {};
     const studentIdsByCurso: Record<string, Set<string>> = {};
     const stCourseMap: Record<string, { cpId: string; cursoLabel: string; nivel: string; grado: string; paralelo: string }> = {};
@@ -267,7 +236,41 @@ export function EstudiantesManagementScreen() {
     return { inscripcionesMap: { countMap: map, studentIdsByCurso }, studentCourseMap: stCourseMap };
   }, [inscripciones, cursosPeriodo]);
 
-  // Estudiantes filtrados por nivel, curso seleccionado, búsqueda y estado
+  const availableGrados = useMemo(() => {
+    const set = new Set<string>();
+    cursosPeriodo.forEach((cp) => {
+      const c = cp.curso ?? {};
+      const nivel = String(c.nivel ?? cp.nivel ?? '').toLowerCase();
+      const grado = String(c.grado ?? cp.grado ?? '').trim();
+      if (!grado) return;
+      if (selectedLevel === 'primaria' && !(nivel.includes('primaria') || nivel.includes('inicial'))) return;
+      if (selectedLevel === 'secundaria' && !(nivel.includes('secundaria') || nivel.includes('bachill'))) return;
+      set.add(grado);
+    });
+    return Array.from(set).sort((a, b) => {
+      const na = numeroGrado(a) ?? 99;
+      const nb = numeroGrado(b) ?? 99;
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b);
+    });
+  }, [cursosPeriodo, selectedLevel]);
+
+  const availableParalelos = useMemo(() => {
+    const set = new Set<string>();
+    cursosPeriodo.forEach((cp) => {
+      const c = cp.curso ?? {};
+      const nivel = String(c.nivel ?? cp.nivel ?? '').toLowerCase();
+      const grado = String(c.grado ?? cp.grado ?? '').trim();
+      const paralelo = String(c.paralelo ?? cp.paralelo ?? '').trim().toUpperCase();
+      if (!paralelo) return;
+      if (selectedLevel === 'primaria' && !(nivel.includes('primaria') || nivel.includes('inicial'))) return;
+      if (selectedLevel === 'secundaria' && !(nivel.includes('secundaria') || nivel.includes('bachill'))) return;
+      if (selectedGrado !== 'all' && grado !== selectedGrado) return;
+      set.add(paralelo);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [cursosPeriodo, selectedLevel, selectedGrado]);
+
   const filteredStudents = useMemo(() => {
     const students = (data?.data ?? []).filter((u: Usuario) => {
       const rol = (u.rol || (u as any).rol_nombre || '').toLowerCase();
@@ -275,13 +278,11 @@ export function EstudiantesManagementScreen() {
     });
 
     return students.filter((st) => {
-      // Filtro por Estado
       if (statusFilter !== undefined && st.estado !== statusFilter) return false;
 
       const courseInfo = studentCourseMap[String(st.id)];
       const studentNivel = (courseInfo?.nivel || (st as any).nivel || '').toLowerCase();
 
-      // Filtro estricto por Nivel (Primaria vs Secundaria)
       const isPrimaria = studentNivel.includes('primaria') || studentNivel.includes('inicial');
       const isSecundaria = studentNivel.includes('secundaria') || studentNivel.includes('bachill');
 
@@ -293,15 +294,14 @@ export function EstudiantesManagementScreen() {
         if (!courseInfo && (st as any).nivel && isPrimaria) return false;
       }
 
-      // Filtro por Curso seleccionado
-      if (selectedCursoPeriodoId !== 'all') {
-        const enrolledStudents = inscripcionesMap.studentIdsByCurso[selectedCursoPeriodoId];
-        if (!enrolledStudents || !enrolledStudents.has(String(st.id))) {
-          return false;
-        }
+      if (selectedGrado !== 'all') {
+        if (!courseInfo || courseInfo.grado !== selectedGrado) return false;
       }
 
-      // Filtro de Búsqueda
+      if (selectedParalelo !== 'all') {
+        if (!courseInfo || courseInfo.paralelo.toUpperCase() !== selectedParalelo.toUpperCase()) return false;
+      }
+
       if (search.trim()) {
         const q = search.toLowerCase().trim();
         const fullName = `${st.nombre} ${st.apellidoPaterno || ''} ${st.apellidoMaterno || ''}`.toLowerCase();
@@ -313,9 +313,8 @@ export function EstudiantesManagementScreen() {
 
       return true;
     });
-  }, [data, statusFilter, selectedLevel, selectedCursoPeriodoId, studentCourseMap, inscripcionesMap, search]);
+  }, [data, statusFilter, selectedLevel, selectedGrado, selectedParalelo, studentCourseMap, search]);
 
-  // Paginación
   const totalPages = Math.max(1, Math.ceil(filteredStudents.length / pageSize));
   const paginatedStudents = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -368,10 +367,13 @@ export function EstudiantesManagementScreen() {
     if (!studentForm.nombre.trim()) errors.studentNombre = 'El nombre es obligatorio.';
     if (!studentForm.apellidoPaterno.trim()) errors.studentApellidoPaterno = 'El apellido paterno es obligatorio.';
     if (!studentForm.nacimiento) errors.studentNacimiento = 'La fecha de nacimiento es obligatoria.';
-    const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
-    const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
-    if (!ciDoc?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
-    if (!rudeDoc?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    // edición -> no exige documentos al estudiante
+    if (!editingStudent) {
+      const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
+      const rudeDoc = studentDocs.find((d) => d.tipoDoc === 'RUDE');
+      if (!ciDoc?.numeroDoc?.trim()) errors['documento:CI'] = 'El CI es obligatorio.';
+      if (!rudeDoc?.numeroDoc?.trim()) errors['documento:RUDE'] = 'El RUDE es obligatorio.';
+    }
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -396,7 +398,7 @@ export function EstudiantesManagementScreen() {
     return { message, handled: Object.keys(errors).length > 0 };
   };
 
-  // Autogenerar username limpio
+  // username -> autogenerar limpio
   const handleAutoFillStudentUsername = (
     nombre: string,
     paterno: string,
@@ -467,7 +469,6 @@ export function EstudiantesManagementScreen() {
 
   const handleSaveStudent = async () => {
     if (!validateStudent()) return;
-    const ciDoc = studentDocs.find((d) => d.tipoDoc === 'CI');
 
 
     if (editingStudent) {
@@ -554,7 +555,7 @@ export function EstudiantesManagementScreen() {
 
       const res = await usuariosApi.createWithFiles(createPayload, studentPhoto);
 
-      // Inscribir automáticamente al estudiante en el curso
+      // inscripción -> matrícula automática en el curso
       const obsFinal = tipoObservacion === 'Otros' ? observacionManual : tipoObservacion;
       await academicServicesApi.create('inscripciones', {
         estudianteId: res.id,
@@ -599,7 +600,7 @@ export function EstudiantesManagementScreen() {
     ]);
     setStudentPhoto(st.fotoUrl || undefined);
 
-    // Cargar datos de tutor vinculado para permitir edición completa
+    // tutor -> carga datos del apoderado
     try {
       const full = await usuariosApi.getById(st.id);
       const apod = full.apoderados?.[0];
@@ -677,7 +678,6 @@ export function EstudiantesManagementScreen() {
         setSelectedTutorDetail(tutorUser);
       }
     } catch {
-      // Ignorar fallback
     } finally {
       setLoadingStudentDetail(false);
     }
@@ -685,7 +685,6 @@ export function EstudiantesManagementScreen() {
 
   return (
     <ScrollView className="flex-1 bg-cream/30 p-4 md:p-6" contentContainerStyle={{ gap: 20, minWidth: 0 }}>
-      {/* Cabecera Principal */}
       <View className="flex-row flex-wrap items-center justify-between gap-3">
         <View className="flex-1 min-w-0">
           <Text className="text-2xl font-black text-gray-900">Control Estudiantil</Text>
@@ -708,178 +707,9 @@ export function EstudiantesManagementScreen() {
         )}
       </View>
 
-      {/* ── NIVEL SUPERIOR: 2 BOTONES PRINCIPALES (PRIMARIA / SECUNDARIA) ── */}
-      <BentoCard className="p-3 bg-white border border-gray-100 shadow-sm">
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity
-            onPress={() => {
-              setSelectedLevel('primaria');
-              setSelectedCursoPeriodoId('all');
-              setCurrentPage(1);
-            }}
-            className={`flex-1 min-w-0 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
-              selectedLevel === 'primaria'
-                ? 'bg-maroon shadow-md'
-                : 'bg-gray-100 hover:bg-gray-200/80'
-            }`}
-          >
-            <Ionicons
-              name="school-outline"
-              size={22}
-              color={selectedLevel === 'primaria' ? '#FFFFFF' : '#4B5563'}
-            />
-            <Text
-              numberOfLines={2}
-              ellipsizeMode="tail"
-              className={`font-black text-base min-w-0 ${
-                selectedLevel === 'primaria' ? 'text-white' : 'text-gray-700'
-              }`}
-            >
-              Nivel Primaria
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={() => {
-              setSelectedLevel('secundaria');
-              setSelectedCursoPeriodoId('all');
-              setCurrentPage(1);
-            }}
-            className={`flex-1 min-w-0 py-3.5 px-4 rounded-2xl flex-row items-center justify-center gap-2.5 transition-all ${
-              selectedLevel === 'secundaria'
-                ? 'bg-maroon shadow-md'
-                : 'bg-gray-100 hover:bg-gray-200/80'
-            }`}
-          >
-            <Ionicons
-              name="ribbon-outline"
-              size={22}
-              color={selectedLevel === 'secundaria' ? '#FFFFFF' : '#4B5563'}
-            />
-            <Text
-              numberOfLines={2}
-              ellipsizeMode="tail"
-              className={`font-black text-base min-w-0 ${
-                selectedLevel === 'secundaria' ? 'text-white' : 'text-gray-700'
-              }`}
-            >
-              Nivel Secundaria
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </BentoCard>
-
-      {/* ── SEGUNDO NIVEL: LISTADO DE CURSOS Y PARALELOS REGISTRADOS ── */}
-      <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm">
-        <View className="flex-row flex-wrap items-center justify-between gap-2 mb-3">
-          <View className="flex-row items-center gap-2 flex-1 min-w-0">
-            <Ionicons name="layers-outline" size={18} color="#801529" />
-            <Text className="text-sm font-bold text-gray-800 uppercase tracking-wide">
-              Cursos de {selectedLevel === 'primaria' ? 'Primaria' : 'Secundaria'} ({cursosDelNivel.length})
-            </Text>
-          </View>
-          <Text className="text-xs text-gray-400">Selecciona una sección para ver los estudiantes</Text>
-        </View>
-
-        {loadingCursos ? (
-          <View className="py-6 items-center justify-center">
-            <ActivityIndicator size="small" color="#801529" />
-          </View>
-        ) : cursosDelNivel.length === 0 ? (
-          <View className="py-4 items-center justify-center bg-gray-50 rounded-xl">
-            <Text className="text-xs text-gray-500">No hay cursos registrados para este nivel.</Text>
-          </View>
-        ) : (
-          <View className="py-1 w-full flex-row flex-wrap gap-2.5">
-              <TouchableOpacity
-                onPress={() => {
-                  setSelectedCursoPeriodoId('all');
-                  setCurrentPage(1);
-                }}
-                className={`flex-1 min-w-[150px] max-w-[220px] px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
-                  selectedCursoPeriodoId === 'all'
-                    ? 'bg-gold/20 border-gold/60'
-                    : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                }`}
-              >
-                <Ionicons
-                  name="people"
-                  size={16}
-                  color={selectedCursoPeriodoId === 'all' ? '#B45309' : '#6B7280'}
-                />
-                <Text
-                  numberOfLines={2}
-                  ellipsizeMode="tail"
-                  className={`text-xs font-bold flex-1 min-w-0 ${
-                    selectedCursoPeriodoId === 'all' ? 'text-maroon' : 'text-gray-700'
-                  }`}
-                >
-                  Todos los Cursos
-                </Text>
-                <View className="bg-white px-2 py-0.5 rounded-full border border-gray-200">
-                  <Text className="text-[11px] font-bold text-gray-600">{filteredStudents.length}</Text>
-                </View>
-              </TouchableOpacity>
-
-              {cursosDelNivel.map((cp) => {
-                const c = cp.curso || {};
-                const cpId = String(cp.id);
-                const isSelected = selectedCursoPeriodoId === cpId;
-                const count = inscripcionesMap.countMap[cpId] || 0;
-                const label = `${c.grado || cp.grado || ''} "${c.paralelo || cp.paralelo || ''}"`;
-
-                return (
-                  <TouchableOpacity
-                    key={cp.id}
-                    onPress={() => {
-                      setSelectedCursoPeriodoId(cpId);
-                      setCurrentPage(1);
-                    }}
-                    className={`flex-1 min-w-[150px] max-w-[220px] px-4 py-2.5 rounded-xl border flex-row items-center gap-2 transition-all ${
-                      isSelected
-                        ? 'bg-maroon text-white border-maroon shadow-sm'
-                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Ionicons
-                      name="easel-outline"
-                      size={16}
-                      color={isSelected ? '#FFFFFF' : '#6B7280'}
-                    />
-                    <Text
-                      numberOfLines={2}
-                      ellipsizeMode="tail"
-                      className={`text-xs font-bold flex-1 min-w-0 ${
-                        isSelected ? 'text-white' : 'text-gray-700'
-                      }`}
-                    >
-                      {label}
-                    </Text>
-                    <View
-                      className={`px-2 py-0.5 rounded-full ${
-                        isSelected ? 'bg-white/20' : 'bg-gray-200'
-                      }`}
-                    >
-                      <Text
-                        className={`text-[11px] font-bold ${
-                          isSelected ? 'text-white' : 'text-gray-600'
-                        }`}
-                      >
-                        {count} est.
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-          </View>
-        )}
-      </BentoCard>
-
-      {/* ── TERCER NIVEL: GRID PAGINADO DE ESTUDIANTES ── */}
-      <BentoCard className="p-5 bg-white border border-gray-100 shadow-sm">
-        {/* Barra de Filtros y Búsqueda */}
-        <View className="flex-row flex-wrap items-center justify-between gap-3 mb-5">
-          <View className="flex-row items-center bg-gray-100 rounded-xl px-3.5 py-2 flex-1 max-w-md">
+      <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm gap-4">
+        <View className="flex-row flex-wrap items-center justify-between gap-3">
+          <View className="flex-1 min-w-[240px] max-w-lg flex-row items-center bg-gray-100 rounded-xl px-3.5 py-2.5 border border-gray-200">
             <Ionicons name="search" size={16} color="#9CA3AF" />
             <TextInput
               value={search}
@@ -891,19 +721,150 @@ export function EstudiantesManagementScreen() {
               className="flex-1 ml-2 text-xs text-gray-800"
               placeholderTextColor="#9CA3AF"
             />
+            {search ? (
+              <TouchableOpacity onPress={() => setSearch('')}>
+                <Ionicons name="close-circle" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            ) : null}
           </View>
 
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row items-center bg-gray-100 p-1 rounded-xl gap-1">
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedLevel('primaria');
+                setSelectedGrado('all');
+                setSelectedParalelo('all');
+                setCurrentPage(1);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                selectedLevel === 'primaria' ? 'bg-maroon shadow-sm' : ''
+              }`}
+            >
+              <Ionicons
+                name="school-outline"
+                size={14}
+                color={selectedLevel === 'primaria' ? '#FFFFFF' : '#4B5563'}
+              />
+              <Text className={`text-xs font-bold ${selectedLevel === 'primaria' ? 'text-white' : 'text-gray-600'}`}>
+                Primaria
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedLevel('secundaria');
+                setSelectedGrado('all');
+                setSelectedParalelo('all');
+                setCurrentPage(1);
+              }}
+              className={`px-3.5 py-1.5 rounded-lg flex-row items-center gap-1.5 transition-all ${
+                selectedLevel === 'secundaria' ? 'bg-maroon shadow-sm' : ''
+              }`}
+            >
+              <Ionicons
+                name="ribbon-outline"
+                size={14}
+                color={selectedLevel === 'secundaria' ? '#FFFFFF' : '#4B5563'}
+              />
+              <Text className={`text-xs font-bold ${selectedLevel === 'secundaria' ? 'text-white' : 'text-gray-600'}`}>
+                Secundaria
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View className="pt-3 border-t border-gray-100 flex-row flex-wrap items-center justify-between gap-3">
+          <View className="flex-row flex-wrap items-center gap-2">
+            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide mr-1">Grado:</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedGrado('all');
+                setSelectedParalelo('all');
+                setCurrentPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg border ${
+                selectedGrado === 'all'
+                  ? 'bg-maroon border-maroon'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+            >
+              <Text className={`text-xs font-bold ${selectedGrado === 'all' ? 'text-white' : 'text-gray-700'}`}>
+                Todos
+              </Text>
+            </TouchableOpacity>
+
+            {availableGrados.map((grado) => {
+              const isSelected = selectedGrado === grado;
+              return (
+                <TouchableOpacity
+                  key={grado}
+                  onPress={() => {
+                    setSelectedGrado(grado);
+                    setSelectedParalelo('all');
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg border ${
+                    isSelected ? 'bg-maroon border-maroon' : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                    {grado}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View className="flex-row flex-wrap items-center gap-2">
+            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide mr-1">Paralelo:</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedParalelo('all');
+                setCurrentPage(1);
+              }}
+              className={`px-2.5 py-1 rounded-lg border ${
+                selectedParalelo === 'all'
+                  ? 'bg-maroon border-maroon'
+                  : 'bg-gray-50 border-gray-200'
+              }`}
+            >
+              <Text className={`text-xs font-bold ${selectedParalelo === 'all' ? 'text-white' : 'text-gray-700'}`}>
+                Todos
+              </Text>
+            </TouchableOpacity>
+
+            {availableParalelos.map((paralelo) => {
+              const isSelected = selectedParalelo === paralelo;
+              return (
+                <TouchableOpacity
+                  key={paralelo}
+                  onPress={() => {
+                    setSelectedParalelo(paralelo);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg border ${
+                    isSelected ? 'bg-maroon border-maroon' : 'bg-gray-50 border-gray-200'
+                  }`}
+                >
+                  <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+                    Paralelo {paralelo}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <View className="flex-row items-center gap-1.5 ml-auto">
             <TouchableOpacity
               onPress={() => {
                 setStatusFilter(undefined);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                statusFilter === undefined ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-600'
+              className={`px-2.5 py-1 rounded-lg border text-xs ${
+                statusFilter === undefined ? 'bg-gray-800 border-gray-800' : 'bg-gray-50 border-gray-200'
               }`}
             >
-              <Text className={`text-xs ${statusFilter === undefined ? 'text-white font-bold' : 'text-gray-600'}`}>
+              <Text className={`text-xs font-bold ${statusFilter === undefined ? 'text-white' : 'text-gray-600'}`}>
                 Todos ({filteredStudents.length})
               </Text>
             </TouchableOpacity>
@@ -913,11 +874,11 @@ export function EstudiantesManagementScreen() {
                 setStatusFilter(1);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                statusFilter === 1 ? 'bg-green-700 text-white' : 'bg-gray-100 text-gray-600'
+              className={`px-2.5 py-1 rounded-lg border text-xs ${
+                statusFilter === 1 ? 'bg-green-700 border-green-700' : 'bg-gray-50 border-gray-200'
               }`}
             >
-              <Text className={`text-xs ${statusFilter === 1 ? 'text-white font-bold' : 'text-gray-600'}`}>
+              <Text className={`text-xs font-bold ${statusFilter === 1 ? 'text-white' : 'text-gray-600'}`}>
                 Activos
               </Text>
             </TouchableOpacity>
@@ -927,37 +888,37 @@ export function EstudiantesManagementScreen() {
                 setStatusFilter(0);
                 setCurrentPage(1);
               }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${
-                statusFilter === 0 ? 'bg-red-700 text-white' : 'bg-gray-100 text-gray-600'
+              className={`px-2.5 py-1 rounded-lg border text-xs ${
+                statusFilter === 0 ? 'bg-red-700 border-red-700' : 'bg-gray-50 border-gray-200'
               }`}
             >
-              <Text className={`text-xs ${statusFilter === 0 ? 'text-white font-bold' : 'text-gray-600'}`}>
-                Inactivos / Baja
+              <Text className={`text-xs font-bold ${statusFilter === 0 ? 'text-white' : 'text-gray-600'}`}>
+                Inactivos
               </Text>
             </TouchableOpacity>
           </View>
         </View>
+      </BentoCard>
 
-        {/* Lista / Grid de Estudiantes */}
+      <BentoCard className="p-4 bg-white border border-gray-100 shadow-sm">
         {loading ? (
           <View className="py-16 items-center justify-center">
             <ActivityIndicator size="large" color="#801529" />
-            <Text className="text-xs text-gray-500 mt-3 font-medium">Cargando nómina de estudiantes...</Text>
+            <Text className="text-xs text-gray-500 mt-3 font-medium">Cargando estudiantes...</Text>
           </View>
         ) : paginatedStudents.length === 0 ? (
           <View className="py-16 items-center justify-center bg-gray-50 rounded-2xl">
             <Ionicons name="school-outline" size={48} color="#D1D5DB" />
             <Text className="text-base font-bold text-gray-700 mt-3">No se encontraron estudiantes</Text>
             <Text className="text-xs text-gray-400 mt-1 max-w-xs text-center">
-              No hay alumnos registrados que coincidan con la sección o criterio de búsqueda seleccionado.
+              No hay alumnos registrados que coincidan con los filtros seleccionados.
             </Text>
           </View>
         ) : (
           <View className="flex-row flex-wrap -mx-2 min-w-0">
             {paginatedStudents.map((st) => {
               const docs = st.documentos ?? [];
-              const ciDoc = docs.find((d) => d.tipoDoc === 'CI' || (d as any).tipo_doc === 'CI')?.numeroDoc ??
-                (docs.find((d) => (d as any).tipo_doc === 'CI') as any)?.numero_doc ?? 'Sin CI';
+              const ciDoc = extraerCI(docs);
               const rudeDoc = docs.find((d) => d.tipoDoc === 'RUDE' || (d as any).tipo_doc === 'RUDE')?.numeroDoc ??
                 (docs.find((d) => (d as any).tipo_doc === 'RUDE') as any)?.numero_doc;
               const apPat = st.apellidoPaterno || (st as any).apellido_paterno || '';
@@ -969,22 +930,15 @@ export function EstudiantesManagementScreen() {
                 <View key={st.id} className="w-full md:w-1/2 lg:w-1/3 p-2 min-w-0">
                   <BentoCard className="p-4 bg-white border border-gray-100 hover:border-maroon/30 transition-all flex-col justify-between h-full shadow-sm hover:shadow-md overflow-hidden">
                     <View className="min-w-0">
-                      {/* Avatar Ampliado + Indicador de Estado + Badges */}
                       <View className="flex-row items-start justify-between mb-3.5">
                         <View className="relative">
-                          {st.fotoUrl ? (
-                            <RemoteImage
-                              uri={st.fotoUrl}
-                              className="w-20 h-20 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
-                              fallbackText={`${st.nombre?.charAt(0) || 'E'}${apPat?.charAt(0) || ''}`}
-                            />
-                          ) : (
-                            <View className="w-20 h-20 rounded-2xl bg-maroon border-2 border-gold/40 items-center justify-center shadow-sm">
-                              <Text className="text-gold font-serif font-bold text-2xl">
-                                {st.nombre?.charAt(0) || 'E'}{apPat?.charAt(0) || ''}
-                              </Text>
-                            </View>
-                          )}
+                          <UserAvatar
+                            nombre={st.nombre}
+                            apellidoPaterno={apPat}
+                            fotoUrl={st.fotoUrl}
+                            className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-gold/40 shadow-sm"
+                            textoClassName="text-gold font-bold text-xl"
+                          />
                           <View
                             className={`absolute -bottom-1 -right-1 w-4 h-4 rounded-full border-2 border-white ${
                               isActivo ? 'bg-green-500' : 'bg-red-500'
@@ -1000,15 +954,13 @@ export function EstudiantesManagementScreen() {
                         </View>
                       </View>
 
-                      {/* Nombre y Username */}
-                      <Text className="font-bold text-gray-900 text-base" numberOfLines={2}>
+                      <Text className="font-bold text-gray-900 text-sm" numberOfLines={2}>
                         {stFullName}
                       </Text>
                       <Text className="text-xs font-mono text-maroon mt-0.5">
                         @{st.username || 'sin-cuenta'}
                       </Text>
 
-                      {/* Curso Asignado */}
                       <View className="flex-row items-center gap-1.5 mt-2 bg-maroon/5 border border-maroon/20 px-2.5 py-1 rounded-lg self-start">
                         <Ionicons name="school" size={12} color="#801529" />
                         <Text className="text-xs font-bold text-maroon">
@@ -1018,30 +970,18 @@ export function EstudiantesManagementScreen() {
                         </Text>
                       </View>
 
-                      {/* Bloque: Documentos de Identificación */}
                       <View className="flex-row flex-wrap gap-1.5 mt-3">
-                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 max-w-full min-w-0">
-                          <Text className="text-xs text-gray-700 font-mono flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">CI: {ciDoc}</Text>
+                        <View className="bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200">
+                          <Text className="text-xs text-gray-700 font-mono">CI: {ciDoc}</Text>
                         </View>
-                        {rudeDoc && (
-                          <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40 max-w-full min-w-0">
-                            <Text className="text-xs font-bold text-maroon font-mono flex-1 min-w-0" numberOfLines={1} ellipsizeMode="tail">RUDE: {rudeDoc}</Text>
+                        {rudeDoc ? (
+                          <View className="bg-gold/20 px-2.5 py-1 rounded-lg border border-gold/40">
+                            <Text className="text-xs font-bold text-maroon font-mono">RUDE: {rudeDoc}</Text>
                           </View>
-                        )}
+                        ) : null}
                       </View>
-
-                      {/* Bloque: Contacto y Correo Institucional */}
-                      {st.email ? (
-                        <View className="mt-3 pt-2.5 border-t border-gray-100 flex-row items-center gap-1.5">
-                          <Ionicons name="mail-outline" size={13} color="#9CA3AF" />
-                          <Text className="text-xs text-gray-500 flex-1 truncate" numberOfLines={1}>
-                            {st.email}
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
 
-                    {/* Menú de Acciones Rápidas Bento */}
                     <View className="flex-row flex-wrap items-center justify-end gap-2 mt-4 pt-3 border-t border-gray-100">
                       <TouchableOpacity
                         onPress={() => handleViewStudent(st)}
@@ -1066,16 +1006,16 @@ export function EstudiantesManagementScreen() {
                             className="p-2 bg-gray-100 rounded-xl flex-row items-center gap-1.5"
                           >
                             <Ionicons
-                              name={isUsuarioActivo(st.estado) ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
+                              name={isActivo ? 'arrow-down-circle-outline' : 'checkmark-circle-outline'}
                               size={15}
-                              color={isUsuarioActivo(st.estado) ? '#DC2626' : '#16A34A'}
+                              color={isActivo ? '#DC2626' : '#16A34A'}
                             />
                             <Text
                               className={`text-xs font-semibold ${
-                                isUsuarioActivo(st.estado) ? 'text-red-600' : 'text-green-600'
+                                isActivo ? 'text-red-600' : 'text-green-600'
                               }`}
                             >
-                              {isUsuarioActivo(st.estado) ? 'Baja' : 'Activar'}
+                              {isActivo ? 'Baja' : 'Activar'}
                             </Text>
                           </TouchableOpacity>
 
@@ -1096,12 +1036,12 @@ export function EstudiantesManagementScreen() {
           </View>
         )}
 
-        {/* ── CONTROLES DE PAGINACIÓN ESTRICTA ── */}
         <Pagination
           currentPage={currentPage}
           totalPages={totalPages}
           totalRecords={filteredStudents.length}
           pageSize={pageSize}
+          pageSizeOptions={[10, 20]}
           onPageChange={setCurrentPage}
           onPageSizeChange={(s) => {
             setPageSize(s);
@@ -1111,7 +1051,6 @@ export function EstudiantesManagementScreen() {
         />
       </BentoCard>
 
-      {/* ── MODAL DIALOG DE REGISTRO E INSCRIPCIÓN (3 PASOS) ── */}
       <Modal visible={showModal} animationType="fade" transparent onRequestClose={() => setShowModal(false)}>
         <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
           <View className="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl flex-col">
@@ -1134,7 +1073,6 @@ export function EstudiantesManagementScreen() {
             </View>
 
             <ScrollView className="p-5 max-h-[68vh]" contentContainerStyle={{ gap: 16 }}>
-              {/* PASO 1: REGISTRO DEL TUTOR */}
               {step === 1 && (
                 <View className="gap-4">
                   <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1209,10 +1147,8 @@ export function EstudiantesManagementScreen() {
                 </View>
               )}
 
-              {/* PASO 2: DATOS DEL ESTUDIANTE Y TUTOR */}
               {step === 2 && (
                 <View className="gap-4">
-                  {/* Selector de Pestañas en Modo Edición */}
                   {editingStudent && (
                     <View className="flex-row gap-2 bg-gray-100 p-1 rounded-2xl">
                       <TouchableOpacity
@@ -1261,7 +1197,6 @@ export function EstudiantesManagementScreen() {
                     </View>
                   )}
 
-                  {/* Formulario del Estudiante (cuando no se está editando el tutor) */}
                   {(!editingStudent || editTab === 'student') && (
                     <>
                       {tutorSummary && !editingStudent && (
@@ -1351,7 +1286,6 @@ export function EstudiantesManagementScreen() {
                     </>
                   )}
 
-                  {/* Formulario del Tutor / Apoderado (cuando se edita en modo tutor) */}
                   {editingStudent && editTab === 'tutor' && (
                     <>
                       <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1424,7 +1358,6 @@ export function EstudiantesManagementScreen() {
                 </View>
               )}
 
-              {/* PASO 3: ASIGNACIÓN A CURSO PERIODO */}
               {step === 3 && (
                 <View className="gap-4">
                   <BentoCard className="p-4 bg-gray-50 border border-gray-200">
@@ -1505,7 +1438,6 @@ export function EstudiantesManagementScreen() {
         </View>
       </Modal>
 
-      {/* FICHA DETALLADA DE CONSULTA DE ESTUDIANTE */}
       {selectedStudentDetail && (
         <Modal
           visible={Boolean(selectedStudentDetail)}
@@ -1527,16 +1459,13 @@ export function EstudiantesManagementScreen() {
               ) : (
                 <ScrollView className="gap-3 max-h-[60vh]">
                   <View className="flex-row items-center gap-4 mb-3">
-                    {selectedStudentDetail.fotoUrl ? (
-                      <RemoteImage
-                        uri={selectedStudentDetail.fotoUrl}
-                        className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-maroon/20"
-                      />
-                    ) : (
-                      <View className="w-16 h-16 rounded-2xl bg-maroon/10 items-center justify-center">
-                        <Text className="text-maroon font-bold text-xl">{selectedStudentDetail.nombre?.charAt(0)}</Text>
-                      </View>
-                    )}
+                    <UserAvatar
+                      nombre={selectedStudentDetail.nombre}
+                      apellidoPaterno={selectedStudentDetail.apellidoPaterno}
+                      fotoUrl={selectedStudentDetail.fotoUrl}
+                      className="w-16 h-16 rounded-2xl bg-gray-100 border-2 border-maroon/20"
+                      textoClassName="text-maroon font-bold text-xl"
+                    />
                     <View>
                       <Text className="text-base font-bold text-gray-900">
                         {getFullName(
@@ -1603,7 +1532,6 @@ export function EstudiantesManagementScreen() {
         </Modal>
       )}
 
-      {/* Modal de Confirmación de Baja */}
       <BajaConfirmModal
         user={bajaTarget}
         visible={Boolean(bajaTarget)}
@@ -1612,7 +1540,6 @@ export function EstudiantesManagementScreen() {
         onConfirm={confirmBaja}
       />
 
-      {/* Modal de Confirmación de Eliminación Permanente */}
       <ConfirmDeleteModal
         visible={Boolean(deletingStudent)}
         itemName={deletingStudent ? getFullName(deletingStudent.nombre, deletingStudent.apellidoPaterno, deletingStudent.apellidoMaterno) : ''}

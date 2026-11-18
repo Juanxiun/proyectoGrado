@@ -4,13 +4,7 @@ using RestApi.Services;
 
 namespace RestApi.Controllers;
 
-/// <summary>
-/// Controlador de usuarios. Actúa como API Gateway que reenvía
-/// las peticiones al ServiceUser (Deno) vía webhook HTTP.
-///
-/// Soporta tanto application/json como multipart/form-data
-/// (para subir fotos de perfil).
-/// </summary>
+/// <summary>Usuarios hacia ServiceUser; json y multipart.</summary>
 [ApiController]
 [Route("api/usuarios")]
 [Produces("application/json")]
@@ -23,10 +17,7 @@ public sealed class UsuariosController : ControllerBase
         _client = client;
     }
 
-    /// <summary>
-    /// Lista paginada de usuarios.
-    /// Query params: page, limit, rolId, estado, buscar.
-    /// </summary>
+    /// <summary>Lista paginada de usuarios.</summary>
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -35,9 +26,7 @@ public sealed class UsuariosController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>
-    /// Obtiene un usuario por id con todas sus relaciones.
-    /// </summary>
+    /// <summary>Obtiene un usuario por id.</summary>
     [HttpGet("{id:long}")]
     public async Task<IActionResult> GetOne(long id)
     {
@@ -45,14 +34,7 @@ public sealed class UsuariosController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>
-    /// Crea un usuario. Acepta application/json o multipart/form-data.
-    ///
-    /// Para multipart, enviar:
-    ///   - datos: JSON string con los campos del usuario
-    ///   - foto:  archivo PNG/JPG opcional (si se envía, se valida y sube a MinIO)
-    ///   - doc_file_{index}: archivo PDF opcional para cada documento
-    /// </summary>
+    /// <summary>Crea usuario en json o multipart.</summary>
     [HttpPost]
     [DisableRequestSizeLimit]
     [DisableFormValueModelBinding]
@@ -65,12 +47,7 @@ public sealed class UsuariosController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>
-    /// Actualiza un usuario. Acepta application/json o multipart/form-data.
-    ///
-    /// Si se envía una nueva foto, se sobreescribe la imagen en MinIO
-    /// conservando el nombre original.
-    /// </summary>
+    /// <summary>Actualiza usuario en json o multipart.</summary>
     [HttpPut("{id:long}")]
     [DisableRequestSizeLimit]
     [DisableFormValueModelBinding]
@@ -83,9 +60,7 @@ public sealed class UsuariosController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>
-    /// Baja lógica: marca al usuario como inactivo (estado = 0).
-    /// </summary>
+    /// <summary>Baja lógica del usuario.</summary>
     [HttpPatch("{id:long}/baja")]
     public async Task<IActionResult> Baja(long id)
     {
@@ -93,9 +68,7 @@ public sealed class UsuariosController : ControllerBase
         return await ProxyResult(response);
     }
 
-    /// <summary>
-    /// Elimina un usuario y su imagen en MinIO.
-    /// </summary>
+    /// <summary>Elimina usuario y su imagen.</summary>
     [HttpDelete("{id:long}")]
     public async Task<IActionResult> Delete(long id)
     {

@@ -3,10 +3,7 @@ using RestApi.Services;
 
 namespace RestApi.Controllers;
 
-/// <summary>
-/// Seguimiento académico: libro de notas, panel de desempeño y alertas de riesgo.
-/// El cálculo vive en ServiceAcademic; el gateway sólo traduce y añade /api.
-/// </summary>
+/// <summary>Seguimiento académico vía ServiceAcademic.</summary>
 [ApiController]
 [Route("api/seguimiento")]
 [Produces("application/json")]
@@ -36,7 +33,7 @@ public sealed class SeguimientoController : ControllerBase
     public Task<IActionResult> Riesgo()
         => Proxy(_client.ForwardAsync(HttpMethod.Get, $"/seguimiento/riesgo{Qs()}", Request));
 
-    /// <summary>GET /api/seguimiento/umbrales — criterio de riesgo vigente.</summary>
+    /// <summary>Criterio de riesgo vigente.</summary>
     [HttpGet("umbrales")]
     public Task<IActionResult> Umbrales()
         => Proxy(_client.ForwardAsync(HttpMethod.Get, "/seguimiento/umbrales", Request));

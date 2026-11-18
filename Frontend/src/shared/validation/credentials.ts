@@ -1,31 +1,19 @@
-/**
- * Reglas de credenciales. Fuente única para el frontend; el backend replica
- * la política de contraseña en `ServiceUser/Controller/auth/changePassword.ts`
- * y ambos deben cambiar juntos.
- */
+// credenciales -> reglas de usuario y contraseña
 
 export const USERNAME_MAX = 20;
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 100;
 
-/**
- * El usuario sólo admite letras y números. Se conservan mayúsculas y
- * minúsculas: no se fuerza un casing, se filtra lo que no es alfanumérico.
- */
+// USERNAME_REGEX -> solo letras y números
 export const USERNAME_REGEX = /^[A-Za-z0-9]+$/;
 
-/**
- * Normaliza lo que el usuario teclea en el campo: descarta todo lo que no sea
- * alfanumérico y recorta al máximo. Evita tener que avisar con un error por
- * cada tecla inválida.
- */
+// sanitizeUsername -> filtra a alfanumérico y recorta
 export function sanitizeUsername(value: string): string {
   return String(value ?? '')
     .replace(/[^A-Za-z0-9]/g, '')
     .slice(0, USERNAME_MAX);
 }
 
-/** Recorta la contraseña al máximo permitido sin alterar su contenido. */
 export function sanitizePassword(value: string): string {
   return String(value ?? '').slice(0, PASSWORD_MAX);
 }

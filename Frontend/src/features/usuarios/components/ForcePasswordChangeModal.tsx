@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
+import { confirmLogout } from '../../../utils/confirmLogout';
 import { authApi } from '../../../api/auth.api';
 import { useAuth } from '../../../context/AuthContext';
 import { PASSWORD_MAX, sanitizePassword } from '../../../shared/validation/credentials';
@@ -17,8 +18,6 @@ import { PASSWORD_MAX, sanitizePassword } from '../../../shared/validation/crede
 interface ForcePasswordChangeModalProps {
   visible: boolean;
 }
-
-const SPECIAL_CHARS = ['@', '#', '$', '&'];
 
 export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalProps) {
   const { user, updateLocalUser, logout } = useAuth();
@@ -28,7 +27,7 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Password criteria checks
+  // checks -> criterios de contraseña válidos
   const checks = useMemo(() => {
     const minLength = passwordNueva.length >= 8;
     const hasUpper = /[A-Z]/.test(passwordNueva);
@@ -76,7 +75,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
     <Modal visible={visible} transparent animationType="fade">
       <View className="flex-1 bg-black/80 items-center justify-center p-4">
         <BentoCard className="w-full max-w-md p-6 bg-white rounded-3xl shadow-2xl border border-maroon/20">
-          {/* Header */}
           <View className="items-center mb-5">
             <View className="w-16 h-16 rounded-2xl bg-amber-100 items-center justify-center mb-3">
               <Ionicons name="key-outline" size={32} color="#D97706" />
@@ -89,7 +87,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
             </Text>
           </View>
 
-          {/* Form */}
           <View className="gap-3 mb-5">
             {errorMsg ? (
               <View className="p-3 bg-red-50 border border-red-200 rounded-xl flex-row items-center gap-2">
@@ -98,7 +95,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
               </View>
             ) : null}
 
-            {/* Nueva contraseña */}
             <View>
               <Text className="text-xs font-bold text-gray-700 mb-1">Nueva Contraseña</Text>
               <View className="flex-row items-center bg-gray-50 rounded-xl border border-gray-200 px-3">
@@ -123,7 +119,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
               </View>
             </View>
 
-            {/* Confirmar contraseña */}
             <View>
               <Text className="text-xs font-bold text-gray-700 mb-1">Confirmar Nueva Contraseña</Text>
               <View className="flex-row items-center bg-gray-50 rounded-xl border border-gray-200 px-3">
@@ -141,7 +136,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
               </View>
             </View>
 
-            {/* Checklist de Requisitos */}
             <View className="p-3.5 bg-gray-50 rounded-2xl border border-gray-200 gap-1.5 mt-1">
               <Text className="text-[11px] font-bold text-gray-700 uppercase tracking-wider mb-1">
                 Requisitos de Seguridad
@@ -210,7 +204,6 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
             </View>
           </View>
 
-          {/* Action Buttons */}
           <View className="gap-2">
             <TouchableOpacity
               onPress={handleSubmit}
@@ -230,7 +223,7 @@ export function ForcePasswordChangeModal({ visible }: ForcePasswordChangeModalPr
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => logout()}
+              onPress={() => confirmLogout(logout)}
               disabled={loading}
               className="py-2.5 rounded-xl items-center flex-row justify-center gap-2"
             >

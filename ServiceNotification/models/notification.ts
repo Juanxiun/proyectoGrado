@@ -1,39 +1,29 @@
-/**
- * Modelo central de notificaciones del sistema.
- *
- * Este servicio es el ÚNICO dueño de las notificaciones: las lee, las crea y
- * las marca como leídas. Los campos `materiaNombre`, `profesorNombre`,
- * `cursoParalelo`, `publicoTexto`, `fechaLimite`, `asignacionId`,
- * `cursoPeriodoId`, `itemId` y `textoPlano` se conservan porque el frontend
- * (NotificationsModal / NotificationsInboxCard) los sigue pintando. Las
- * notificaciones de otros dominios (materias, horarios, usuarios) los dej-an
- * vacíos y se apoyan en `mensaje` + `titulo`.
- */
+// archivo -> modelo notificaciones
 
 export type NotificationPriority = "baja" | "media" | "alta" | "critica";
 
 export type NotificationChannel = "sistema" | "academico" | "usuarios" | "horarios";
 
-/** Quién debe recibir la notificación. */
+// tipo -> audiencia notificacion
 export type NotificationAudience = "usuario" | "curso" | "rol" | "todos";
 
-/** Origen del evento que la originó, p. ej. "materiales.create". */
+// tipo -> origen evento
 export type NotificationOrigen = string;
 
 export interface NotificationItem {
   id: string;
 
-  /** Clave funcional: material, actividad, calificacion, horario, usuario… */
+  // campo -> tipo funcional
   tipo: string;
   canal: NotificationChannel;
   prioridad: NotificationPriority;
 
   titulo: string;
   mensaje: string;
-  /** Versión multilínea lista para notifications push / correo. */
+  // campo -> texto multilinea
   textoPlano: string;
 
-  // ── Contexto académico (opcional) ────────────────────────────────────────
+  // grupo -> contexto academico
   materiaNombre?: string;
   profesorNombre?: string;
   cursoParalelo?: string;
@@ -43,14 +33,14 @@ export interface NotificationItem {
   cursoPeriodoId?: string;
   itemId?: string;
 
-  /** Servicio y evento que la originaron, útil para depurar. */
+  // campo -> origen depuracion
   origen: NotificationOrigen;
 
   fechaCreacion: string;
   leido?: boolean;
 }
 
-/** Entrada normalizada que produce el catálogo de reglas. */
+// interfaz -> borrador notificacion
 export interface NotificationDraft {
   tipo: string;
   canal: NotificationChannel;
@@ -69,16 +59,16 @@ export interface NotificationDraft {
   origen: NotificationOrigen;
 }
 
-/** Evento de dominio publicado por cualquier servicio en el canal Redis. */
+// interfaz -> evento dominio redis
 export interface DomainEvent<T = Record<string, unknown>> {
   eventType: string;
-  /** Servicio emisor: ServiceAcademic, ServiceHomework, … */
+  // campo -> servicio emisor
   origen: string;
   payload: T;
   emittedAt?: string;
 }
 
-/** Respuesta del endpoint de conteo que consume el badge del frontend. */
+// interfaz -> conteo notificaciones
 export interface NotificationCount {
   total: number;
   noLeidas: number;

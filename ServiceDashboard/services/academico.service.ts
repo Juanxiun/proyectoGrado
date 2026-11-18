@@ -2,10 +2,7 @@ import { query } from "../connects/Database/transaction.ts";
 import { filtroCursos, listarPeriodos, type Contexto } from "./alcance.service.ts";
 import type { AvanceMateria, ResumenAcademico } from "../models/dashboard.ts";
 
-/**
- * Avance académico: matrícula, cursos, materias y cuánto de la planificación
- * ya tiene notas cargadas. Sólo lectura.
- */
+// servicio -> avance academico solo lectura
 
 export async function resumenAcademico(
   contexto: Contexto,
@@ -30,7 +27,7 @@ export async function resumenAcademico(
     };
   }
 
-  // Rango del trimestre: el avance se mide dentro del período, no en todo el año.
+  // consulta -> rango trimestre actual
   const rango = await query<{ inicio: Date; fin: Date }>(
     `SELECT inicio, fin FROM trimestres WHERE periodo_id = $1 AND numero = $2`,
     [periodoId, trimestre],
@@ -107,7 +104,7 @@ export async function resumenAcademico(
   const totalMaterias = Number(materias.rows[0]?.total ?? 0);
   const conEncargos = Number(materias.rows[0]?.con_encargos ?? 0);
 
-  // Avance global: porcentaje de encargos del trimestre que ya tienen nota.
+  // consulta -> avance global encargos
   const global = await query<{ calificados: string; publicados: string }>(
     `SELECT
        COUNT(*) FILTER (WHERE EXISTS (
@@ -165,7 +162,7 @@ export async function resumenAcademico(
   };
 }
 
-/** Una fila por materia/curso con su avance de calificación. */
+// funcion -> avance por materia
 async function listarAvanceMaterias(
   contexto: Contexto,
   desde: string,

@@ -11,12 +11,9 @@ import { ROLES_INSTITUCION, requireAuth, type AuthClaims } from "../security/aut
 import { HttpError } from "../utils/errors.ts";
 import { handleControllerError, respond } from "../utils/http.ts";
 
-/**
- * Vistas del tablero. Todas exigen JWT y recortan por rol: el alcance se
- * resuelve en el servidor, nunca a pedido del cliente.
- */
+// controlador -> vistas tablero con roles
 
-/** Nombres de las vistas que el gateway puede pedir por webhook. */
+// funcion -> listar vistas webhook
 export const eventosRegistrados = (): string[] => [
   "dashboard.get",
   "dashboard.academico",
@@ -43,7 +40,7 @@ function periodoDe(ctx: Context): string | null {
   return ctx.request.url.searchParams.get("periodoId") ?? null;
 }
 
-/** Rango del trimestre en curso, reutilizado por los bloques sueltos. */
+// funcion -> rango trimestre actual
 async function rango(contexto: Awaited<ReturnType<typeof resolverContexto>>) {
   const periodoId = contexto.periodo?.id ?? "";
   if (!periodoId) return { desde: "1900-01-01", hasta: "2999-12-31" };
@@ -71,7 +68,7 @@ async function rango(contexto: Awaited<ReturnType<typeof resolverContexto>>) {
     : { desde: "1900-01-01", hasta: "2999-12-31" };
 }
 
-/** GET /dashboard — todo junto, para la página de inicio. */
+// ruta -> dashboard completo inicio
 export async function getDashboard(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -87,7 +84,7 @@ export async function getDashboard(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/academico */
+// ruta -> resumen academico
 export async function getAcademico(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -98,7 +95,7 @@ export async function getAcademico(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/asistencia */
+// ruta -> resumen asistencia
 export async function getAsistencia(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -110,7 +107,7 @@ export async function getAsistencia(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/riesgo */
+// ruta -> resumen riesgo
 export async function getRiesgo(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -122,7 +119,7 @@ export async function getRiesgo(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/economico — sólo dirección y control. */
+// ruta -> economico solo direccion control
 export async function getEconomico(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -137,7 +134,7 @@ export async function getEconomico(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/periodos — para los selectores de la interfaz. */
+// ruta -> periodos selectores interfaz
 export async function getPeriodos(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);
@@ -149,7 +146,7 @@ export async function getPeriodos(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /dashboard/umbrales — criterio de riesgo vigente, sin depender de otro servicio. */
+// ruta -> umbrales riesgo vigentes
 export async function getUmbralesRiesgo(ctx: Context): Promise<void> {
   try {
     respond(ctx, 200, await obtenerUmbrales());
@@ -158,7 +155,7 @@ export async function getUmbralesRiesgo(ctx: Context): Promise<void> {
   }
 }
 
-/** POST /dashboard/cache/invalidar — fuerza el recálculo tras un cambio puntual. */
+// ruta -> invalidar cache tablero
 export async function postInvalidarCache(ctx: Context): Promise<void> {
   try {
     const auth = claims(ctx);

@@ -1,9 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP gateway hacia ServiceNotification (Central de Notificaciones en Deno/Oak).
-/// Es el único servicio que expone la bandeja de notificaciones del sistema.
-/// </summary>
+// cliente -> reenviar servicio notificaciones
 public sealed class NotificationServiceClient
 {
     private readonly HttpClient _http;

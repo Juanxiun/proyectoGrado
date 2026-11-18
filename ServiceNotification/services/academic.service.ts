@@ -1,10 +1,4 @@
-/**
- * Cliente interno hacia ServiceAcademic para la reevaluación de riesgo.
- *
- * El cálculo de desempeño vive en ServiceAcademic (es el dueño de periodos y
- * trimestres) y no se replica aquí: este servicio sólo lo consulta y decide a
- * quién avisar según su catálogo.
- */
+// archivo -> cliente academic riesgo
 const BASE = Deno.env.get("ACADEMIC_SERVICE_URL") ?? "http://localhost:8881";
 const TOKEN = Deno.env.get("INTERNAL_PUSH_TOKEN") ?? "shalom-internal-push";
 

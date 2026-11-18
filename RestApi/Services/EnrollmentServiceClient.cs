@@ -1,8 +1,6 @@
 namespace RestApi.Services;
 
-/// <summary>
-/// Cliente HTTP gateway hacia ServiceEnrollment (Deno/Oak).
-/// </summary>
+// cliente -> reenviar servicio inscripciones
 public sealed class EnrollmentServiceClient
 {
     private readonly HttpClient _http;

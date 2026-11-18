@@ -1,4 +1,4 @@
-// controllers/webhookHandler.ts
+// webhook -> manejar eventos entrantes
 import { Context } from "@oak/oak";
 import { extractBearerToken, getClaimsFromToken } from "../security/auth.ts";
 import { sendWebhookCallback } from "../services/webhook.service.ts";
@@ -45,21 +45,21 @@ export interface WebhookEventPayload {
 type Handler = (ctx: Context) => Promise<void>;
 
 const EVENT_HANDLERS: Record<string, Handler> = {
-  // Materiales
+  // mapa -> handlers materiales
   "materiales.list": listMateriales,
   "materiales.get": getMaterial,
   "materiales.create": createMaterial,
   "materiales.update": updateMaterial,
   "materiales.delete": deleteMaterial,
 
-  // Encargos / Tareas
+  // mapa -> handlers encargos
   "encargos.list": listEncargos,
   "encargos.get": getEncargo,
   "encargos.create": createEncargo,
   "encargos.update": updateEncargo,
   "encargos.delete": deleteEncargo,
 
-  // Calificaciones
+  // mapa -> handlers calificaciones
   "calificaciones.list": listCalificaciones,
   "calificaciones.get": getCalificacion,
   "calificaciones.create": createCalificacion,
@@ -67,7 +67,7 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "calificaciones.delete": deleteCalificacion,
   "calificaciones.bulk": bulkCalificaciones,
 
-  // Asistencia
+  // mapa -> handlers asistencia
   "asistencia.list": listAsistencias,
   "asistencia.get": getAsistencia,
   "asistencia.create": createAsistencia,

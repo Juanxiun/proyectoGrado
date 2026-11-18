@@ -18,13 +18,13 @@ interface CalificacionRow {
   observacion?: string | null;
   fechaCalificacion: Date | string;
   fechaActualizacion: Date | string;
-  // Estudiante info
+  // fila -> datos estudiante
   usuarioId?: bigint;
   nombre?: string;
   apellidoPaterno?: string;
   apellidoMaterno?: string;
   numeroDoc?: string;
-  // Encargo info
+  // fila -> datos encargo
   titulo?: string;
   tipo?: string;
   ponderacion?: string | number;
@@ -259,7 +259,7 @@ export async function saveBulkCalificaciones(input: BulkCalificacionInput): Prom
           throw new HttpError(400, `Nota inválida (${item.nota}) para el estudiante ${estId}`);
         }
 
-        // Resuelve estudiante_id (puede ser id o usuario_id)
+        // paso -> resolver estudiante
         let estRes = await client.queryObject<{ id: bigint }>(
           `SELECT id FROM estudiantes WHERE usuario_id = $1 LIMIT 1`,
           [estId],

@@ -36,11 +36,7 @@ public sealed class CursosController : ControllerBase
         => await ProxyResponse.From(await response);
 }
 
-/// <summary>
-/// Materias por GRADO. 1°A y 1°B cursan lo mismo, así que la materia se
-/// configura una sola vez a nivel de grado y la interfaz muestra un bloque
-/// único con todos sus paralelos.
-/// </summary>
+/// <summary>Materias por grado con todos sus paralelos.</summary>
 [ApiController]
 [Route("api/grados")]
 [Produces("application/json")]
@@ -74,11 +70,7 @@ public sealed class GradosController : ControllerBase
         => await ProxyResponse.From(await response);
 }
 
-/// <summary>
-/// Maya curricular: los temas que se trabajarán en cada materia de un grado.
-/// Es reutilizable —se define una vez y lo usan todas las gestión— a diferencia
-/// de la malla del período, que sólo registra qué materia existe.
-/// </summary>
+/// <summary>Maya curricular reutilizable de temas por grado.</summary>
 [ApiController]
 [Route("api/malla")]
 [Produces("application/json")]
