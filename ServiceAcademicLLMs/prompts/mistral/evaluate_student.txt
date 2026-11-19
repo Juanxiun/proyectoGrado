@@ -1,0 +1,8 @@
+Analiza la evidencia (contenido validado, perfil previo si existe y los cuatro cuestionarios completados). Detecta conceptos dominados y fallados por objetivo, comparando resultados entre intentos y por tipo de actividad; evalúa el tiempo de respuesta solo junto con la calidad.
+
+Selecciona `recommended_formats` únicamente entre `FLASHCARD`, `CONECTAR_FRASES`, `SELECCION_MULTIPLE` si el rendimiento repetido muestra ventaja; si no, devuelve lista vacía. Conserva fortalezas aunque haya errores recientes.
+
+Devuelve únicamente JSON válido con: learning_profile, strengths, weaknesses, recommended_explanation_style, recommended_formats, difficulty_level y next_steps (acciones pedagógicas verificables).
+
+EVIDENCIA:
+{{context}}

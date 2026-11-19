@@ -55,13 +55,12 @@ export function CoverImagePicker({
         const uri = asset.uri;
         const ext = uri.split('.').pop()?.toLowerCase() ?? '';
 
-        // Validar formato si tiene extensión
+        // validar imagen -> formato y tamaño permitidos
         if (ext && !ALLOWED_EXTENSIONS.includes(ext) && !uri.startsWith('data:image/')) {
           Alert.alert('Formato inválido', 'Solo se permiten imágenes en formato JPG, PNG o WEBP.');
           return;
         }
 
-        // Validar tamaño si está disponible
         if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE_BYTES) {
           Alert.alert('Archivo muy grande', 'La imagen de portada debe pesar entre 2 MB y 5 MB como máximo.');
           return;
@@ -85,7 +84,6 @@ export function CoverImagePicker({
       <Text className="text-xs font-semibold text-gray-700 mb-1.5">{label}</Text>
       
       <View className="flex-row items-center gap-3">
-        {/* Visual Preview o Fallback */}
         <View className="w-28 h-16 rounded-xl overflow-hidden border border-gray-200 shadow-sm relative items-center justify-center bg-gray-100">
           {value && !failed ? (
             <Image
@@ -104,7 +102,6 @@ export function CoverImagePicker({
           )}
         </View>
 
-        {/* Action Buttons */}
         <View className="flex-1 gap-1.5">
           <View className="flex-row flex-wrap gap-2">
             <TouchableOpacity

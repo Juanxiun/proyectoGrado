@@ -1,6 +1,5 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest, buildQuery, safe } from './client';
 
-/** Escala de riesgo del seguimiento académico. */
 export type NivelRiesgo = 'sin_riesgo' | 'observacion' | 'riesgo' | 'riesgo_alto';
 
 export interface ResumenAsistencia {
@@ -9,7 +8,7 @@ export interface ResumenAsistencia {
   atrasos: number;
   justificadas: number;
   total: number;
-  /** Porcentaje de asistencia efectiva; null si no hay registros. */
+  // tasa -> null cuando no hay registros
   tasa: number | null;
 }
 
@@ -35,7 +34,7 @@ export interface LineaLibro {
   pesoTotal: number;
   tareasCalificadas: number;
   tareasPublicadas: number;
-  /** Porcentaje de la materia aún sin calificar. */
+  // desercion -> porcentaje aún sin calificar
   desercion: number | null;
   asistencia: ResumenAsistencia;
   indice: number | null;
@@ -108,6 +107,7 @@ export interface DesempenoMateria {
 
 export interface PanelEstudiante {
   estudianteId: string;
+  usuarioId: string;
   nombre: string;
   apellidoPaterno: string;
   apellidoMaterno?: string | null;
@@ -151,46 +151,32 @@ export interface UmbralesSeguimiento {
   pesoPromedio: number;
 }
 
-/**
- * Seguimiento académico. Las notas se calculan en el backend a partir de las
- * calificaciones y su ponderación, así que no hay nada que promediar aquí:
- * esta capa sólo muestra lo que devuelve ServiceAcademic.
- */
+// seguimientoApi -> solo expone lo que calcula ServiceAcademic
 export const seguimientoApi = {
   async libro(params: {
     cursoPeriodoId: string | number;
     materiaId: string | number;
     trimestre: number;
   }): Promise<LibroNotas | null> {
-    try {
-      return await apiRequest<LibroNotas>(
-        `/api/seguimiento/libro${buildQuery({
-          cursoPeriodoId: String(params.cursoPeriodoId),
-          materiaId: String(params.materiaId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.libro]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.libro]', () => apiRequest<LibroNotas>(
+      `/api/seguimiento/libro${buildQuery({
+        cursoPeriodoId: String(params.cursoPeriodoId),
+        materiaId: String(params.materiaId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async panelCurso(params: {
     cursoPeriodoId: string | number;
     trimestre: number;
   }): Promise<PanelCurso | null> {
-    try {
-      return await apiRequest<PanelCurso>(
-        `/api/seguimiento/panel/curso${buildQuery({
-          cursoPeriodoId: String(params.cursoPeriodoId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.panelCurso]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.panelCurso]', () => apiRequest<PanelCurso>(
+      `/api/seguimiento/panel/curso${buildQuery({
+        cursoPeriodoId: String(params.cursoPeriodoId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async panelEstudiante(params: {
@@ -198,17 +184,12 @@ export const seguimientoApi = {
     periodoId: string | number;
     trimestre: number;
   }): Promise<PanelEstudiante | null> {
-    try {
-      return await apiRequest<PanelEstudiante>(
-        `/api/seguimiento/panel/estudiante/${params.estudianteId}${buildQuery({
-          periodoId: String(params.periodoId),
-          trimestre: String(params.trimestre),
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.panelEstudiante]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.panelEstudiante]', () => apiRequest<PanelEstudiante>(
+      `/api/seguimiento/panel/estudiante/${params.estudianteId}${buildQuery({
+        periodoId: String(params.periodoId),
+        trimestre: String(params.trimestre),
+      })}`,
+    ), null);
   },
 
   async riesgo(params: {
@@ -216,31 +197,21 @@ export const seguimientoApi = {
     trimestre: number;
     limite?: number;
   }): Promise<{ total: number; umbrales: UmbralesSeguimiento; alertas: AlertaRiesgo[] } | null> {
-    try {
-      return await apiRequest(
-        `/api/seguimiento/riesgo${buildQuery({
-          periodoId: String(params.periodoId),
-          trimestre: String(params.trimestre),
-          limite: params.limite,
-        })}`,
-      );
-    } catch (err) {
-      console.warn('[seguimientoApi.riesgo]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.riesgo]', () => apiRequest(
+      `/api/seguimiento/riesgo${buildQuery({
+        periodoId: String(params.periodoId),
+        trimestre: String(params.trimestre),
+        limite: params.limite,
+      })}`,
+    ), null);
   },
 
   async umbrales(): Promise<UmbralesSeguimiento | null> {
-    try {
-      return await apiRequest<UmbralesSeguimiento>('/api/seguimiento/umbrales');
-    } catch (err) {
-      console.warn('[seguimientoApi.umbrales]', err);
-      return null;
-    }
+    return safe('[seguimientoApi.umbrales]', () => apiRequest<UmbralesSeguimiento>('/api/seguimiento/umbrales'), null);
   },
 };
 
-/** Etiqueta y color del nivel de riesgo, para reutilizar en toda la interfaz. */
+// RIESGO_META -> etiqueta y color por nivel de riesgo
 export const RIESGO_META: Record<NivelRiesgo, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' }> = {
   sin_riesgo: { label: 'En regla', variant: 'success' },
   observacion: { label: 'En observación', variant: 'info' },

@@ -1,0 +1,10 @@
+Reestructura las 20 preguntas del banco validado en 5 o 6 actividades gamificadas variadas usando tu skill de actividades gamificadas y Markdown estricto.
+
+Cada pregunta original se usa exactamente una vez (total cubiertas = 20), sin repetir más de 2 veces un formato y con dificultad progresiva (inicial=5 pts, intermedia=7 pts, avanzada=10 pts).
+
+Devuelve únicamente JSON válido con `actividades`, cada objeto con:
+- tipo: "COMPLETAR_PARRAFO" | "RESOLVER_EJERCICIO" | "CONECTAR_PUNTOS" | "ACOMODAR_FORMULA"
+- titulo, pregunta_ids (1-4 IDs), contenido (según tipo), dificultad, objetivo_aprendizaje, puntos_base
+
+Contexto:
+{{context}}

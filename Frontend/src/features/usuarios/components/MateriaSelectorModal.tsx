@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Modal,
   ScrollView,
@@ -69,7 +69,6 @@ export function MateriaSelectorModal({
 
   return (
     <View className="gap-2.5">
-      {/* ── Encabezado y resumen del selector ── */}
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Ionicons name="book-outline" size={16} color="#801529" />
@@ -102,7 +101,6 @@ export function MateriaSelectorModal({
         </TouchableOpacity>
       </View>
 
-      {/* ── Tags de materias seleccionadas ── */}
       {selectedMaterias.length > 0 ? (
         <View className="flex-row flex-wrap gap-1.5 bg-white/70 p-2.5 rounded-2xl border border-gray-200/80">
           {selectedMaterias.map((materia) => (
@@ -142,7 +140,6 @@ export function MateriaSelectorModal({
         </TouchableOpacity>
       )}
 
-      {/* ── Modal Selector Organizado con Buscador ── */}
       <Modal
         visible={modalOpen}
         transparent
@@ -151,7 +148,6 @@ export function MateriaSelectorModal({
       >
         <View className="flex-1 bg-black/50 items-center justify-center p-4">
           <View className="bg-white rounded-3xl w-full max-w-lg shadow-2xl border border-gray-100 flex-col max-h-[85vh]">
-            {/* Header del Modal */}
             <View className="p-5 pb-3 border-b border-gray-100 flex-row items-center justify-between">
               <View className="flex-row items-center gap-2.5">
                 <View className="w-10 h-10 rounded-2xl bg-maroon/10 border border-maroon/20 items-center justify-center">
@@ -175,7 +171,6 @@ export function MateriaSelectorModal({
               </TouchableOpacity>
             </View>
 
-            {/* Buscador + Botones Rápidos */}
             <View className="p-4 pb-2 gap-2 bg-gray-50/60 border-b border-gray-100">
               <View className="flex-row items-center bg-white rounded-xl px-3 py-2 border border-gray-200">
                 <Ionicons name="search" size={16} color="#9CA3AF" />
@@ -219,7 +214,6 @@ export function MateriaSelectorModal({
               </View>
             </View>
 
-            {/* Lista Scrollable de Materias */}
             <ScrollView className="flex-1 p-3" contentContainerClassName="gap-1.5 pb-4">
               {filteredMaterias.length === 0 ? (
                 <View className="py-12 items-center justify-center">
@@ -285,7 +279,6 @@ export function MateriaSelectorModal({
               )}
             </ScrollView>
 
-            {/* Footer de Confirmación */}
             <View className="p-4 border-t border-gray-100 bg-gray-50/50 flex-row items-center justify-between">
               <Text className="text-xs text-gray-600 font-semibold">
                 {selectedIds.length} {selectedIds.length === 1 ? 'materia lista' : 'materias listas'}

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { MONTHS } from '../../utils/fechas';
 
 interface DateTimePickerProps {
   value: string;
@@ -11,21 +12,6 @@ interface DateTimePickerProps {
   minYear?: number;
   maxYear?: number;
 }
-
-const MONTHS = [
-  { short: 'Ene', long: 'Enero' },
-  { short: 'Feb', long: 'Febrero' },
-  { short: 'Mar', long: 'Marzo' },
-  { short: 'Abr', long: 'Abril' },
-  { short: 'May', long: 'Mayo' },
-  { short: 'Jun', long: 'Junio' },
-  { short: 'Jul', long: 'Julio' },
-  { short: 'Ago', long: 'Agosto' },
-  { short: 'Sep', long: 'Septiembre' },
-  { short: 'Oct', long: 'Octubre' },
-  { short: 'Nov', long: 'Noviembre' },
-  { short: 'Dic', long: 'Diciembre' },
-];
 
 const TIME_PRESETS = [
   { label: '07:30', hour: 7, minute: 30 },
@@ -78,7 +64,6 @@ export function DateTimePicker({
     setDecadeStart(Math.floor(d.getFullYear() / 10) * 10);
   }, [value, open]);
 
-  // Formato visual en el botón trigger
   const displayFormatted = useMemo(() => {
     if (!value) return '';
     try {
@@ -135,7 +120,6 @@ export function DateTimePicker({
         <Text className="text-xs font-semibold text-gray-700 mb-1">{label}</Text>
       ) : null}
 
-      {/* Botón Trigger de Apertura */}
       <TouchableOpacity
         onPress={() => setOpen(true)}
         className="bg-gray-100 hover:bg-gray-200/80 border border-gray-200 rounded-xl px-3.5 py-2.5 flex-row items-center justify-between"
@@ -158,7 +142,6 @@ export function DateTimePicker({
         </View>
       </TouchableOpacity>
 
-      {/* Modal de Selección Fecha y Hora */}
       <Modal
         visible={open}
         transparent
@@ -168,7 +151,6 @@ export function DateTimePicker({
         <View className="flex-1 bg-black/50 justify-center items-center p-3">
           <View className="bg-white rounded-2xl p-5 max-w-md w-full shadow-2xl border border-gray-100 max-h-[90vh]">
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Título de la ventana */}
               <View className="flex-row items-center justify-between mb-3 pb-2 border-b border-gray-100">
                 <View className="flex-row items-center gap-2">
                   <Ionicons name="calendar-outline" size={20} color="#801529" />
@@ -184,7 +166,6 @@ export function DateTimePicker({
                 </TouchableOpacity>
               </View>
 
-              {/* Cabecera Año y Mes */}
               <View className="flex-row items-center justify-between mb-3 gap-2">
                 <TouchableOpacity
                   onPress={() => {
@@ -215,7 +196,6 @@ export function DateTimePicker({
                 </TouchableOpacity>
               </View>
 
-              {/* Selector de Años */}
               {showYearPicker && (
                 <View className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <View className="flex-row justify-between items-center mb-2">
@@ -263,7 +243,6 @@ export function DateTimePicker({
                 </View>
               )}
 
-              {/* Selector de Meses */}
               {showMonthPicker && (
                 <View className="mb-3 p-3 bg-gray-50 rounded-xl border border-gray-200">
                   <View className="flex-row flex-wrap justify-between gap-1.5">
@@ -291,7 +270,6 @@ export function DateTimePicker({
                 </View>
               )}
 
-              {/* Cuadrícula de Días */}
               {!showYearPicker && !showMonthPicker && (
                 <>
                   <View className="flex-row justify-between items-center mb-2 px-1">
@@ -372,7 +350,6 @@ export function DateTimePicker({
                 </>
               )}
 
-              {/* SECCIÓN DE HORA Y MINUTOS */}
               <View className="mt-2 pt-3 border-t border-gray-100">
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider">
@@ -383,9 +360,7 @@ export function DateTimePicker({
                   </TouchableOpacity>
                 </View>
 
-                {/* Controles interactivos de Hora y Minuto */}
                 <View className="flex-row items-center justify-center gap-3 bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  {/* Horas */}
                   <View className="items-center">
                     <Text className="text-[10px] text-gray-400 font-bold uppercase mb-1">Hora</Text>
                     <View className="flex-row items-center gap-1.5">
@@ -413,7 +388,6 @@ export function DateTimePicker({
 
                   <Text className="text-2xl font-bold text-gray-400 mt-3">:</Text>
 
-                  {/* Minutos */}
                   <View className="items-center">
                     <Text className="text-[10px] text-gray-400 font-bold uppercase mb-1">Minuto</Text>
                     <View className="flex-row items-center gap-1.5">
@@ -450,7 +424,6 @@ export function DateTimePicker({
                   </View>
                 </View>
 
-                {/* Presets Rápidos */}
                 <View className="flex-row flex-wrap gap-1.5 mt-2.5">
                   {TIME_PRESETS.map((p) => (
                     <TouchableOpacity
@@ -479,7 +452,6 @@ export function DateTimePicker({
                 </View>
               </View>
 
-              {/* Resumen de Selección */}
               <View className="mt-3 p-2.5 bg-gold/15 rounded-xl border border-gold/30 flex-row items-center justify-between">
                 <Text className="text-xs text-amber-950 font-medium">Seleccionado:</Text>
                 <Text className="text-xs font-bold text-maroon font-mono">
@@ -488,7 +460,6 @@ export function DateTimePicker({
                 </Text>
               </View>
 
-              {/* Botones de Acción */}
               <View className="flex-row gap-2 mt-4 pt-2 border-t border-gray-100">
                 <TouchableOpacity
                   onPress={() => setOpen(false)}

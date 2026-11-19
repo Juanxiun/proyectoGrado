@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import { KpiCard } from '../../../shared/ui';
 import type { TarjetaKpi } from '../../../api/dashboard.api';
 
-/** Las tarjetas del encabezado, con el valor ya formateado. */
+// kpis del tablero -> tarjetas ya formateadas
 export function KpisDelTablero({ kpis }: { kpis: TarjetaKpi[] }) {
   if (kpis.length === 0) {
     return (

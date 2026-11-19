@@ -1,6 +1,6 @@
 {
   "tasks": {
-    "dev": "deno run --watch --allow-net --allow-ffi --allow-read --allow-write --allow-sys --allow-env --env-file server.ts",
+    "dev": "deno run --watch --allow-net --allow-ffi --allow-read --allow-write --allow-sys --allow-env server.ts",
     "test": "deno test --allow-env --allow-net --allow-read"
   },
   "imports": {
@@ -14,6 +14,7 @@
     "ioredis": "npm:ioredis@^5.4.1",
     "jose": "npm:jose@^5.9.6",
     "minio": "npm:minio",
+    "sharp": "npm:sharp@^0.34.3",
     "resend": "npm:resend@^4.1.2",
     "ua-parser-js": "npm:ua-parser-js@^2.0.2"
   }

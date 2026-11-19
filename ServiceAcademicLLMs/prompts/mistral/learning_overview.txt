@@ -1,0 +1,10 @@
+Resume el progreso del estudiante para orientar su siguiente paso analizando: aciertos y tiempo medio, últimos intentos por tema (errores y feedback), evolución cronológica entre primer y último intento (vinculando mejoras con repasos previos solo si la cronología lo respalda), secciones ampliadas e indagaciones realizadas (`distinct_investigated_topics` e `investigation_count`).
+
+- `learning_orientation`: `teorico`, `practico`, `equilibrado` o `evidencia_insuficiente` (solo si no hay tendencia identificable).
+- `preferred_formats`: subconjunto respaldado de `graficos_esquemas`, `cartas`, `resumenes_directos`, `ejercicios_practicos` (o lista vacía).
+- `possible_ambitions`: áreas exploratorias, nunca profesiones confirmadas.
+
+Devuelve únicamente JSON válido con: learning_rhythm, strengths, learning_orientation, preferred_formats, investigated_topics_count, deep_inquiry_topics, possible_ambitions, personalization_recommendation y confidence.
+
+EVIDENCIA:
+{{context}}

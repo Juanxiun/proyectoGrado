@@ -1,13 +1,18 @@
 {
   "expo": {
-    "name": "Frontend",
-    "slug": "Frontend",
-    "version": "1.0.0",
+    "name": "Centro Educativo Cristiano Shalom - El Alto",
+    "slug": "shalom-app",
+    "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/favicon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -16,10 +21,31 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "La ubicación se usa para mostrar el lugar aproximado de inicio de sesión en la información de tu sesión."
+        }
+      ],
+      "expo-font",
+      "expo-status-bar"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e46027eb-1be7-4105-b795-90456fba9e97"
+      }
+    },
+    "owner": "juanxiun"
   }
 }

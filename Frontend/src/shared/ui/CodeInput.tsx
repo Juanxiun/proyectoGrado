@@ -2,10 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { NativeSyntheticEvent, TextInputKeyPressEventData } from 'react-native';
 import { TextInput, View } from 'react-native';
 
-/**
- * Código de un solo uso en casilleros independientes: el foco avanza al
- * escribir, retrocede con Retroceso y acepta el pegado del código completo.
- */
+// CodeInput -> código OTP en casilleros con autoavance
 export function CodeInput({
   length = 6,
   value,
@@ -24,7 +21,6 @@ export function CodeInput({
   );
   const refs = useRef<Array<TextInput | null>>([]);
 
-  // Refleja cambios externos (por ejemplo al reenviar el código o al limpiarlo).
   useEffect(() => {
     setDigits((prev) => {
       const next = Array.from({ length }, (_, i) => value[i] ?? '');
@@ -46,7 +42,6 @@ export function CodeInput({
   const handleChange = (text: string, index: number) => {
     const cleaned = text.replace(/\D/g, '');
 
-    // Pegado de varios caracteres a la vez.
     if (cleaned.length > 1) {
       const slice = cleaned.slice(0, length);
       const next = Array.from({ length }, (_, i) => slice[i] ?? '');

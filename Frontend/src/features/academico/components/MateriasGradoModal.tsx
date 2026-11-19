@@ -18,11 +18,11 @@ import { Alert, Button, TextField } from '../../../shared/ui';
 
 type Item = Record<string, any>;
 
-/** Anchos de columna. En móvil dos, y se abren al ensanchar la pantalla. */
+// COLS -> ancho de columna responsivo
 const COLS = 'w-1/2 md:w-1/3 lg:w-1/5';
 const VISIBLES_POR_SECCION = 15;
 
-/** Encabezado de sección: separa los bloques para que no se lean mezclados. */
+// Seccion -> encabezado con contador
 function Seccion({
   titulo,
   cantidad,
@@ -46,7 +46,7 @@ function Seccion({
   );
 }
 
-/** Agrupa por tipo para que principales y extracurriculares no se mezclen. */
+// porTipo -> separa principales y extracurriculares
 function porTipo<T extends { tipoMateria: string }>(items: T[]) {
   return {
     principales: items.filter((m) => m.tipoMateria !== 'extracurricular'),
@@ -54,14 +54,7 @@ function porTipo<T extends { tipoMateria: string }>(items: T[]) {
   };
 }
 
-/**
- * Materias que se cursan en un GRADO, no en un paralelo.
- *
- * 1°A y 1°B cursan exactamente lo mismo, así que la materia se configura una
- * sola vez por grado y la interfaz la muestra como un bloque único con todos
- * sus paralelos adentro. Un grado sin materias queda fuera de la gestión, y por
- * eso se avisa con una advertencia.
- */
+// materias por grado -> 1°A y 1°B comparten temario
 export function MateriasGradoModal({
   visible,
   grado,
@@ -72,11 +65,9 @@ export function MateriasGradoModal({
 }: {
   visible: boolean;
   grado: { nivel: NivelEducativo; grado: string } | null;
-  /** Se muestra como contexto: el grado es uno solo, esto son sus paralelos. */
   paralelos?: string[];
   canEdit: boolean;
   onClose: () => void;
-  /** Avisa al listado para que refresque el contador y la advertencia. */
   onChanged?: () => void;
 }) {
   const [asignadas, setAsignadas] = useState<MateriaDelGrado[]>([]);
@@ -91,11 +82,7 @@ export function MateriasGradoModal({
   const nivel = grado?.nivel;
   const nombreGrado = grado?.grado;
 
-  /**
-   * Las dos listas se piden por separado y a propósito: si una falla, la otra
-   * sigue mostrándose. Con un Promise.all un 404 en cualquiera de las dos
-   * dejaba el modal entero en blanco.
-   */
+  // cargar -> cada lista falla por separado
   const cargar = useCallback(async () => {
     if (!nivel || !nombreGrado) return;
     setLoading(true);
@@ -306,7 +293,6 @@ export function MateriasGradoModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View className="flex-1 bg-black/60 items-center justify-center p-3 md:p-6">
         <View className="bg-white rounded-3xl w-full max-w-4xl max-h-[88vh] overflow-hidden shadow-2xl flex-col">
-          {/* Cabecera */}
           <View className="p-4 md:p-5 bg-maroon flex-row items-start justify-between gap-3">
             <View className="flex-1">
               <Text className="text-[10px] font-bold uppercase tracking-widest text-white/70">
@@ -348,7 +334,6 @@ export function MateriasGradoModal({
             </View>
           </View>
 
-          {/* El cuerpo tiene scroll propio: nunca desborda la pantalla. */}
           <ScrollView className="flex-1" contentContainerClassName="p-4 md:p-5">
             {error ? (
               <View className="mb-4">
@@ -363,7 +348,6 @@ export function MateriasGradoModal({
               </View>
             ) : (
               <>
-                {/* ── Materias asignadas ── */}
                 {asignadas.length === 0 ? (
                   <View className="mb-5">
                     <Seccion titulo="Asignadas" cantidad={0} tono="gray" />
@@ -401,7 +385,6 @@ export function MateriasGradoModal({
                   </TouchableOpacity>
                 ) : null}
 
-                {/* ── Catálogo ── */}
                 {canEdit ? (
                   <View className="pt-4 border-t border-gray-100">
                     <View className="flex-row items-center justify-between mb-3">

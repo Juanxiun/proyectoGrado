@@ -100,14 +100,14 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "cursos.create": createCurso,
   "cursos.update": updateCurso,
 
-  // Grados: materias compartidas por todos los paralelos
+  // mapa -> materias compartidas grados
   "grados.list": getGrados,
   "grados.materias": getMateriasGrado,
   "grados.materias.agregar": postMateriaGrado,
   "grados.materias.reemplazar": putMateriasGrado,
   "grados.materias.quitar": deleteMateriaGrado,
 
-  // Maya curricular: temas por grado y materia
+  // mapa -> temas malla curricular
   "malla.list": getMalla,
   "malla.resumen": getMallaResumen,
   "malla.materia": getMallaMateria,
@@ -132,7 +132,7 @@ const EVENT_HANDLERS: Record<string, Handler> = {
   "aulas.list": getAulas,
   "aulas.create": postAula,
 
-  // Seguimiento Académico
+  // mapa -> seguimiento academico
   "seguimiento.libro": getLibro,
   "seguimiento.panel-curso": getPanelCurso,
   "seguimiento.panel-estudiante": getPanelEstudiante,

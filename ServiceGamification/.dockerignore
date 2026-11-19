@@ -1,0 +1,7 @@
+.env
+deno.lock
+*.log
+.git
+.vscode
+.idea
+*.md

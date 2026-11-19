@@ -4,10 +4,7 @@ import { procesarEvento } from "./reglas.service.ts";
 import { reevaluar } from "./riesgo.service.ts";
 import type { DomainEvent } from "../models/notification.ts";
 
-/**
- * Eventos que, además de notificar, disparan una reevaluación del desempeño
- * del estudiante afectado.
- */
+// const -> eventos reevaluan desempeno
 const EVENTOS_REVALUAN = new Set([
   "calificaciones.create",
   "calificaciones.update",
@@ -33,11 +30,7 @@ function programarReintento(): void {
   }, 5000);
 }
 
-/**
- * Suscribe el servicio al canal de eventos de dominio. Todos los servicios
- * publican ahí sus cambios (materias, horarios, inscripciones, usuarios…) y
- * este servicio es el único que decide a quién notifica.
- */
+// funcion -> suscribir canal eventos
 export async function iniciarBusEventos(): Promise<void> {
   if (conectado) return;
 
@@ -66,8 +59,7 @@ export async function iniciarBusEventos(): Promise<void> {
       console.error(`[EventBus] Error procesando ${evento.eventType}:`, err);
     }
 
-    // El seguimiento se recalcula después de resolver la notificación, para
-    // que una reevaluación lenta no retarde el aviso del evento original.
+    // bus -> reevaluar despues aviso
     if (EVENTOS_REVALUAN.has(evento.eventType)) {
       try {
         await reevaluar((evento.payload ?? {}) as Record<string, unknown>);
@@ -87,9 +79,21 @@ export async function iniciarBusEventos(): Promise<void> {
     programarReintento();
   });
 
-  await subscriber.subscribe(CANAL);
-  conectado = true;
-  console.log(`[EventBus] Suscrito al canal "${CANAL}"`);
+  try {
+    await subscriber.subscribe(CANAL);
+    conectado = true;
+    console.log(`[EventBus] Suscrito al canal "${CANAL}"`);
+  } catch (err) {
+    conectado = false;
+    try {
+      subscriber.disconnect();
+    } catch {
+      // bus -> liberar suscriptor rechazado
+    }
+    subscriber = null;
+    console.error(`[EventBus] No hay permiso para suscribirse a "${CANAL}":`, err);
+    programarReintento();
+  }
 }
 
 export function estadoBusEventos(): { canal: string; conectado: boolean } {

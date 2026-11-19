@@ -9,16 +9,7 @@ import { HttpError, mapDbError } from "../utils/errors.ts";
 import { publicarEventoAsync } from "../utils/events.ts";
 import { serialize, toId } from "../utils/serialize.ts";
 
-/**
- * Maya curricular: qué temas se van a trabajar en cada materia de un grado.
- *
- * Es REUTILIZABLE: se define una vez por grado y materia y lo usan todas las
- * gestión, igual que las materias del grado. No lleva período porque el temario
- * no cambia cada año; lo que cambia cada año son los docentes y las fechas.
- *
- * A diferencia de `mallas_curriculares` (que registra qué materia existe en la
- * gestión), esto es el CONTENIDO de la materia.
- */
+// servicio -> temas malla curricular
 
 const SELECT = `
   SELECT
@@ -50,7 +41,7 @@ function mapear(fila: any): TemaMalla {
   });
 }
 
-/** Relee un tema con los datos de su materia (el RETURNING no trae el JOIN). */
+// util -> releer tema con materia
 async function obtenerTema(temaId: string): Promise<TemaMalla> {
   const res = await query(
     `${SELECT} WHERE t.id = $1`,
@@ -60,11 +51,7 @@ async function obtenerTema(temaId: string): Promise<TemaMalla> {
   return mapear(res.rows[0]);
 }
 
-/**
- * Toda la maya de un grado, agrupada por materia y con las unidades ordenadas.
- * Devuelve también las materias que aún no tienen temas, para que la
- * interfaz ofrezca crearlos.
- */
+// funcion -> malla completa por grado
 export async function obtenerMallaGrado(
   nivel: NivelEducativo,
   grado: string,
@@ -129,8 +116,7 @@ export async function crearTema(
   }
 
   try {
-    // La materia tiene que pertenecer al grado: si no, el tema quedaría
-    // huérfano y no aparecería en ninguna pantalla.
+    // valida -> materia pertenece grado
     const materia = await query<{ id: bigint }>(
       `SELECT id FROM grado_materias WHERE nivel = $1 AND grado = $2 AND materia_id = $3`,
       [nivel, grado, toId(input.materiaId)],
@@ -259,10 +245,7 @@ export async function eliminarTema(temaId: string): Promise<void> {
   }
 }
 
-/**
- * Guarda la malla completa de una materia de un golpe. Es lo que usa la
- * pantalla cuando el docente edita el temario y presiona guardar.
- */
+// funcion -> guardar temario completo
 export async function guardarTemasMateria(
   nivel: NivelEducativo,
   grado: string,
@@ -282,7 +265,7 @@ export async function guardarTemasMateria(
 
   try {
     await sTransaction(async (tx) => {
-      // Lo que se quitó de la lista se elimina; lo que quedó se actualiza.
+      // logica -> quitar borrar actualizar temas
       for (const previa of existentes.rows) {
         if (!idsEnviados.has(String(previa.id))) {
           await tx.queryObject(`DELETE FROM malla_temas WHERE id = $1`, [previa.id]);
@@ -342,8 +325,7 @@ export async function guardarTemasMateria(
 
     const guardados = await listarTemasMateria(nivel, grado, materiaId);
 
-    // El temario le sirve a docentes y estudiantes por igual, así que el aviso
-    // sale con el nombre de la materia y no a un curso concreto.
+    // aviso -> temario docentes estudiantes
     publicarEventoAsync("malla.tema.guardar", {
       nivel,
       grado,
@@ -358,7 +340,7 @@ export async function guardarTemasMateria(
   }
 }
 
-/** Resumen para la vista general: cuántas materias tienen temario cargado. */
+// funcion -> resumen temario cargado
 export async function resumenMalla(nivel: NivelEducativo, grado: string) {
   const materias = await listarMateriasGrado(nivel, grado);
   if (materias.length === 0) {

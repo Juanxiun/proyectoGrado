@@ -1,0 +1,35 @@
+services:
+  shalomantivirus:
+    image: docker.io/clamav/clamav:latest
+    container_name: shalom_antivirus
+    ports:
+      - "3310:3310"
+    networks:
+      - shalom_backend
+
+  miniostorage:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: miniostorage
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    environment:
+      MINIO_ROOT_PASSWORD: adminpassword
+      MINIO_SERVER_URL: http://0.0.0.0:9000
+      MINIO_BROWSER_REDIRECT_URL: http://0.0.0.0:9001
+      MINIO_ROOT_USER: admin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-minio-data:/data
+
+volumes:
+  minio-minio-data:
+
+networks:
+  shalom_backend:
+    external: true
+    name: shalom_backend

@@ -1,0 +1,8 @@
+Genera exactamente `cantidad_objetivo` actividades evaluativas en español usando solo `evidencia_original` y siguiendo tu skill de aprendizaje basado en ejemplos y actividades.
+
+Incluye al menos uno de cada formato permitido (`SELECCION_MULTIPLE`, `COMPLETAR`, `DRAG_AND_DROP`, `CONECTAR_FRASES`), cada uno evaluando una idea distinta y con `source_chunk_ids` reales de la evidencia. Redacta enunciados, pasos y explicaciones en Markdown estricto (LaTeX $$...$$ para fórmulas).
+
+Devuelve únicamente JSON válido con `activities`.
+
+Contexto:
+{{context}}

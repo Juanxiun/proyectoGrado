@@ -1,0 +1,14 @@
+Genera una explicación académica personalizada usando el contenido validado, los fragmentos RAG recuperados y el perfil del estudiante, en Markdown estricto (LaTeX $$...$$ y gráficos Mermaid/ASCII cuando sea materia práctica).
+
+Adapta ritmo, ejemplos, ayudas y dificultad al perfil sin mencionarlo ni cambiar el significado. No entregues la respuesta de las preguntas orientadoras.
+
+Devuelve únicamente JSON válido con:
+- title, explanation (Markdown)
+- explanation_svg: SVG inline educativo basado en una analogía respaldada por la evidencia
+- microlearning_units: unidades progresivas {title, explanation, objective, inquiry_question}
+- inquiry_questions: preguntas con resumen microlearning, ejemplo Enunciado/Paso/Resultado y gráfico si aplica
+- examples: ejemplos en Markdown paso a paso solo con evidencia
+- concepts_to_reinforce
+
+EVIDENCIA:
+{{context}}

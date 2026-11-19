@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { clearApiCache } from '../api/client';
 import { storage } from '../utils/storage';
 import { useAuthActions } from '../hooks/useAuth';
+import { gamificacionApi } from '../api/gamificacion.api';
 import type { AuthUsuario, LoginResponse } from '../types';
 
 interface AuthContextValue {
@@ -26,8 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const syncUser = async () => {
       try {
-        const storedUser = await storage.getUser();
-        const storedToken = await storage.getToken();
+        const [storedUser, storedToken] = await Promise.all([
+          storage.getUser(),
+          storage.getToken(),
+        ]);
         if (storedUser && storedToken) {
           setUser(JSON.parse(storedUser) as AuthUsuario);
         } else {
@@ -47,6 +51,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (isLoading || !user || user.rol.toLocaleLowerCase('es') !== 'estudiante' || !user.cursoPeriodoId || !user.paralelo) return;
+    let activo = true;
+    void gamificacionApi.getInfoEstudiante().then(async (perfil) => {
+      if (perfil || !activo) return;
+      await gamificacionApi.registrarPerfil({
+        estudianteId: user.estudianteId || user.id,
+        cursoPeriodoId: user.cursoPeriodoId!,
+        paralelo: user.paralelo === 'B' ? 'B' : 'A',
+        nombre: user.nombre,
+        apellidoPaterno: user.apellidoPaterno,
+        avatarUrl: user.fotoUrl,
+      });
+    }).catch(() => {
+      // gamificacion -> reintentar la inicializacion al abrir el panel
+    });
+    return () => { activo = false; };
+  }, [isLoading, user]);
 
   const login = useCallback(
     async (username: string, password: string) => {
@@ -72,9 +95,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [authResend2FA, pending2FA]);
 
   const logout = useCallback(async () => {
-    await authLogout();
-    setUser(null);
-    setPending2FA(null);
+    try {
+      await authLogout();
+    } catch {
+      // auth -> permitir cierre local sin conexión
+    } finally {
+      clearApiCache();
+      await storage.clear();
+      setUser(null);
+      setPending2FA(null);
+    }
   }, [authLogout]);
 
   const updateLocalUser = useCallback((updates: Partial<AuthUsuario>) => {

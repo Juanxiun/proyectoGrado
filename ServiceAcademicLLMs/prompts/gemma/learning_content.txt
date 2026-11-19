@@ -1,0 +1,19 @@
+Analiza la evidencia RAG de esta sección y aplica tus skills de educación, microlearning, indagación y ejemplos en Markdown estricto (LaTeX $$...$$ y gráficos Mermaid/ASCII cuando aplique).
+
+Devuelve únicamente JSON válido con:
+- title: título académico completo del tema (≤120 caracteres)
+- summary: 2 frases fieles al material
+- learning_objectives: exactamente 3
+- key_concepts: exactamente 4, distintos entre sí
+- microlearning_units: exactamente 5 unidades {title, explanation (1-2 frases), objective, inquiry_question, examples_blackboard (1 ejercicio resuelto o caso cotidiano)}
+- concept_nodes: 4 a 6 nodos distintos {id, label, detail (1 frase), mini_example}
+- concept_edges: 3 a 6 relaciones específicas {source, target, label}
+- inquiry_questions: exactamente 4
+- inquiry_details: exactamente 4 objetos {pregunta, respuesta (2 oraciones)}
+- common_mistakes: máximo 2
+- difficulty: inicial, intermedio o avanzado
+- activities: []
+- examples_blackboard: []
+
+Contexto:
+{{context}}

@@ -1,5 +1,6 @@
 import { API_BASE_URL } from "../constants/config";
 
+// connectUsersWebSocket -> refresca usuarios al cambiar el recurso
 export function connectUsersWebSocket(onChange: () => void): () => void {
   let socket: WebSocket | null = null;
   const recordSeparator = "\x1e";
@@ -10,7 +11,6 @@ export function connectUsersWebSocket(onChange: () => void): () => void {
   try {
     socket = new WebSocket(hubUrl);
     socket.onopen = () => {
-      // Handshake requerido por SignalR cuando se usa WebSocket nativo.
       socket?.send(
         JSON.stringify({ protocol: "json", version: 1 }) + recordSeparator,
       );
@@ -26,8 +26,6 @@ export function connectUsersWebSocket(onChange: () => void): () => void {
             target?: string;
             arguments?: Array<{ resource?: string }>;
           };
-          // Las pantallas de usuarios sólo se actualizan cuando el gateway
-          // informa un cambio de ese recurso.
           if (
             message.type === 1 && message.target === "DataChanged" &&
             message.arguments?.[0]?.resource === "usuarios"
@@ -36,11 +34,9 @@ export function connectUsersWebSocket(onChange: () => void): () => void {
           }
         }
       } catch {
-        // La API HTTP continúa siendo la fuente de verdad.
       }
     };
   } catch {
-    // No se bloquea la pantalla si el hub aún está iniciando.
   }
 
   return () => {

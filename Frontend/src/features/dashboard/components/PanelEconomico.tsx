@@ -27,10 +27,7 @@ function Fila({
   );
 }
 
-/**
- * Estimación económica: cobranza real y proyección. Sólo llega a dirección y
- * control; para el resto el backend lo oculta.
- */
+// panel económico -> cobranza real y proyección
 export function PanelEconomico({ economico }: { economico: ResumenEconomico }) {
   const maxMes = Math.max(1, ...economico.porMes.map((m) => m.facturado));
 

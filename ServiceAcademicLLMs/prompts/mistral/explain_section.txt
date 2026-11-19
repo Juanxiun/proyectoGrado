@@ -1,0 +1,6 @@
+Explica esta sección o duda en Markdown estricto (sin SVG) usando solo la evidencia RAG.
+
+Devuelve únicamente JSON válido con: title, explanation (Markdown), microlearning_units (máximo 1), inquiry_questions, examples (1 ejercicio resuelto paso a paso o caso cotidiano en Markdown) y concepts_to_reinforce.
+
+EVIDENCIA:
+{{context}}

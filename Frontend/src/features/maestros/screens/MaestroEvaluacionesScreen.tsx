@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  ScrollView,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -11,10 +11,38 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
+import { evaluacionTrimestralApi } from '../../../api/evaluacionTrimestral.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { DateTimePicker } from '../../../displays/components/DateTimePicker';
 import { useResponsive } from '../../../utils/responsive';
+import { formatFechaHora } from '../../../utils/fechas';
+import { extraerEvaluaciones, type ItemEvaluacion } from '../../academico/utils/seguimiento';
+import { EvaluacionesTrimestralesSection } from '../components/EvaluacionesTrimestralesSection';
+
+const STORAGE_SECTION_KEY = 'maestro_eval_active_section';
+const STORAGE_ASIG_KEY = 'maestro_eval_selected_asig';
+
+function readWebStorage(key: string): string | null {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function writeWebStorage(key: string, value: string): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+}
 
 interface AsignacionDocente {
   id: string;
@@ -24,32 +52,35 @@ interface AsignacionDocente {
   nivel: string;
 }
 
-interface EvaluacionItem {
-  id: string;
-  asignacionId: string;
-  tipo: string;
-  titulo: string;
-  descripcion?: string;
-  ponderacion: number;
-  fechaPublicacion?: string;
-  fechaLimite?: string;
-  estado: string;
-  materiaNombre?: string;
-}
-
 export function MaestroEvaluacionesScreen() {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
 
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSectionState] = useState<'regulares' | 'trimestrales'>(() => {
+    const saved = readWebStorage(STORAGE_SECTION_KEY);
+    return saved === 'trimestrales' ? 'trimestrales' : 'regulares';
+  });
+  const [trimestralesGenerandoCount, setTrimestralesGenerandoCount] = useState(0);
   const [asignaciones, setAsignaciones] = useState<AsignacionDocente[]>([]);
-  const [evaluaciones, setEvaluaciones] = useState<EvaluacionItem[]>([]);
+  const [evaluaciones, setEvaluaciones] = useState<ItemEvaluacion[]>([]);
 
-  // Formulario de creación/edición
   const [showForm, setShowForm] = useState(false);
-  const [editingEval, setEditingEval] = useState<EvaluacionItem | null>(null);
+  const [editingEval, setEditingEval] = useState<ItemEvaluacion | null>(null);
 
-  const [selectedAsignacionId, setSelectedAsignacionId] = useState('');
+  const [selectedAsignacionId, setSelectedAsignacionIdState] = useState(
+    () => readWebStorage(STORAGE_ASIG_KEY) || '',
+  );
+
+  const setActiveSection = (section: 'regulares' | 'trimestrales') => {
+    setActiveSectionState(section);
+    writeWebStorage(STORAGE_SECTION_KEY, section);
+  };
+
+  const setSelectedAsignacionId = (id: string) => {
+    setSelectedAsignacionIdState(id);
+    if (id) writeWebStorage(STORAGE_ASIG_KEY, id);
+  };
   const [titulo, setTitulo] = useState('');
   const [tipo, setTipo] = useState<'examen' | 'evaluacion' | 'parcial'>('examen');
   const [descripcion, setDescripcion] = useState('');
@@ -59,6 +90,7 @@ export function MaestroEvaluacionesScreen() {
   const [estado, setEstado] = useState<'borrador' | 'publicado' | 'cerrado'>('publicado');
   const [saving, setSaving] = useState(false);
 
+  // carga evaluaciones -> asignaciones y encargos del docente
   const loadData = async () => {
     try {
       setLoading(true);
@@ -84,28 +116,22 @@ export function MaestroEvaluacionesScreen() {
       }));
 
       setAsignaciones(mappedAsig);
-      if (mappedAsig.length > 0 && !selectedAsignacionId) {
-        setSelectedAsignacionId(mappedAsig[0].id);
+      if (mappedAsig.length > 0) {
+        const savedStillValid = mappedAsig.some((a) => a.id === selectedAsignacionId);
+        if (!savedStillValid) {
+          setSelectedAsignacionId(mappedAsig[0].id);
+        }
       }
 
-      // Filtrar encargos que sean de tipo evaluación/examen
-      const allEnc = encRes.data as any[];
-      const evals = allEnc
-        .filter((e) => ['examen', 'evaluacion', 'parcial'].includes(String(e.tipo).toLowerCase()))
-        .map((e) => ({
-          id: String(e.id),
-          asignacionId: String(e.asignacionId || ''),
-          tipo: e.tipo,
-          titulo: e.titulo,
-          descripcion: e.descripcion,
-          ponderacion: Number(e.ponderacion) || 0,
-          fechaPublicacion: e.fechaPublicacion,
-          fechaLimite: e.fechaLimite,
-          estado: e.estado || 'publicado',
-          materiaNombre: e.asignacion?.materiaNombre || 'Materia',
-        }));
+      try {
+        const trimRes = await evaluacionTrimestralApi.list();
+        const activos = (trimRes.data ?? []).filter((e) => e.estado === 'generando');
+        setTrimestralesGenerandoCount(activos.length);
+      } catch {
+        /* ignorar si no hay acceso */
+      }
 
-      setEvaluaciones(evals);
+      setEvaluaciones(extraerEvaluaciones(encRes.data, 'Materia'));
     } catch (err) {
       console.error('Error cargando evaluaciones:', err);
     } finally {
@@ -129,7 +155,7 @@ export function MaestroEvaluacionesScreen() {
     setShowForm(true);
   };
 
-  const handleEdit = (item: EvaluacionItem) => {
+  const handleEdit = (item: ItemEvaluacion) => {
     setEditingEval(item);
     setSelectedAsignacionId(item.asignacionId);
     setTitulo(item.titulo);
@@ -189,24 +215,83 @@ export function MaestroEvaluacionesScreen() {
   return (
     <View className="flex-1 gap-4">
       <BentoCard className="p-5">
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row flex-wrap items-center justify-between gap-3">
           <View>
             <Text className="text-2xl font-bold text-gray-900">Gestión de Evaluaciones</Text>
             <Text className="text-sm text-gray-500 mt-1">
-              Diseña, programa y parametriza exámenes y pruebas presenciales o virtuales.
+              Administra evaluaciones regulares y genera pruebas trimestrales.
             </Text>
           </View>
+          {activeSection === 'regulares' && (
+            <TouchableOpacity
+              onPress={handleOpenCreate}
+              className="bg-maroon px-4 py-2.5 rounded-xl flex-row items-center gap-2 shadow-sm"
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
+              <Text className="text-white text-xs font-bold">Nueva Evaluación</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View className="flex-row gap-2 mt-4 pt-3 border-t border-gray-100">
           <TouchableOpacity
-            onPress={handleOpenCreate}
-            className="bg-maroon px-4 py-2.5 rounded-xl flex-row items-center gap-2 shadow-sm"
+            onPress={() => setActiveSection('regulares')}
+            className={`px-4 py-2 rounded-xl flex-row items-center gap-2 ${
+              activeSection === 'regulares' ? 'bg-maroon' : 'bg-gray-100'
+            }`}
           >
-            <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-            <Text className="text-white text-xs font-bold">Nueva Evaluación</Text>
+            <Ionicons
+              name="clipboard-outline"
+              size={15}
+              color={activeSection === 'regulares' ? '#FFFFFF' : '#4B5563'}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                activeSection === 'regulares' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Evaluaciones Regulares
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveSection('trimestrales')}
+            className={`px-4 py-2 rounded-xl flex-row items-center gap-2 ${
+              activeSection === 'trimestrales' ? 'bg-maroon' : 'bg-gray-100'
+            }`}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={15}
+              color={activeSection === 'trimestrales' ? '#FFFFFF' : '#4B5563'}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                activeSection === 'trimestrales' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Evaluaciones Trimestrales
+            </Text>
+            {trimestralesGenerandoCount > 0 && (
+              <View className="bg-amber-400 px-1.5 py-0.5 rounded-full flex-row items-center gap-1">
+                <ActivityIndicator size={9} color="#78350F" />
+                <Text className="text-[10px] font-black text-amber-950">
+                  {trimestralesGenerandoCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </BentoCard>
 
-      {/* Formulario de creación/edición */}
+      {activeSection === 'trimestrales' ? (
+        <EvaluacionesTrimestralesSection
+          asignaciones={asignaciones}
+          selectedAsignacionId={selectedAsignacionId}
+          onSelectAsignacion={setSelectedAsignacionId}
+        />
+      ) : (
+        <>
       {showForm && (
         <BentoCard className="p-5 border-2 border-maroon/20">
           <View className="flex-row items-center justify-between mb-4">
@@ -269,7 +354,6 @@ export function MaestroEvaluacionesScreen() {
               </View>
             </View>
 
-            {/* Parámetros de ejecución temporal con Calendario y Selector de Horas */}
             <View className={`gap-3 ${isMobile ? '' : 'flex-row'}`}>
               <DateTimePicker
                 label="📅 Fecha y Hora de Inicio *"
@@ -316,7 +400,6 @@ export function MaestroEvaluacionesScreen() {
         </BentoCard>
       )}
 
-      {/* Listado de Evaluaciones */}
       {loading ? (
         <View className="py-12 items-center justify-center">
           <ActivityIndicator size="large" color="#801529" />
@@ -369,19 +452,21 @@ export function MaestroEvaluacionesScreen() {
                 <View className="flex-row items-center gap-1">
                   <Ionicons name="calendar-outline" size={14} color="#6B7280" />
                   <Text className="text-xs text-gray-500">
-                    Apertura: {ev.fechaPublicacion?.replace('T', ' ').slice(0, 16) || 'Inmediato'}
+                    Apertura: {formatFechaHora(ev.fechaPublicacion) || 'Inmediato'}
                   </Text>
                 </View>
                 <View className="flex-row items-center gap-1">
                   <Ionicons name="hourglass-outline" size={14} color="#DC2626" />
                   <Text className="text-xs font-semibold text-red-600">
-                    Cierre: {ev.fechaLimite?.replace('T', ' ').slice(0, 16) || 'Sin límite'}
+                    Cierre: {formatFechaHora(ev.fechaLimite) || 'Sin límite'}
                   </Text>
                 </View>
               </View>
             </BentoCard>
           ))}
         </View>
+      )}
+        </>
       )}
     </View>
   );

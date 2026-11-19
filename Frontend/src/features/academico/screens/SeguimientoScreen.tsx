@@ -9,49 +9,36 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { academicServicesApi } from '../../../api/academicServices.api';
 import { seguimientoApi, type NivelRiesgo, type PanelCurso, type PanelEstudiante } from '../../../api/seguimiento.api';
+import { useAuth } from '../../../context/AuthContext';
 import { useRealtimeResource } from '../../../hooks/useRealtimeResource';
 import { StatusBadge } from '../../../shared/ui';
 import { CursosPorNivel, type CursoHabilitado } from '../components/CursosPorNivel';
+import { Miga } from '../components/Miga';
 import { PanelCursoRendimiento, ListaEstudiantesCurso } from '../components/PanelCursoRendimiento';
 import { PanelEstudianteRendimiento } from '../components/PanelEstudianteRendimiento';
-import { NIVEL_LABEL, numeroGrado, nivelDe } from '../utils/niveles';
+import { RankingRachasCurso } from '../components/RankingRachasCurso';
+import { NIVEL_LABEL, nivelDe } from '../utils/niveles';
+import {
+  ORDEN_RIESGO,
+  TRIMESTRES,
+  promediar,
+  type Periodo,
+  type ResumenEstudiante,
+  type Vista,
+} from '../utils/seguimiento';
 
-type Periodo = { id: string; nombre: string; anio: number; activo: boolean; estado: string };
-
-type Vista = 'cursos' | 'curso' | 'estudiante';
-
-/** Resumen por estudiante, armado a partir del libro de cada materia. */
-interface ResumenEstudiante {
-  estudianteId: string;
-  nombre: string;
-  apellidoPaterno: string;
-  promedio: number | null;
-  asistencia: number | null;
-  nivelRiesgo: NivelRiesgo;
-}
-
-const TRIMESTRES = [1, 2, 3] as const;
-
-const ORDEN_RIESGO: NivelRiesgo[] = ['riesgo_alto', 'riesgo', 'observacion', 'sin_riesgo'];
-
-function promediar(valores: number[]): number | null {
-  if (valores.length === 0) return null;
-  return Math.round((valores.reduce((a, b) => a + b, 0) / valores.length) * 100) / 100;
-}
-
-/**
- * Seguimiento académico con recorrido descendente:
- *   gestión → cursos por grado → desempeño del curso → desempeño del estudiante
- *
- * Las notas se calculan en ServiceAcademic; aquí sólo se navega y se muestra.
- */
-export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: string }) {
+// seguimiento -> gestión, curso y estudiante
+export function SeguimientoScreen({ initialPeriodoId, teacherMode = false }: { initialPeriodoId?: string; teacherMode?: boolean }) {
+  const { user } = useAuth();
   const [periodos, setPeriodos] = useState<Periodo[]>([]);
   const [periodoId, setPeriodoId] = useState(initialPeriodoId ?? '');
   const [trimestre, setTrimestre] = useState<number>(1);
 
   const [cursos, setCursos] = useState<CursoHabilitado[]>([]);
   const [cursosLoading, setCursosLoading] = useState(false);
+  const [asignacionesDocente, setAsignacionesDocente] = useState<Array<{ cursoPeriodoId: string; materiaId: string; materia: string }>>([]);
+  const [asignacionesDocenteLoading, setAsignacionesDocenteLoading] = useState(false);
+  const [materiaFiltro, setMateriaFiltro] = useState('');
 
   const [cursoPeriodoId, setCursoPeriodoId] = useState('');
   const [panel, setPanel] = useState<PanelCurso | null>(null);
@@ -64,7 +51,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
 
   const [vista, setVista] = useState<Vista>('cursos');
 
-  // ── Gestiones ──────────────────────────────────────────────────────────────
   useEffect(() => {
     academicServicesApi
       .list('periodos', { limit: 50 })
@@ -83,7 +69,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
       .catch(() => setPeriodos([]));
   }, [initialPeriodoId]);
 
-  // ── Cursos habilitados de la gestión ──────────────────────────────────────
   const cargarCursos = useCallback(async () => {
     if (!periodoId) {
       setCursos([]);
@@ -122,7 +107,62 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
     void cargarCursos();
   });
 
-  // ── Panel del curso ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!teacherMode || !user || !periodoId) {
+      setAsignacionesDocente([]);
+      setAsignacionesDocenteLoading(false);
+      return;
+    }
+    if (cursosLoading) {
+      setAsignacionesDocenteLoading(true);
+      return;
+    }
+    if (cursos.length === 0) {
+      setAsignacionesDocente([]);
+      setAsignacionesDocenteLoading(false);
+      return;
+    }
+    let vigente = true;
+    setAsignacionesDocenteLoading(true);
+    academicServicesApi.list('asignaciones', { limit: 500 })
+      .then((res) => {
+        const idsCursoPeriodo = new Set(cursos.map((curso) => String(curso.id)));
+        const propias = (res.data ?? []).filter((raw: any) => {
+          const maestro = raw.maestro;
+          const coincideDocente = user.maestroId && raw.maestroId
+            ? String(raw.maestroId) === String(user.maestroId)
+            : maestro?.usuarioId
+              ? String(maestro.usuarioId) === String(user.id)
+              : Boolean(maestro && maestro.nombre === user.nombre && maestro.apellidoPaterno === user.apellidoPaterno);
+          const cursoPeriodoId = String(raw.cursoPeriodoId ?? raw.cursoPeriodo?.id ?? '');
+          return coincideDocente && idsCursoPeriodo.has(cursoPeriodoId);
+        }).map((raw: any) => ({
+          cursoPeriodoId: String(raw.cursoPeriodoId ?? raw.cursoPeriodo?.id ?? ''),
+          materiaId: String(raw.materia?.id ?? raw.materiaId ?? ''),
+          materia: String(raw.materia?.nombre ?? raw.materiaNombre ?? 'Materia'),
+        })).filter((item: { cursoPeriodoId: string; materiaId: string; materia: string }) => item.cursoPeriodoId && item.materiaId);
+        if (vigente) setAsignacionesDocente(propias);
+      })
+      .catch(() => { if (vigente) setAsignacionesDocente([]); })
+      .finally(() => { if (vigente) setAsignacionesDocenteLoading(false); });
+    return () => { vigente = false; };
+  }, [teacherMode, user, periodoId, cursos, cursosLoading]);
+
+  const materiasDocente = useMemo(() => {
+    const materias = new Map<string, string>();
+    asignacionesDocente.forEach((item) => materias.set(item.materiaId, item.materia));
+    return [...materias.entries()].map(([id, nombre]) => ({ id, nombre }))
+      .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+  }, [asignacionesDocente]);
+
+  const cursosVisibles = useMemo(() => {
+    if (!teacherMode) return cursos;
+    const ids = new Set(asignacionesDocente
+      .filter((item) => !materiaFiltro || item.materiaId === materiaFiltro)
+      .map((item) => item.cursoPeriodoId));
+    return cursos.filter((curso) => ids.has(String(curso.id)));
+  }, [teacherMode, cursos, asignacionesDocente, materiaFiltro]);
+
   const cargarPanelCurso = useCallback(async () => {
     if (!cursoPeriodoId) return;
     setPanelLoading(true);
@@ -140,8 +180,7 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
     if (vista === 'curso' || vista === 'estudiante') void cargarPanelCurso();
   }, [cargarPanelCurso, vista]);
 
-  // El resumen por estudiante no viene en el panel del curso: se arma con el
-  // libro de cada materia. Es N consultas, sólo al entrar a un curso.
+  // resumen estudiante -> se arma con cada libro
   useEffect(() => {
     if (vista !== 'curso' || !panel) return;
     let cancelado = false;
@@ -186,7 +225,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
             apellidoPaterno: item.apellidoPaterno,
             promedio: promediar(item.promedios),
             asistencia: promediar(item.tasas),
-            // Se muestra el peor nivel entre todas sus materias.
             nivelRiesgo:
               ORDEN_RIESGO.find((nivel) => item.niveles.includes(nivel)) ?? 'sin_riesgo',
           }))
@@ -204,7 +242,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
     };
   }, [panel, trimestre, cursoPeriodoId, vista]);
 
-  // ── Panel del estudiante ───────────────────────────────────────────────────
   const cargarEstudiante = useCallback(async () => {
     if (!estudianteId || !periodoId) return;
     setEstudianteLoading(true);
@@ -223,7 +260,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
     if (vista === 'estudiante') void cargarEstudiante();
   }, [cargarEstudiante, vista]);
 
-  // ── Navegación ────────────────────────────────────────────────────────────
   const cursoSeleccionado = useMemo(
     () => cursos.find((c) => String(c.id) === cursoPeriodoId) ?? null,
     [cursos, cursoPeriodoId],
@@ -259,7 +295,6 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
 
   return (
     <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pb-10">
-      {/* Selector de gestión y trimestre */}
       <View className="bg-white border border-gray-100 rounded-2xl p-4 gap-3">
         <View className="flex-row items-center gap-2">
           <Ionicons name="briefcase-outline" size={16} color="#801529" />
@@ -274,6 +309,7 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
                 onPress={() => {
                   setPeriodoId(String(item.id));
                   setCursoPeriodoId('');
+                  setMateriaFiltro('');
                   setVista('cursos');
                 }}
                 className={`px-3 py-2 rounded-xl border ${
@@ -325,9 +361,27 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
             ))}
           </View>
         </View>
+
+        {teacherMode ? (
+          <View className="gap-2 pt-3 border-t border-gray-100">
+            <Text className="text-xs font-bold text-gray-600">Filtrar cursos por materia</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View className="flex-row gap-2">
+                <TouchableOpacity onPress={() => setMateriaFiltro('')} className={`rounded-xl border px-3 py-2 ${!materiaFiltro ? 'border-maroon bg-maroon' : 'border-gray-200 bg-white'}`}>
+                  <Text className={`text-xs font-bold ${!materiaFiltro ? 'text-white' : 'text-gray-700'}`}>Todas</Text>
+                </TouchableOpacity>
+                {materiasDocente.map((materia) => (
+                  <TouchableOpacity key={materia.id} onPress={() => setMateriaFiltro(materia.id)} className={`rounded-xl border px-3 py-2 ${materiaFiltro === materia.id ? 'border-maroon bg-maroon' : 'border-gray-200 bg-white'}`}>
+                    <Text className={`text-xs font-bold ${materiaFiltro === materia.id ? 'text-white' : 'text-gray-700'}`}>{materia.nombre}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            {materiasDocente.length === 0 && !asignacionesDocenteLoading ? <Text className="text-xs text-gray-400">No tienes materias asignadas en esta gestión.</Text> : null}
+          </View>
+        ) : null}
       </View>
 
-      {/* Migas de pan */}
       <View className="flex-row items-center gap-1 flex-wrap">
         <Miga
           label={periodo ? periodo.nombre : 'Gestión'}
@@ -356,13 +410,14 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
         ) : null}
       </View>
 
-      {/* Contenido según la vista */}
       {vista === 'cursos' ? (
         <CursosPorNivel
-          cursos={cursos}
-          loading={cursosLoading}
+          cursos={cursosVisibles}
+          loading={cursosLoading || (teacherMode && asignacionesDocenteLoading)}
           onSelect={abrirCurso}
           onRefresh={cargarCursos}
+          emptyTitle={teacherMode ? 'No hay cursos para este filtro' : undefined}
+          emptyDescription={teacherMode ? 'Cambia la materia seleccionada o revisa tus asignaciones de esta gestión.' : undefined}
         />
       ) : null}
 
@@ -384,6 +439,11 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
           </View>
 
           <PanelCursoRendimiento panel={panel} loading={panelLoading} />
+
+          <View className="bg-white border border-gray-100 rounded-2xl p-4">
+            <Text className="text-sm font-bold text-gray-900 mb-3">Participación en la aplicación</Text>
+            {cursoPeriodoId ? <RankingRachasCurso cursoPeriodoId={cursoPeriodoId} /> : null}
+          </View>
 
           <View className="bg-white border border-gray-100 rounded-2xl p-4">
             <Text className="text-sm font-bold text-gray-900 mb-1">Estudiantes del curso</Text>
@@ -413,28 +473,5 @@ export function SeguimientoScreen({ initialPeriodoId }: { initialPeriodoId?: str
         </View>
       ) : null}
     </ScrollView>
-  );
-}
-
-function Miga({
-  label,
-  activo,
-  onPress,
-}: {
-  label: string;
-  activo: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity onPress={onPress} className="flex-row items-center gap-1">
-      <Text
-        className={`text-xs font-semibold ${
-          activo ? 'text-maroon' : 'text-gray-500'
-        }`}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
   );
 }

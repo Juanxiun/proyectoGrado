@@ -1,4 +1,4 @@
-import { apiRequest, buildQuery } from './client';
+import { apiRequest, buildQuery, safe } from './client';
 
 export type NivelRiesgo = 'sin_riesgo' | 'observacion' | 'riesgo' | 'riesgo_alto';
 
@@ -150,48 +150,27 @@ export interface DashboardData {
   economicoOculto?: boolean;
 }
 
-/**
- * Tablero de inicio. Es un servicio de sólo lectura en el backend: el recorte
- * por rol ya viene aplicado, así que acá no hay filtros que enviar.
- */
+// dashboardApi -> tablero de solo lectura, recortado por rol
 export const dashboardApi = {
   async get(params: { periodoId?: string; trimestre?: number } = {}): Promise<DashboardData | null> {
-    try {
-      return await apiRequest<DashboardData>(`/api/dashboard${buildQuery(params)}`);
-    } catch (err) {
-      console.warn('[dashboardApi.get]', err);
-      return null;
-    }
+    return safe('[dashboardApi.get]', () => apiRequest<DashboardData>(`/api/dashboard${buildQuery(params)}`), null);
   },
 
   async riesgo(params: { periodoId?: string; trimestre?: number } = {}): Promise<ResumenRiesgo | null> {
-    try {
-      return await apiRequest<ResumenRiesgo>(`/api/dashboard/riesgo${buildQuery(params)}`);
-    } catch (err) {
-      console.warn('[dashboardApi.riesgo]', err);
-      return null;
-    }
+    return safe('[dashboardApi.riesgo]', () => apiRequest<ResumenRiesgo>(`/api/dashboard/riesgo${buildQuery(params)}`), null);
   },
 
   async economico(params: { periodoId?: string } = {}): Promise<ResumenEconomico | null> {
-    try {
-      return await apiRequest<ResumenEconomico>(`/api/dashboard/economico${buildQuery(params)}`);
-    } catch (err) {
-      console.warn('[dashboardApi.economico]', err);
-      return null;
-    }
+    return safe('[dashboardApi.economico]', () => apiRequest<ResumenEconomico>(`/api/dashboard/economico${buildQuery(params)}`), null);
   },
 
   async invalidarCache(): Promise<boolean> {
-    try {
+    return safe('[dashboardApi.invalidarCache]', async () => {
       const res = await apiRequest<{ success: boolean }>('/api/dashboard/cache/invalidar', {
         method: 'POST',
       });
       return Boolean(res?.success);
-    } catch (err) {
-      console.warn('[dashboardApi.invalidarCache]', err);
-      return false;
-    }
+    }, false);
   },
 };
 

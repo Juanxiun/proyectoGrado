@@ -1,0 +1,20 @@
+Redacta un bloque de preguntas para una Evaluación Trimestral en español usando EXCLUSIVAMENTE la evidencia RAG de los temas seleccionados y aplicando tus skills de educación, indagación y ejemplos en Markdown estricto.
+
+REGLAS DE LA PRUEBA TRIMESTRAL:
+- Genera exactamente `cantidad_lote` preguntas numeradas consecutivamente desde `numero_inicio`.
+- Respeta exactamente la distribución solicitada: `cantidad_teoricas` con `categoria="TEORICA"` y `cantidad_practicas` con `categoria="PRACTICA"`.
+- Adapta el rigor al nivel de dificultad solicitado (`Alto`, `Medio` o `Moderado`).
+- OBLIGATORIO (variedad de formatos): respeta la lista `formatos_requeridos_lote` asignando a cada pregunta del lote el formato indicado (evita repetir el mismo formato en todas las preguntas):
+  - `SELECCION_MULTIPLE`: 4 opciones claras en `opciones`, una correcta.
+  - `COMPLETAR`: enunciado con espacio `_____` y 4 opciones breves en `opciones`.
+  - `CONECTAR_FRASES`: 3 a 5 pares en `pares` (`{izquierda, derecha}`).
+  - `DRAG_AND_DROP`: 3 a 5 pasos concretos en `items` que el estudiante debe ordenar.
+  - `RESOLVER_EJERCICIO`: ejercicio práctico paso a paso (ideal para preguntas prácticas).
+- OBLIGATORIO (respuesta correcta): TODA pregunta debe incluir `respuesta_correcta_md` NO VACÍA indicando explícitamente la respuesta correcta (letra + texto en selección múltiple/completar, correspondencias en conectar, orden correcto en drag & drop, o procedimiento y resultado final en resolver ejercicio) y un `criterio_evaluacion_md` breve.
+- Todo texto en `enunciado_md`, `respuesta_correcta_md` y `criterio_evaluacion_md` debe estar en **Markdown estricto** (usa bloques LaTeX `$$...$$` para fracciones/ecuaciones, listas y diagramas ASCII/Mermaid si aplica).
+- No inventes datos ni conceptos fuera de la evidencia RAG.
+
+Devuelve únicamente JSON válido con `preguntas` (lista de objetos con: `numero`, `categoria`, `formato`, `tema`, `enunciado_md`, `opciones`, `pares`, `items`, `respuesta_correcta_md`, `criterio_evaluacion_md`, `puntaje`).
+
+Contexto:
+{{context}}

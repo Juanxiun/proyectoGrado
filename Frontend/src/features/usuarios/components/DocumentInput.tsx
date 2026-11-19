@@ -19,11 +19,7 @@ export const BOLIVIA_CI_EXTENSIONS = [
 
 export type BoliviaExtension = typeof BOLIVIA_CI_EXTENSIONS[number]['code'];
 
-/**
- * Parsea un documento CI en número puro y extensión de departamento.
- * Ejemplo: "8492019-LP" -> { digits: "8492019", ext: "LP" }
- *          "8492019 LP" -> { digits: "8492019", ext: "LP" }
- */
+// parseCiDocument -> separa número y extensión del CI
 export function parseCiDocument(val: string): { digits: string; ext: string } {
   const raw = (val || '').trim();
   if (!raw) return { digits: '', ext: '' };
@@ -36,7 +32,6 @@ export function parseCiDocument(val: string): { digits: string; ext: string } {
     return { digits, ext: isKnown ? extFound : '' };
   }
 
-  // Si tiene caracteres no numéricos al final
   const digits = raw.replace(/[^0-9]/g, '');
   const letters = raw.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 2);
   const isKnown = BOLIVIA_CI_EXTENSIONS.some((e) => e.code === letters);
@@ -49,7 +44,7 @@ interface DocumentInputProps {
   requiredTypes?: string[];
   title?: string;
   showRequiredBadge?: boolean;
-  /** Errores de validación por tipo de documento; se muestran bajo su campo. */
+  // fieldErrors -> errores de validación por tipo de documento
   fieldErrors?: Record<string, string | undefined>;
 }
 
@@ -71,7 +66,12 @@ export function DocumentInput({
   const pickDocument = async (index: number) => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: [
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+        ],
         copyToCacheDirectory: true,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -85,7 +85,7 @@ export function DocumentInput({
         onChange(newDocs);
       }
     } catch {
-      Alert.alert('Error', 'No se pudo seleccionar el documento PDF');
+      Alert.alert('Error', 'No se pudo seleccionar el documento');
     }
   };
 
@@ -115,7 +115,6 @@ export function DocumentInput({
   };
 
   const updateCiDigits = (index: number, newDigitsRaw: string) => {
-    // Restricción estricta: sólo números en el CI
     const digitsOnly = newDigitsRaw.replace(/[^0-9]/g, '');
     const currentDoc = documents[index];
     const { ext } = parseCiDocument(currentDoc?.numeroDoc || '');
@@ -144,7 +143,6 @@ export function DocumentInput({
     return null;
   };
 
-  // Identificar si falta algún archivo crítico
   const missingCriticalFiles = documents.filter(
     (d) => isCriticalDoc(d.tipoDoc) && !d.fileUri && !d.docUrl,
   );
@@ -165,7 +163,6 @@ export function DocumentInput({
         </TouchableOpacity>
       </View>
 
-      {/* Alerta general si faltan archivos críticos como CI */}
       {missingCriticalFiles.length > 0 && (
         <View className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 flex-row items-center gap-2 mb-2 shadow-xs">
           <Ionicons name="warning" size={18} color="#D97706" />
@@ -206,7 +203,6 @@ export function DocumentInput({
                 : 'border-gray-200'
             }`}
           >
-            {/* Fila con inputs y botones */}
             <View className="flex-row items-center gap-2">
               <View className="w-[100px] md:w-[120px]">
                 <TextInput
@@ -218,7 +214,6 @@ export function DocumentInput({
               </View>
 
               {isCi ? (
-                /* CI con input de solo números + selector de extensión por departamento de Bolivia */
                 <View className="flex-1 flex-row items-center gap-1.5">
                   <TextInput
                     value={digits}
@@ -238,7 +233,6 @@ export function DocumentInput({
                   </TouchableOpacity>
                 </View>
               ) : isRude ? (
-                /* RUDE con input sólo números */
                 <View className="flex-1">
                   <TextInput
                     value={doc.numeroDoc}
@@ -249,7 +243,6 @@ export function DocumentInput({
                   />
                 </View>
               ) : (
-                /* Input estándar para otros documentos */
                 <View className="flex-1">
                   <TextInput
                     value={doc.numeroDoc}
@@ -260,7 +253,6 @@ export function DocumentInput({
                 </View>
               )}
 
-              {/* Botón selector de archivo */}
               <TouchableOpacity
                 onPress={() => pickDocument(idx)}
                 className={`rounded-lg px-2.5 py-2 flex-row items-center gap-1.5 ${
@@ -281,7 +273,6 @@ export function DocumentInput({
                 </Text>
               </TouchableOpacity>
 
-              {/* Botón eliminar (deshabilitado si es obligatorio) */}
               <TouchableOpacity
                 onPress={() => removeDocument(idx)}
                 disabled={critical}
@@ -301,13 +292,12 @@ export function DocumentInput({
               </Text>
             )}
 
-            {/* Estado del archivo adjunto */}
             <View className="mt-2 pt-2 border-t border-gray-100 flex-row items-center justify-between flex-wrap gap-2">
               {hasFile ? (
                 <View className="flex-row items-center gap-1.5 flex-1 min-w-[180px]">
                   <Ionicons name="document-text" size={14} color="#16A34A" />
                   <Text className="text-[11px] text-green-700 font-medium" numberOfLines={1}>
-                    {doc.fileUri ? `Nuevo seleccionado: ${label}` : `En servidor MinIO: ${label}`}
+                    {doc.fileUri ? `Archivo seleccionado: ${label}` : `Archivo guardado: ${label}`}
                   </Text>
                 </View>
               ) : (
@@ -329,7 +319,6 @@ export function DocumentInput({
                 </View>
               )}
 
-              {/* Acciones de visualización y reemplazo */}
               <View className="flex-row items-center gap-3">
                 {doc.docUrl && (
                   <TouchableOpacity
@@ -355,7 +344,6 @@ export function DocumentInput({
         );
       })}
 
-      {/* Modal Selector de Extensiones Departamentales de Bolivia para CI */}
       <Modal
         visible={activeExtModalIndex !== null}
         transparent

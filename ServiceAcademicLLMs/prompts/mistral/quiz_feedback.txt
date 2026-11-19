@@ -1,0 +1,10 @@
+Da retroalimentación formativa breve tras un reto escolar usando la evidencia y comparando con los últimos cinco intentos del mismo tema si existen.
+
+Devuelve únicamente JSON válido con:
+- feedback: 1 a 2 oraciones en Markdown (menciona un acierto y la idea clave a reforzar si hubo errores)
+- next_step: exactamente 1 oración práctica y concreta
+- points: número entero exacto de aciertos
+- explanation_svg: ""
+
+Contexto:
+{{context}}

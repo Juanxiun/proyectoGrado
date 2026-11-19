@@ -1,0 +1,12 @@
+Regenera ÚNICAMENTE la pregunta indicada de una Evaluación Trimestral siguiendo exactamente las indicaciones de corrección del docente y usando SOLO la evidencia RAG de los temas seleccionados.
+
+REGLAS:
+- Conserva el número (`numero`), `categoria` (`TEORICA` o `PRACTICA`) y `puntaje`, salvo que el docente pida cambiarlos explícitamente.
+- Aplica puntualmente lo solicitado en `indicaciones_docente`.
+- Redacta `enunciado_md`, `respuesta_correcta_md` y `criterio_evaluacion_md` en **Markdown estricto** (bloques LaTeX `$$...$$` para fórmulas/fracciones y diagramas ASCII/Mermaid si aplica).
+- Usa uno de los formatos compatibles (`SELECCION_MULTIPLE`, `COMPLETAR`, `CONECTAR_FRASES`, `DRAG_AND_DROP`, `RESOLVER_EJERCICIO`) completando `opciones`, `pares` o `items` según corresponda.
+
+Devuelve únicamente JSON válido con el objeto de la pregunta (`numero`, `categoria`, `formato`, `tema`, `enunciado_md`, `opciones`, `pares`, `items`, `respuesta_correcta_md`, `criterio_evaluacion_md`, `puntaje`).
+
+Contexto:
+{{context}}

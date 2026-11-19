@@ -300,17 +300,7 @@ export interface DeletePeriodoResult {
   planes: number;
 }
 
-/**
- * Elimina una gestión y todos los registros que pertenecen exclusivamente a ella.
- *
- * La base es compartida por los servicios Deno, por lo que no se delega el
- * borrado en cascada de PostgreSQL: primero se retiran las filas hijas que
- * tienen llaves RESTRICT (evaluaciones, asistencia, pagos e inscripciones)
- * y después se eliminan los recursos de la gestión. Los estudiantes que
- * todavía tengan datos en otra gestión se conservan; los que sólo existen
- * en esta gestión se retiran de la tabla de dominio sin borrar su cuenta
- * de usuario.
- */
+// funcion -> eliminar gestion completa
 export async function deletePeriodo(id: string): Promise<DeletePeriodoResult> {
   try {
     return await sTransaction(async (tx) => {
@@ -392,8 +382,7 @@ export async function deletePeriodo(id: string): Promise<DeletePeriodoResult> {
       );
       const row = counts.rows[0];
 
-      // Primero se deshacen las relaciones académicas y financieras que usan
-      // RESTRICT en instalaciones antiguas.
+      // paso -> deshacer relaciones restrict
       if (pensionIds.length) {
         await tx.queryObject(`DELETE FROM pago_pensiones WHERE pension_id = ANY($1::bigint[])`, [pensionIds]);
       }
@@ -431,8 +420,7 @@ export async function deletePeriodo(id: string): Promise<DeletePeriodoResult> {
       await tx.queryObject(`DELETE FROM inscripciones WHERE periodo_id = $1::bigint`, [id]);
       await tx.queryObject(`DELETE FROM pensiones WHERE periodo_id = $1::bigint`, [id]);
 
-      // Un pago que sólo financiaba pensiones de esta gestión se elimina;
-      // los pagos que todavía financian otra gestión se conservan.
+      // logica -> pagos exclusivos se eliminan
       if (paymentIds.length) {
         await tx.queryObject(
           `DELETE FROM pagos p
@@ -442,9 +430,7 @@ export async function deletePeriodo(id: string): Promise<DeletePeriodoResult> {
         );
       }
 
-      // Una cuenta de estudiante puede haber sido creada para esta gestión. No
-      // se borra la cuenta de usuario, pero sí el perfil académico si no tiene
-      // ninguna otra inscripción, nota, asistencia, entrega o pago.
+      // logica -> borrar perfil sin inscripciones
       if (studentIds.length) {
         await tx.queryObject(
           `DELETE FROM estudiantes e

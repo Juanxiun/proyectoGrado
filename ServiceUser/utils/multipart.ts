@@ -1,13 +1,7 @@
 import { Context } from "@oak/oak";
 
-/**
- * Lee multipart/form-data de forma robusta en Deno y Oak 17+.
- * 1) Intenta ctx.request.body.formData() (parser nativo de Oak/Deno sobre stream)
- * 2) Intenta originalRequest.request.formData() (Request web original)
- * 3) Fallback reconstruyendo un Request POST sobre el ArrayBuffer crudo
- */
+// metodo -> leer formulario multipart
 export async function readMultipartForm(ctx: Context): Promise<FormData> {
-  // 1. Intentar directamente con ctx.request.body.formData() (Oak 17+)
   try {
     const bodyObj = ctx.request.body as any;
     if (bodyObj && typeof bodyObj.formData === "function") {
@@ -20,7 +14,6 @@ export async function readMultipartForm(ctx: Context): Promise<FormData> {
     console.warn("[readMultipartForm] ctx.request.body.formData() falló:", err);
   }
 
-  // 2. Intentar con el Request nativo subyacente de Deno
   try {
     const origReq = (ctx.request as any)?.originalRequest?.request;
     if (origReq && typeof origReq.formData === "function") {
@@ -33,7 +26,6 @@ export async function readMultipartForm(ctx: Context): Promise<FormData> {
     console.warn("[readMultipartForm] originalRequest.formData() falló:", err);
   }
 
-  // 3. Fallback: Reconstrucción con Request POST
   const contentType = ctx.request.headers.get("content-type") ?? "";
   const raw = await ctx.request.body.arrayBuffer();
   if (!raw || raw.byteLength === 0) {

@@ -7,7 +7,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppNavigator />
-      <StatusBar style="light" />
+      <StatusBar style="dark" backgroundColor="#F4F5F7" translucent={false} />
     </AuthProvider>
   );
 }

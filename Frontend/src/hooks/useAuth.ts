@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { authApi } from '../api/auth.api';
 import { storage } from '../utils/storage';
-import type { AuthUsuario, LoginRequest, LoginResponse } from '../types';
+import type { LoginRequest, LoginResponse } from '../types';
 
 interface UseAuthReturn {
   loading: boolean;
@@ -36,7 +36,9 @@ export function useAuthActions(): UseAuthReturn {
   }, []);
 
   const logout = useCallback(async () => {
-    try { await authApi.logout(); } finally { await storage.clear(); }
+    const request = authApi.logout().catch(() => undefined);
+    await storage.clear();
+    void request;
   }, []);
 
   const verify2FA = useCallback(async (tempToken: string, code: string) => {

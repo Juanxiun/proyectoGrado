@@ -77,7 +77,7 @@ export interface UsuarioDoc {
   tipoDoc: TipoDocumento;
   numeroDoc: string;
   docUrl?: string | null;
-  /** URI local del PDF seleccionado (no se envía dentro de datos). */
+  // fileUri -> ruta local, no se envía en datos
   fileUri?: string;
   fileName?: string;
 }
@@ -177,7 +177,7 @@ export interface UpdateUsuarioPayload {
 }
 
 export interface CreateUsuarioPayload {
-  /** ID legado; el backend también acepta el nombre estable del rol. */
+  // rolId -> ID legado del rol
   rolId?: string;
   rol?: string;
   nombre: string;

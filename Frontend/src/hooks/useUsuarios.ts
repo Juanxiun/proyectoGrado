@@ -1,3 +1,4 @@
+// useUsuarios -> alta y listado de usuarios
 import { useCallback, useState } from 'react';
 import { usuariosApi } from '../api/usuarios.api';
 import type {
@@ -28,7 +29,31 @@ export function useUsuariosList() {
     }
   }, []);
 
-  return { data, loading, error, fetchList };
+  // fetchAll -> trae todas las páginas aplanadas
+  const fetchAll = useCallback(async (params: UsuariosQueryParams = {}) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const todos = await usuariosApi.listAll(params);
+      const resultado: UsuariosListResponse = {
+        data: todos,
+        total: todos.length,
+        page: 1,
+        limit: todos.length,
+        totalPages: 1,
+      };
+      setData(resultado);
+      return resultado;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Error al cargar usuarios';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { data, loading, error, fetchList, fetchAll };
 }
 
 export function useUsuarioDetail() {

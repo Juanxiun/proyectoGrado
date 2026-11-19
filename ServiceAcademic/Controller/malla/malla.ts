@@ -19,12 +19,7 @@ import {
 } from "../../utils/http.ts";
 import type { CrearTemaInput } from "../../models/academic.ts";
 
-/**
- * Maya curricular: los temas que se trabajarán en cada materia de un grado.
- *
- * Es el contenido de la materia y es reutilizable entre gestión, a diferencia
- * de `mallas_curriculares`, que sólo registra qué materia existe en un período.
- */
+// control -> temas malla por grado
 
 function nivelGrado(ctx: Context): { nivel: NivelEducativo; grado: string } {
   const params = ctx.request.url.searchParams;
@@ -42,7 +37,7 @@ function nivelGrado(ctx: Context): { nivel: NivelEducativo; grado: string } {
   return { nivel, grado };
 }
 
-/** GET /malla?nivel=&grado= — toda la maya del grado, agrupada por materia. */
+// ruta -> listar malla grado
 export async function getMalla(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -52,7 +47,7 @@ export async function getMalla(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /malla/resumen?nivel=&grado= */
+// ruta -> resumen malla grado
 export async function getMallaResumen(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -62,7 +57,7 @@ export async function getMallaResumen(ctx: Context): Promise<void> {
   }
 }
 
-/** GET /malla/materia?nivel=&grado=&materiaId= */
+// ruta -> temas materia malla
 export async function getMallaMateria(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -76,7 +71,7 @@ export async function getMallaMateria(ctx: Context): Promise<void> {
   }
 }
 
-/** POST /malla/tema?nivel=&grado= */
+// ruta -> crear tema malla
 export async function postTema(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);
@@ -87,7 +82,7 @@ export async function postTema(ctx: Context): Promise<void> {
   }
 }
 
-/** PUT /malla/tema/:id */
+// ruta -> actualizar tema malla
 export async function putTema(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(
@@ -101,7 +96,7 @@ export async function putTema(ctx: Context): Promise<void> {
   }
 }
 
-/** DELETE /malla/tema/:id */
+// ruta -> eliminar tema malla
 export async function deleteTema(ctx: Context): Promise<void> {
   try {
     const id = parseNumericId(
@@ -115,7 +110,7 @@ export async function deleteTema(ctx: Context): Promise<void> {
   }
 }
 
-/** PUT /malla/materia?nivel=&grado=&materiaId= — guarda el temario completo. */
+// ruta -> guardar temario completo
 export async function putMallaMateria(ctx: Context): Promise<void> {
   try {
     const { nivel, grado } = nivelGrado(ctx);

@@ -1,29 +1,24 @@
 import type { ReactNode } from 'react';
 import {
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { COLORS } from '../theme';
+import { APP_VERSION, INSTITUTION_NAME } from '../../constants/config';
 
-/**
- * Marco común de las pantallas públicas (login y verificación 2FA).
- *
- * Reemplaza el fondo con imagen remota que usaban antes: ahora la pantalla es
- * una superficie clara igual que el panel de administración, con la marca
- * granate concentrada en la cabecera de la tarjeta.
- */
+const INSTITUTION_LOGO = require('../../../assets/favicon.png');
+
 export function AuthLayout({
   eyebrow,
   title,
   subtitle,
   children,
   footerLinks = [],
-  footerNote = '© 2026 Sistema de Gestión Académica',
+  footerNote = `© 2026 ${INSTITUTION_NAME} · ${APP_VERSION}`,
 }: {
   eyebrow: string;
   title: string;
@@ -43,25 +38,23 @@ export function AuthLayout({
             contentContainerClassName="flex-grow justify-center items-center px-4 py-10"
             keyboardShouldPersistTaps="handled"
           >
-            {/* Identidad de la institución */}
-            <View className="items-center mb-6 max-w-md w-full">
-              <View className="w-14 h-14 rounded-2xl bg-maroon items-center justify-center mb-3">
-                <Ionicons name="school" size={26} color={COLORS.textInverted} />
-              </View>
-              <Text className="text-xl font-bold text-gray-900 text-center">{title}</Text>
-              <Text className="text-sm text-gray-500 text-center mt-1">{subtitle}</Text>
-            </View>
-
             <View className="bg-white rounded-2xl border border-gray-100 shadow-sm w-full max-w-md overflow-hidden">
-              {/* Cabecera granate: único acento fuerte, como el HeroBanner */}
-              <View className="bg-maroon px-6 py-5">
-                <Text className="text-white/70 text-[10px] font-bold uppercase tracking-widest">
-                  {eyebrow}
-                </Text>
-                <Text className="text-white text-lg font-bold mt-1">{title}</Text>
+              <View className="bg-maroon px-5 py-4 flex-row items-center">
+                <View className="rounded-full bg-white items-center justify-center mr-3" style={{ width: 48, height: 48 }}>
+                  <Image source={INSTITUTION_LOGO} resizeMode="contain" style={{ width: 42, height: 42 }} />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-white/75 text-[10px] font-bold uppercase tracking-widest">
+                    {eyebrow}
+                  </Text>
+                  <Text className="text-white text-sm font-bold mt-1" numberOfLines={2}>{title}</Text>
+                </View>
               </View>
 
-              <View className="p-6">{children}</View>
+              <View className="p-5">
+                <Text className="text-sm text-gray-500 mb-4">{subtitle}</Text>
+                {children}
+              </View>
             </View>
 
             <View className="items-center mt-8 max-w-md w-full">

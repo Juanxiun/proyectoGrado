@@ -1,0 +1,9 @@
+Genera un esquema conceptual navegable del tema usando solo los conceptos y el resumen validado proporcionados, aplicando tu skill de indagación y mapas conceptuales.
+
+Devuelve únicamente JSON válido con:
+- nodes: 5 a 15 nodos atómicos {id, label, kind ("concepto" | "procedimiento" | "relacion"), detail (Markdown ≤1200 caracteres)}
+- edges: 4 a 20 conexiones entre nodos existentes {source, target, label ("es un" | "tiene" | "implica" | "requiere" | "ejemplo de" | "se aplica en" | "deriva de" | "contrasta con")}
+- related_topics: 3 a 6 temas relacionados que emerjan de la evidencia
+
+Contexto:
+{{context}}

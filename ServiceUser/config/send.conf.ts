@@ -3,7 +3,7 @@ import { BrevoClient } from "@getbrevo/brevo";
 
 export const EMAIL_FROM = Deno.env.get("EMAIL_FROM");
 
-//Brevo opcion goty para pobres
+// config -> brevo correo
 const apikeyBrevo = String(Deno.env.get("BREVO_API_KEY"));
 export const brevo = new BrevoClient({
   apiKey: apikeyBrevo,
