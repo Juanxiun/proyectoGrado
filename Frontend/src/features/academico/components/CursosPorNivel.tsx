@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import { nivelDe, type CursoAgrupable } from '../utils/niveles';
@@ -14,6 +14,8 @@ interface CursosPorNivelProps {
   loading: boolean;
   onSelect: (cursoPeriodoId: string) => void;
   onRefresh?: () => void;
+  emptyTitle?: string;
+  emptyDescription?: string;
 }
 
 export function CursosPorNivel({
@@ -21,8 +23,18 @@ export function CursosPorNivel({
   loading,
   onSelect,
   onRefresh,
+  emptyTitle = 'Esta gestión no tiene cursos habilitados',
+  emptyDescription = 'Asegúrate de generar la estructura de cursos en la Gestión Académica para visualizarlos aquí.',
 }: CursosPorNivelProps) {
   const [activeNivel, setActiveNivel] = useState<'primaria' | 'secundaria'>('primaria');
+
+  useEffect(() => {
+    const hayCursosDelNivel = cursos.some((curso) => nivelDe(curso.nivel) === activeNivel);
+    if (cursos.length > 0 && !hayCursosDelNivel) {
+      const primerNivel = nivelDe(cursos[0].nivel);
+      if (primerNivel === 'primaria' || primerNivel === 'secundaria') setActiveNivel(primerNivel);
+    }
+  }, [cursos, activeNivel]);
 
   if (loading) {
     return (
@@ -41,10 +53,10 @@ export function CursosPorNivel({
           <Ionicons name="school-outline" size={32} color="#801529" />
         </View>
         <Text className="text-gray-800 text-base text-center font-bold">
-          Esta gestión no tiene cursos habilitados
+          {emptyTitle}
         </Text>
         <Text className="text-xs text-gray-500 mt-1 text-center max-w-sm">
-          Asegúrate de generar la estructura de cursos en la Gestión Académica para visualizarlos aquí.
+          {emptyDescription}
         </Text>
         {onRefresh && (
           <TouchableOpacity

@@ -1,5 +1,8 @@
 BEGIN;
 
+-- Datos funcionales para pruebas: catálogo curricular completo y estudiantes
+-- solo en 1ro de secundaria A/B. Las cuentas usan el generador institucional.
+
 -- Roles
 INSERT INTO "roles" ("id", "rol", "descripcion", "activo") VALUES
   (1,  'director',     'Dirección General',          true),
@@ -380,1123 +383,263 @@ ON CONFLICT ("periodo_id", "nivel", "grado", "materia_id") DO UPDATE SET
   "peso_sintactico"       = EXCLUDED."peso_sintactico",
   "activo"                = true;
 
--- Cuentas de usuarios
-CREATE TEMP TABLE tmp_cuentas (
-  username            text PRIMARY KEY,
-  rol_id              bigint NOT NULL,
-  nombre              text   NOT NULL,
-  apellido_paterno    text   NOT NULL,
-  apellido_materno    text   NOT NULL,
-  nacimiento          date   NOT NULL,
-  genero              text   NOT NULL,
-  especialidad        text
-) ON COMMIT DROP;
 
--- Dirección, control, gerencia y apoderados
-INSERT INTO tmp_cuentas (username, rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, especialidad) VALUES
-  ('director01',  1, 'Ramiro',   'Vargas',     'Flores',   DATE '1978-04-20', 'masculino', NULL),
-  ('director02',  1, 'Carmen',   'Rojas',      'Torrez',   DATE '1982-09-11', 'femenino',  NULL),
-  ('control01',   4, 'Elena',    'Ribera',     'Ortiz',    DATE '1988-03-14', 'femenino',  NULL),
-  ('control02',   4, 'Marcelo',  'Quiroga',    'Céspedes', DATE '1990-07-22', 'masculino', NULL),
-  ('control03',   4, 'Silvana',  'Ayoví',      'Terceros', DATE '1992-11-05', 'femenino',  NULL),
-  ('gerencia01', 10, 'Rodrigo',  'Sanzetenea', 'Vargas',   DATE '1985-05-30', 'masculino', NULL),
-  ('gerencia02', 10, 'Patricia', 'Mendoza',    'Loayza',   DATE '1987-09-18', 'femenino',  NULL),
-  ('apoder01',    9, 'Jorge',    'Chumacero',  'Nina',     DATE '1983-01-25', 'masculino', NULL),
-  ('apoder02',    9, 'Lourdes',  'Poma',       'Choque',   DATE '1986-04-11', 'femenino',  NULL),
-  ('apoder03',    9, 'Wilson',   'Apaza',      'Mamani',   DATE '1984-12-02', 'masculino', NULL),
-  ('apoder04',    9, 'Yeni',     'Condori',    'Rojas',    DATE '1989-08-19', 'femenino',  NULL),
-  ('apoder05',    9, 'Freddy',   'Mamani',     'Quispe',   DATE '1981-06-30', 'masculino', NULL),
-  ('apoder06',    9, 'Rosa',     'Flores',     'Condori',  DATE '1987-02-14', 'femenino',  NULL),
-  ('apoder07',    9, 'Edwin',    'Quispe',     'Huanca',   DATE '1985-10-08', 'masculino', NULL),
-  ('apoder08',    9, 'Maribel',  'Ticona',     'Apaza',    DATE '1990-05-27', 'femenino',  NULL),
-  ('apoder09',    9, 'Grover',   'Siñani',     'Mamani',   DATE '1983-07-19', 'masculino', NULL),
-  ('apoder10',    9, 'Delia',    'Choque',     'Callisaya',DATE '1988-12-03', 'femenino',  NULL),
-  ('apoder11',    9, 'Rubén',    'Calle',      'Yujra',    DATE '1986-03-22', 'masculino', NULL),
-  ('apoder12',    9, 'Nelly',    'Gutiérrez',  'Poma',     DATE '1991-08-15', 'femenino',  NULL);
+-- Credenciales de prueba: contrasena Shalom2026 (hash bcrypt compatible con ServiceUser).
+-- Los usernames se generan con la misma regla de ServiceUser/utils/username.ts:
+-- 2 letras apellido paterno + 2 apellido materno + 2 nombre + CI + checksum.
+CREATE TEMP TABLE tmp_personas (
+  rol text NOT NULL,
+  nombre text NOT NULL,
+  apellido_paterno text NOT NULL,
+  apellido_materno text NOT NULL,
+  nacimiento date NOT NULL,
+  genero text NOT NULL,
+  ci text NOT NULL,
+  especialidad text,
+  paralelo text
+);
 
--- Docentes (dos por materia para cubrir paralelos A y B)
-INSERT INTO tmp_cuentas (username, rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, especialidad) VALUES
-  ('maestro01', 2, 'Claudia',  'Apaza',       'Lozano',       DATE '1988-06-12', 'femenino',  'LEN-101'),
-  ('maestro02', 2, 'Ramiro',   'Choque',      'Salvatierra',  DATE '1984-10-03', 'masculino', 'LEN-101'),
-  ('maestro03', 2, 'Nina',     'Callisaya',   'Huanca',       DATE '1990-02-27', 'femenino',  'LIG-102'),
-  ('maestro04', 2, 'Felix',    'Mamani',      'Quispe',       DATE '1986-11-19', 'masculino', 'LIG-102'),
-  ('maestro05', 2, 'Veronica', 'Aliaga',      'Zeballos',     DATE '1991-07-08', 'femenino',  'LEX-103'),
-  ('maestro06', 2, 'Ivan',     'Pinedo',      'Rojas',        DATE '1985-09-23', 'masculino', 'LEX-103'),
-  ('maestro07', 2, 'Marisol',  'Ccahuana',    'Bustamante',   DATE '1989-12-01', 'femenino',  'CSO-104'),
-  ('maestro08', 2, 'Oscar',    'Huayllani',   'Macedo',       DATE '1983-05-16', 'masculino', 'CSO-104'),
-  ('maestro09', 2, 'Danilo',   'Chavez',      'Ordonez',      DATE '1992-03-30', 'masculino', 'EFI-105'),
-  ('maestro10', 2, 'Karina',   'Flores',      'Vera',         DATE '1993-08-21', 'femenino',  'EFI-105'),
-  ('maestro11', 2, 'Julio',    'Mamani',      'Cori',         DATE '1987-01-14', 'masculino', 'MUS-106'),
-  ('maestro12', 2, 'Antonia',  'Condori',     'Mamani',       DATE '1988-06-25', 'femenino',  'MUS-106'),
-  ('maestro13', 2, 'Renzo',    'Caceres',     'Daza',         DATE '1991-04-09', 'masculino', 'ART-107'),
-  ('maestro14', 2, 'Camila',   'Zeballos',    'Aguilar',      DATE '1994-10-18', 'femenino',  'ART-107'),
-  ('maestro15', 2, 'Guido',    'Tola',        'Mamani',       DATE '1986-11-11', 'masculino', 'VER-201'),
-  ('maestro16', 2, 'Noelia',   'Machicado',   'Choque',       DATE '1990-02-02', 'femenino',  'VER-201'),
-  ('maestro17', 2, 'Ariel',    'Villarroel',  'Calsina',      DATE '1989-09-05', 'masculino', 'FIL-202'),
-  ('maestro18', 2, 'Sara',     'Choque',      'Mamani',       DATE '1993-01-22', 'femenino',  'FIL-202'),
-  ('maestro19', 2, 'Bruno',    'Colque',      'Mamani',       DATE '1985-07-07', 'masculino', 'CNT-301'),
-  ('maestro20', 2, 'Debora',   'Apaza',       'Soto',         DATE '1992-05-13', 'femenino',  'CNT-301'),
-  ('maestro21', 2, 'Gabriel',  'Quisbert',    'Antezana',     DATE '1988-12-29', 'masculino', 'BIO-302'),
-  ('maestro22', 2, 'Yolanda',  'Ponce',       'Callisaya',    DATE '1991-03-08', 'femenino',  'BIO-302'),
-  ('maestro23', 2, 'Erick',    'Choque',      'Zambrano',     DATE '1990-10-24', 'masculino', 'FIS-303'),
-  ('maestro24', 2, 'Melissa',  'Ordonez',     'Apaza',        DATE '1994-04-17', 'femenino',  'FIS-303'),
-  ('maestro25', 2, 'Homero',   'Chuquimarca', 'Mamani',       DATE '1987-06-11', 'masculino', 'QUI-304'),
-  ('maestro26', 2, 'Lucia',    'Bustamante',  'Cari',         DATE '1992-08-02', 'femenino',  'QUI-304'),
-  ('maestro27', 2, 'Zenon',    'Apaza',       'Kallisaya',    DATE '1984-01-28', 'masculino', 'MAT-401'),
-  ('maestro28', 2, 'Amalia',   'Ccahuana',    'Mamani',       DATE '1989-05-15', 'femenino',  'MAT-401'),
-  ('maestro29', 2, 'Wilson',   'Titi',        'Calsina',      DATE '1991-07-07', 'masculino', 'TTG-402'),
-  ('maestro30', 2, 'Natalia',  'Hinojosa',    'Apaza',        DATE '1993-11-26', 'femenino',  'TTG-402'),
-  ('maestro31', 2, 'Alvaro',   'Quispe',      'Tola',         DATE '1986-02-26', 'masculino', 'TTE-403'),
-  ('maestro32', 2, 'Fabiola',  'Mamani',      'Choque',       DATE '1994-09-19', 'femenino',  'TTE-403');
+CREATE OR REPLACE FUNCTION pg_temp.limpiar_nombre_usuario(valor text)
+RETURNS text LANGUAGE sql IMMUTABLE AS $$
+  SELECT lower(regexp_replace(
+    translate(coalesce(valor, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'),
+    '[^a-zA-Z]', '', 'g'
+  ))
+$$;
 
--- Estudiantes: 20 por cada uno de los 24 cursos (480 inscritos)
-DROP TABLE IF EXISTS tmp_destino;
-CREATE TEMP TABLE tmp_destino ON COMMIT DROP AS
-WITH orden AS (
-  SELECT c."id" AS curso_id, c."nivel", c."grado",
-         row_number() OVER (ORDER BY c."id") AS pos
-  FROM "cursos" c
-  WHERE c."activo"
-)
-SELECT o.curso_id, o."nivel", o."grado", s.n,
-       make_date(
-         2026
-           - CASE WHEN o."nivel" = 'secundaria'
-                  THEN 13 + (regexp_match(o."grado", '\d+'))[1]::int
-                  ELSE  9 + (regexp_match(o."grado", '\d+'))[1]::int
-             END,
-         3, 31
-       ) + (((s.n * 7) % 300)::int) AS nacimiento
-FROM orden o
-CROSS JOIN LATERAL generate_series((o.pos - 1) * 20 + 1, o.pos * 20) AS s(n);
+CREATE OR REPLACE FUNCTION pg_temp.digito_control_usuario(total integer)
+RETURNS integer LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  resultado integer := abs(total);
+BEGIN
+  WHILE resultado >= 10 LOOP
+    resultado := (resultado / 10) + (resultado % 10);
+    IF resultado >= 10 THEN
+      resultado := (resultado / 10) + (resultado % 10);
+    END IF;
+  END LOOP;
+  RETURN resultado;
+END
+$$;
 
-INSERT INTO tmp_cuentas (username, rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, especialidad)
-SELECT
-  'est' || lpad(d.n::text, 4, '0'),
-  3,
-  (ARRAY['Abigail','Bruno','Camila','Dante','Elena','Facundo',
-         'Gabriela','Hector','Ines','Joaquin','Karla','Lorenzo',
-         'Mariana','Nicolas','Olivia','Pablo','Renata','Santiago',
-         'Tatiana','Ursula','Valentina','Wilder','Ximena','Yohan',
-         'Zulma','Ariadna','Benjamin','Ciro','Dayana','Emilio'])[((d.n - 1) % 30) + 1],
-  (ARRAY['Vega','Salcedo','Zubieta','Mogrovejo','Cumbicus','Arocena',
-         'Ynchausti','Quispe','Palomeque','Chuquimarca','Choque','Apuaza',
-         'Tintaya','Zaragoza','Mamani','Guarangay','Callisaya','Ccahuana',
-         'Mamani','Quisbert','Apaza','Mamani','Ponce','Condori',
-         'Choque','Tintaya','Huayllani','Villarroel','Apuza','Mayta'])[(((d.n - 1) / 30) % 30) + 1],
-  (ARRAY['Roca','Paz','Aliaga','Lillo','Mamani','Chavez',
-         'Copa','Mamani','Apaza','Vera','Ponce','Mayta',
-         'Condori','Callo','Poma','Cori','Apaza','Callisaya',
-         'Mamani','Antezana','Condori','Zeballos','Mamani','Tola',
-         'Apaza','Zambrano','Callo','Mayta','Apuza','Mayta'])[((d.n * 13) % 30) + 1],
-  d.nacimiento,
-  CASE WHEN d.n % 2 = 0 THEN 'femenino' ELSE 'masculino' END,
-  NULL
-FROM tmp_destino d;
+CREATE OR REPLACE FUNCTION pg_temp.generar_username(
+  nombre text, apellido_paterno text, apellido_materno text, ci text
+) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  nom text := pg_temp.limpiar_nombre_usuario(nombre);
+  pat text := pg_temp.limpiar_nombre_usuario(apellido_paterno);
+  mat text := pg_temp.limpiar_nombre_usuario(apellido_materno);
+  ap_pat text;
+  ap_mat text;
+  nom_dos text;
+  digitos text := regexp_replace(coalesce(ci, ''), '[^0-9]', '', 'g');
+  ci_inicio text := '10';
+  ci_final text := '25';
+  checksum integer := 7;
+  hash_num integer;
+BEGIN
+  IF nom = '' AND pat = '' THEN RETURN ''; END IF;
+  ap_pat := CASE WHEN length(pat) >= 2 THEN left(pat, 2)
+                 WHEN length(pat) = 1 THEN pat || coalesce(left(nom, 1), 'a')
+                 ELSE coalesce(left(nom, 2), 'sh') END;
+  ap_mat := CASE WHEN length(mat) >= 2 THEN left(mat, 2)
+                 WHEN length(pat) > 2 THEN substr(pat, 3, 2)
+                 ELSE 'sh' END;
+  nom_dos := CASE WHEN length(nom) >= 2 THEN left(nom, 2)
+                  WHEN length(nom) = 1 THEN nom || coalesce(left(pat, 1), 'a')
+                  ELSE coalesce(left(pat, 2), 'sh') END;
+  IF length(digitos) >= 4 THEN
+    ci_inicio := left(digitos, 2);
+    ci_final := right(digitos, 2);
+    checksum := pg_temp.digito_control_usuario(
+      substr(ci_inicio, 1, 1)::integer + substr(ci_inicio, 2, 1)::integer +
+      substr(ci_final, 1, 1)::integer + substr(ci_final, 2, 1)::integer
+    );
+  ELSIF length(digitos) > 0 THEN
+    ci_inicio := rpad(digitos, 2, '1');
+    ci_final := lpad(digitos, 2, '2');
+    checksum := pg_temp.digito_control_usuario(
+      substr(ci_inicio, 1, 1)::integer + substr(ci_final, 1, 1)::integer
+    );
+  ELSE
+    hash_num := (length(nom) * 13 + length(pat) * 7 + greatest(length(mat), 3)) % 90 + 10;
+    ci_inicio := hash_num::text;
+    ci_final := (99 - hash_num)::text;
+    checksum := pg_temp.digito_control_usuario(hash_num);
+  END IF;
+  RETURN ap_pat || ap_mat || nom_dos || ci_inicio || ci_final || checksum::text;
+END
+$$;
 
--- Postulantes en reserva (sin inscripcion todavia)
-INSERT INTO tmp_cuentas (username, rol_id, nombre, apellido_paterno, apellido_materno, nacimiento, genero, especialidad) VALUES
-  ('est0481', 3, 'Thiago', 'Ramos',   'Vargas',  DATE '2019-05-10', 'masculino', NULL),
-  ('est0482', 3, 'Aitana', 'Mercado', 'Flores',  DATE '2019-08-22', 'femenino',  NULL),
-  ('est0483', 3, 'Dylan',  'Soruco',  'Mendez',  DATE '2020-01-15', 'masculino', NULL),
-  ('est0484', 3, 'Alba',   'Roca',    'Justiniano', DATE '2019-11-30', 'femenino',  NULL);
+INSERT INTO tmp_personas
+  (rol, nombre, apellido_paterno, apellido_materno, nacimiento, genero, ci, especialidad, paralelo)
+VALUES
+  ('director', 'Ramiro', 'Vargas', 'Flores', DATE '1978-04-20', 'masculino', '71030001', NULL, NULL),
+  ('control', 'Elena', 'Ribera', 'Ortiz', DATE '1988-03-14', 'femenino', '71030002', NULL, NULL),
+  ('profesor', 'Claudia', 'Apaza', 'Lozano', DATE '1988-06-12', 'femenino', '73020001', 'LEN-101', NULL),
+  ('profesor', 'Nina', 'Callisaya', 'Huanca', DATE '1990-02-27', 'femenino', '73020002', 'LIG-102', NULL),
+  ('profesor', 'Veronica', 'Aliaga', 'Zeballos', DATE '1991-07-08', 'femenino', '73020003', 'LEX-103', NULL),
+  ('profesor', 'Marisol', 'Ccahuana', 'Bustamante', DATE '1989-12-01', 'femenino', '73020004', 'CSO-104', NULL),
+  ('profesor', 'Danilo', 'Chavez', 'Ordonez', DATE '1992-03-30', 'masculino', '73020005', 'EFI-105', NULL),
+  ('profesor', 'Renzo', 'Caceres', 'Daza', DATE '1991-04-09', 'masculino', '73020006', 'ART-107', NULL),
+  ('profesor', 'Guido', 'Tola', 'Mamani', DATE '1986-11-11', 'masculino', '73020007', 'VER-201', NULL),
+  ('profesor', 'Bruno', 'Colque', 'Mamani', DATE '1985-07-07', 'masculino', '73020008', 'CNT-301', NULL),
+  ('profesor', 'Gabriel', 'Quisbert', 'Antezana', DATE '1988-12-29', 'masculino', '73020009', 'BIO-302', NULL),
+  ('profesor', 'Erick', 'Choque', 'Zambrano', DATE '1990-10-24', 'masculino', '73020010', 'FIS-303', NULL),
+  ('profesor', 'Homero', 'Chuquimarca', 'Mamani', DATE '1987-06-11', 'masculino', '73020011', 'QUI-304', NULL),
+  ('profesor', 'Zenon', 'Apaza', 'Kallisaya', DATE '1984-01-28', 'masculino', '73020012', 'MAT-401', NULL),
+  ('estudiante', 'Ana', 'Luna', 'Flores', DATE '2012-03-12', 'femenino', '74010001', NULL, 'A'),
+  ('estudiante', 'Bruno', 'Rojas', 'Paredes', DATE '2012-05-03', 'masculino', '74010002', NULL, 'A'),
+  ('estudiante', 'Carla', 'Salas', 'Terceros', DATE '2012-08-21', 'femenino', '74010003', NULL, 'A'),
+  ('estudiante', 'Diego', 'Poma', 'Vargas', DATE '2012-01-16', 'masculino', '74010004', NULL, 'A'),
+  ('estudiante', 'Elisa', 'Quispe', 'Rocha', DATE '2012-11-09', 'femenino', '74010005', NULL, 'A'),
+  ('estudiante', 'Fabio', 'Condori', 'Nina', DATE '2012-07-30', 'masculino', '74010006', NULL, 'A'),
+  ('estudiante', 'Gabriela', 'Vega', 'Rojas', DATE '2012-02-04', 'femenino', '74010007', NULL, 'B'),
+  ('estudiante', 'Hugo', 'Calle', 'Flores', DATE '2012-09-18', 'masculino', '74010008', NULL, 'B'),
+  ('estudiante', 'Ines', 'Mamani', 'Paredes', DATE '2012-04-26', 'femenino', '74010009', NULL, 'B'),
+  ('estudiante', 'Javier', 'Apaza', 'Roca', DATE '2012-06-15', 'masculino', '74010010', NULL, 'B'),
+  ('estudiante', 'Karen', 'Choque', 'Soria', DATE '2012-10-02', 'femenino', '74010011', NULL, 'B'),
+  ('estudiante', 'Luis', 'Tola', 'Mercado', DATE '2012-12-07', 'masculino', '74010012', NULL, 'B');
 
--- Inserción en usuarios
-INSERT INTO "usuarios" ("rol_id", "nombre", "apellido_paterno", "apellido_materno", "nacimiento", "genero", "estado")
-SELECT c.rol_id, c.nombre, c.apellido_paterno, c.apellido_materno, c.nacimiento, c.genero, 'activo'
+CREATE TEMP TABLE tmp_cuentas ON COMMIT PRESERVE ROWS AS
+SELECT pg_temp.generar_username(nombre, apellido_paterno, apellido_materno, ci) AS username,
+       p.*
+FROM tmp_personas p;
+ALTER TABLE tmp_cuentas ADD PRIMARY KEY (username);
+
+INSERT INTO "usuarios"
+  ("rol_id", "nombre", "apellido_paterno", "apellido_materno", "nacimiento", "genero", "estado")
+SELECT r."id", c.nombre, c.apellido_paterno, c.apellido_materno, c.nacimiento, c.genero, 'activo'
 FROM tmp_cuentas c
-WHERE NOT EXISTS (SELECT 1 FROM "usuario_cuenta" uc WHERE uc."username" = c.username);
+JOIN "roles" r ON r."rol" = c.rol
+ORDER BY c.username;
 
--- Cuentas con clave Shalom2026
+CREATE TEMP TABLE tmp_usuario_ids ON COMMIT PRESERVE ROWS AS
+SELECT c.username, u.id AS usuario_id
+FROM tmp_cuentas c
+JOIN "roles" r ON r.rol = c.rol
+JOIN "usuarios" u ON u.rol_id = r.id
+  AND u.nombre = c.nombre
+  AND u.apellido_paterno = c.apellido_paterno
+  AND u.apellido_materno = c.apellido_materno;
+
 INSERT INTO "usuario_cuenta"
   ("usuario_id", "username", "email", "password_hash", "email_verificado",
-   "primer_login", "datos_personales_actualizados", "contacto_tutor_actualizado",
-   "password_actualizado", "ultimo_login")
-SELECT u."id", c.username, c.username || '@shalom.test',
+   "primer_login", "datos_personales_actualizados", "contacto_tutor_actualizado", "password_actualizado")
+SELECT ui.usuario_id, c.username, c.username || '@shalom.edu.bo',
        '$2a$12$C9nSW/5Mi5KlhQYiFnK59OWnacZJlA5.h.bfoNAlYKTv28yIwDtAe',
-       true, false, true, true, true, NOW()
+       true, false, true, true, true
 FROM tmp_cuentas c
-JOIN "usuarios" u
-  ON u."rol_id"           = c.rol_id
- AND u."nombre"           = c.nombre
- AND u."apellido_paterno" = c.apellido_paterno
- AND u."apellido_materno" = c.apellido_materno
-WHERE NOT EXISTS (SELECT 1 FROM "usuario_cuenta" x WHERE x."username" = c.username);
+JOIN tmp_usuario_ids ui USING (username);
 
--- Apoderados
-INSERT INTO "apoderados" ("usuario_id", "ocupacion")
-SELECT u."id", v.ocupacion
-FROM (VALUES
-  ('apoder01','Comerciante'), ('apoder02','Docente'),
-  ('apoder03','Agricultor'),  ('apoder04','Enfermera'),
-  ('apoder05','Albañil'),     ('apoder06','Costurera'),
-  ('apoder07','Chofer'),      ('apoder08','Contadora'),
-  ('apoder09','Carpintero'),  ('apoder10','Vendedora'),
-  ('apoder11','Electricista'),('apoder12','Cocinera')
-) AS v(username, ocupacion)
-JOIN tmp_cuentas c ON c.username = v.username
-JOIN "usuario_cuenta" uc ON uc."username" = c.username
-JOIN "usuarios" u ON u."id" = uc."usuario_id"
-ON CONFLICT ("usuario_id") DO NOTHING;
+INSERT INTO "usuario_documentos" ("usuario_id", "tipo_doc", "numero_doc")
+SELECT ui.usuario_id, 'CI', c.ci FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
+INSERT INTO "usuario_direcciones" ("usuario_id", "zona", "distrito", "calle", "numero", "referencia")
+SELECT ui.usuario_id, 'Villa Adela', 'Distrito 3', 'Calle de prueba', c.ci, 'Domicilio de datos de prueba'
+FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
+INSERT INTO "usuario_contactos" ("usuario_id", "tipo", "contenido", "principal")
+SELECT ui.usuario_id, 'telefono', '+5917' || right(c.ci, 8), true
+FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
 
--- Maestros
 INSERT INTO "maestros" ("usuario_id", "especialidad", "fecha_contratacion", "materias_configuradas", "estado")
-SELECT u."id", m."nombre",
-       (DATE '2010-02-01' + ((substring(c.username from 8)::int) * 90))::date,
-       true, 'activo'
+SELECT ui.usuario_id, m.nombre, DATE '2020-02-01', true, 'activo'
 FROM tmp_cuentas c
-JOIN "usuario_cuenta" uc ON uc."username" = c.username
-JOIN "usuarios" u ON u."id" = uc."usuario_id"
-JOIN "materias" m ON m."codigo" = c.especialidad
-WHERE c.especialidad IS NOT NULL
-ON CONFLICT ("usuario_id") DO UPDATE SET
-  "especialidad" = EXCLUDED."especialidad", "estado" = 'activo';
+JOIN tmp_usuario_ids ui USING (username)
+JOIN "materias" m ON m.codigo = c.especialidad
+WHERE c.rol = 'profesor';
+
+CREATE TEMP TABLE tmp_maestros ON COMMIT PRESERVE ROWS AS
+SELECT c.username, ms.id AS maestro_id, m.id AS materia_id, m.codigo
+FROM tmp_cuentas c
+JOIN tmp_usuario_ids ui USING (username)
+JOIN "maestros" ms ON ms.usuario_id = ui.usuario_id
+JOIN "materias" m ON m.codigo = c.especialidad
+WHERE c.rol = 'profesor';
 
 INSERT INTO "maestro_materias" ("maestro_id", "materia_id")
-SELECT ms."id", m."id"
-FROM "maestros" ms
-JOIN "materias" m ON m."nombre" = ms."especialidad"
-WHERE ms."estado" = 'activo'
-ON CONFLICT DO NOTHING;
+SELECT maestro_id, materia_id FROM tmp_maestros;
 
--- Estudiantes
 INSERT INTO "estudiantes"
   ("usuario_id", "fecha_ingreso", "tutor_nombre", "tutor_telefono", "tutor_parentesco", "estado")
-SELECT uc."usuario_id", DATE '2026-02-02',
-       u."nombre" || ' ' || u."apellido_paterno",
-       '+5917' || lpad((70000000 + n * 137)::text, 8, '0'),
-       CASE WHEN n % 2 = 0 THEN 'Madre' ELSE 'Padre' END,
-       'activo'
-FROM (
-  SELECT uc."usuario_id", (substring(uc."username" from 4))::int AS n
-  FROM "usuario_cuenta" uc
-  WHERE uc."username" ~ '^est[0-9]{4}$'
-) uc
-JOIN "usuarios" u ON u."id" = uc."usuario_id"
-ON CONFLICT ("usuario_id") DO NOTHING;
+SELECT ui.usuario_id, DATE '2026-02-02', 'Familia de ' || c.nombre, '+59170000000', 'Madre', 'activo'
+FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username)
+WHERE c.rol = 'estudiante';
 
--- Documentos, direcciones y contactos
-INSERT INTO "usuario_documentos" ("usuario_id", "tipo_doc", "numero_doc")
-SELECT u."id", 'CI', lpad((80000000 + row_number() OVER (ORDER BY u."id"))::text, 8, '0')
-FROM "usuarios" u
-WHERE NOT EXISTS (SELECT 1 FROM "usuario_documentos" d WHERE d."usuario_id" = u."id");
+CREATE TEMP TABLE tmp_estudiantes ON COMMIT PRESERVE ROWS AS
+SELECT c.username, c.paralelo, ui.usuario_id, e.id AS estudiante_id,
+       c.nombre, c.apellido_paterno, c.apellido_materno
+FROM tmp_cuentas c
+JOIN tmp_usuario_ids ui USING (username)
+JOIN "estudiantes" e ON e.usuario_id = ui.usuario_id
+WHERE c.rol = 'estudiante';
 
-INSERT INTO "usuario_direcciones"
-  ("usuario_id", "zona", "distrito", "bloque", "calle", "numero", "edificio", "referencia")
-SELECT u."id",
-       (ARRAY['Villa Fatima','Zona Central','Alto Lima','Barrio San Juan','Villa Productiva'])[((u."id" % 5)) + 1],
-       'Distrito ' || (1 + (u."id" % 12))::text,
-       'M' || (1 + (u."id" % 20))::text,
-       'Calle ' || (1 + (u."id" % 30))::text,
-       (10 + (u."id" % 90))::text,
-       'Bloque ' || chr((65 + (u."id" % 6))::int),
-       'Dirección generada para pruebas.'
-FROM "usuarios" u
-WHERE NOT EXISTS (SELECT 1 FROM "usuario_direcciones" d WHERE d."usuario_id" = u."id");
-
-INSERT INTO "usuario_contactos" ("usuario_id", "tipo", "contenido", "principal")
-SELECT u."id", 'telefono', '+5917' || lpad((60000000 + u."id" * 271)::text, 8, '0'), true
-FROM "usuarios" u
-WHERE NOT EXISTS (SELECT 1 FROM "usuario_contactos" c WHERE c."usuario_id" = u."id");
-
--- Relación estudiante-apoderado (reparto entre los 12 apoderados)
-CREATE TEMP TABLE tmp_apoderados ON COMMIT DROP AS
-SELECT ap."id", ap."usuario_id",
-       row_number() OVER (ORDER BY ap."usuario_id") AS idx
-FROM "apoderados" ap;
-
-INSERT INTO "estudiante_apoderado"
-  ("estudiante_id", "apoderado_id", "parentesco", "es_principal", "autorizado_recoger")
-SELECT e."id", a."id",
-       CASE WHEN e_n.n % 2 = 0 THEN 'Madre' ELSE 'Padre' END,
-       true, true
-FROM (
-  SELECT e."id", (substring(uc."username" from 4))::int AS n
-  FROM "estudiantes" e
-  JOIN "usuario_cuenta" uc ON uc."usuario_id" = e."usuario_id"
-  WHERE uc."username" ~ '^est[0-9]{4}$'
-) e_n
-JOIN "estudiantes" e ON e."id" = e_n."id"
-JOIN tmp_apoderados a ON a.idx = ((e_n.n - 1) % 12) + 1
-ON CONFLICT ("estudiante_id", "apoderado_id") DO NOTHING;
-
--- Inscripciones: cada estudiante va al curso que le toco en tmp_destino
 INSERT INTO "inscripciones"
   ("estudiante_id", "curso_periodo_id", "periodo_id", "origen", "fecha_inscripcion", "estado", "observacion")
-SELECT e_n."id", cp."id", cp."periodo_id", 'nueva', DATE '2026-02-02', 'activo',
-       'Inscripción generada para pruebas'
-FROM (
-  SELECT e."id", (substring(uc."username" from 4))::int AS n
-  FROM "estudiantes" e
-  JOIN "usuario_cuenta" uc ON uc."usuario_id" = e."usuario_id"
-  WHERE uc."username" ~ '^est[0-9]{4}$'
-) e_n
-JOIN tmp_destino d ON d.n = e_n.n
-JOIN "cursos_periodo" cp ON cp."curso_id" = d.curso_id
-                        AND cp."periodo_id" = (SELECT "id" FROM tmp_periodo)
-ON CONFLICT ("estudiante_id", "curso_periodo_id") DO UPDATE SET "estado" = 'activo';
+SELECT e.estudiante_id, cp.id, cp.periodo_id, 'nueva', DATE '2026-02-02', 'activo', 'Inscripcion de prueba - 1ro de secundaria'
+FROM tmp_estudiantes e
+JOIN "cursos" c ON c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo = e.paralelo
+JOIN "cursos_periodo" cp ON cp.curso_id = c.id AND cp.periodo_id = (SELECT id FROM tmp_periodo);
 
--- Solicitudes de inscripción (promociones aprobadas y reservas pendientes)
-INSERT INTO "solicitudes_inscripcion"
-  ("estudiante_id", "periodo_id", "curso_periodo_destino_id", "tipo", "estado", "motivo", "solicitante_id", "procesado_por", "fecha_solicitud", "fecha_proceso", "observacion")
-SELECT e."id", (SELECT "id" FROM tmp_periodo), cp."id", v.tipo, v.estado, v.motivo,
-       sol."id", proc."id", v.fs::timestamptz, v.fp::timestamptz, v.obs
-FROM (VALUES
-  ('est0201', 'secundaria', '1°', 'A', 'promocion', 'aprobada',  'Promoción de 6° de primaria', 'control01', 'control01', '2025-12-10 09:00:00-04', '2025-12-15 10:00:00-04', 'Promoción de fin de gestión'),
-  ('est0202', 'secundaria', '1°', 'A', 'promocion', 'aprobada',  'Promoción de 6° de primaria', 'control01', 'control01', '2025-12-10 09:10:00-04', '2025-12-15 10:05:00-04', 'Promoción de fin de gestión'),
-  ('est0221', 'secundaria', '1°', 'B', 'promocion', 'aprobada',  'Promoción de 6° de primaria', 'control01', 'control01', '2025-12-10 09:20:00-04', '2025-12-15 10:10:00-04', 'Promoción de fin de gestión'),
-  ('est0222', 'secundaria', '1°', 'B', 'promocion', 'aprobada',  'Promoción de 6° de primaria', 'control01', 'control01', '2025-12-10 09:30:00-04', '2025-12-15 10:15:00-04', 'Promoción de fin de gestión'),
-  ('est0241', 'secundaria', '2°', 'A', 'promocion', 'rechazada', 'Promoción anticipada de curso', 'control01', 'control01', '2026-03-05 09:00:00-04', '2026-03-08 10:00:00-04', 'No cumple requisito de edad'),
-  ('est0481', 'primaria',   '1°', 'A', 'reserva',   'pendiente', 'Reserva de cupo 1° de primaria', 'apoder05', NULL,        '2026-09-20 09:00:00-04', NULL, 'En espera de verificación de documentos'),
-  ('est0482', 'primaria',   '1°', 'A', 'reserva',   'pendiente', 'Reserva de cupo 1° de primaria', 'apoder06', NULL,        '2026-09-22 09:00:00-04', NULL, 'En espera de verificación de documentos'),
-  ('est0483', 'primaria',   '1°', 'B', 'reserva',   'pendiente', 'Reserva de cupo 1° de primaria', 'apoder07', NULL,        '2026-09-25 09:00:00-04', NULL, 'En espera de verificación de documentos'),
-  ('est0484', 'primaria',   '1°', 'B', 'reserva',   'pendiente', 'Reserva de cupo 1° de primaria', 'apoder08', NULL,        '2026-09-28 09:00:00-04', NULL, 'En espera de verificación de documentos')
-) AS v(username, nivel, grado, paralelo, tipo, estado, motivo, solicitante, procesado, fs, fp, obs)
-JOIN "usuario_cuenta" uc ON uc."username" = v.username
-JOIN "estudiantes" e ON e."usuario_id" = uc."usuario_id"
-JOIN "cursos" c ON c."nivel" = v.nivel AND c."grado" = v.grado AND c."paralelo" = v.paralelo
-JOIN "cursos_periodo" cp ON cp."curso_id" = c."id" AND cp."periodo_id" = (SELECT "id" FROM tmp_periodo)
-JOIN "usuarios" sol ON sol."id" = (SELECT u2."id" FROM "usuario_cuenta" x JOIN "usuarios" u2 ON u2."id" = x."usuario_id" WHERE x."username" = v.solicitante)
-LEFT JOIN "usuarios" proc ON v.procesado IS NOT NULL AND proc."id" = (SELECT u3."id" FROM "usuario_cuenta" y JOIN "usuarios" u3 ON u3."id" = y."usuario_id" WHERE y."username" = v.procesado)
-WHERE NOT EXISTS (
-  SELECT 1 FROM "solicitudes_inscripcion" s
-  WHERE s."estudiante_id" = e."id" AND s."curso_periodo_destino_id" = cp."id" AND s."tipo" = v.tipo
-);
+INSERT INTO "asignaciones_docentes" ("maestro_id", "materia_id", "curso_periodo_id", "estado", "fecha_asignacion")
+SELECT tm.maestro_id, tm.materia_id, cp.id, 'activo', DATE '2026-02-02'
+FROM tmp_maestros tm
+JOIN "grado_materias" gm ON gm.materia_id = tm.materia_id AND gm.nivel = 'secundaria' AND gm.grado = '1°'
+JOIN "cursos_periodo" cp ON cp.periodo_id = (SELECT id FROM tmp_periodo)
+JOIN "cursos" c ON c.id = cp.curso_id AND c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo IN ('A', 'B');
 
-CREATE TEMP TABLE tmp_inscripciones ON COMMIT DROP AS
-SELECT i."estudiante_id", i."curso_periodo_id", i."periodo_id",
-       (substring(uc."username" from 4))::int AS n
-FROM "inscripciones" i
-JOIN "estudiantes" e ON e."id" = i."estudiante_id"
-JOIN "usuario_cuenta" uc ON uc."usuario_id" = e."usuario_id"
-WHERE i."estado" = 'activo' AND i."periodo_id" = (SELECT "id" FROM tmp_periodo)
-  AND uc."username" ~ '^est[0-9]{4}$';
-
--- Perfiles de seguimiento: bajo 10%, regular 20%, estandar 10%, excelente 60%
-CREATE TEMP TABLE tmp_perfiles ON COMMIT DROP AS
-SELECT e_n.n,
-       e_n."estudiante_id",
-       CASE
-         WHEN e_n.n % 20 IN (0, 1)       THEN 'bajo'
-         WHEN e_n.n % 20 IN (2, 3, 4, 5) THEN 'regular'
-         WHEN e_n.n % 20 IN (6, 7)       THEN 'estandar'
-         ELSE 'excelente'
-       END AS perfil
-FROM (
-  SELECT e."id" AS "estudiante_id", (substring(uc."username" from 4))::int AS n
-  FROM "estudiantes" e
-  JOIN "usuario_cuenta" uc ON uc."usuario_id" = e."usuario_id"
-  WHERE uc."username" ~ '^est[0-9]{4}$'
-) e_n;
-
--- Asignaciones docentes (paralelo A con el primer docente, B con el segundo)
-WITH pares AS (
-  SELECT mm."materia_id", ms."id" AS maestro_id,
-         row_number() OVER (PARTITION BY mm."materia_id" ORDER BY ms."id") AS idx
-  FROM "maestro_materias" mm
-  JOIN "maestros" ms ON ms."id" = mm."maestro_id"
-  WHERE ms."estado" = 'activo'
-)
-INSERT INTO "asignaciones_docentes"
-  ("maestro_id", "materia_id", "curso_periodo_id", "estado", "fecha_asignacion")
-SELECT p.maestro_id, p.materia_id, cp."id", 'activo', DATE '2026-02-02'
-FROM pares p
-JOIN "grado_materias" gm ON gm."materia_id" = p.materia_id
-JOIN "cursos_periodo" cp ON cp."periodo_id" = (SELECT "id" FROM tmp_periodo)
-JOIN "cursos" c ON c."id" = cp."curso_id"
-             AND c."nivel" = gm."nivel"
-             AND c."grado" = gm."grado"
-             AND CASE c."paralelo" WHEN 'B' THEN 2 ELSE 1 END = p.idx
-ON CONFLICT ("maestro_id", "materia_id", "curso_periodo_id") DO UPDATE SET "estado" = 'activo';
-
--- Asesor de curso (primer docente asignado del curso)
-WITH candidatos AS (
-  SELECT ad."curso_periodo_id", ad."maestro_id",
-         row_number() OVER (PARTITION BY ad."curso_periodo_id" ORDER BY ad."maestro_id") AS idx
-  FROM "asignaciones_docentes" ad
-  WHERE ad."estado" = 'activo'
-)
-INSERT INTO "curso_asesor" ("curso_periodo_id", "maestro_id", "fecha_inicio", "fecha_fin")
-SELECT "curso_periodo_id", "maestro_id", DATE '2026-02-02', DATE '2026-12-18'
-FROM candidatos
-WHERE idx = 1
-ON CONFLICT ("curso_periodo_id") DO UPDATE SET "maestro_id" = EXCLUDED."maestro_id";
-
--- Horarios 07:00 a 12:00 (22 bloques por curso, turno manana, sin choques)
--- Aula fija por curso (una por cada curso del periodo)
-CREATE TEMP TABLE tmp_aula_curso ON COMMIT DROP AS
-SELECT cp."id" AS curso_periodo_id, a."id" AS aula_id
-FROM (SELECT cp."id", row_number() OVER (ORDER BY cp."id") AS rn
-      FROM "cursos_periodo" cp WHERE cp."periodo_id" = (SELECT "id" FROM tmp_periodo)) cp
-JOIN (SELECT a."id", row_number() OVER (ORDER BY a."codigo") AS rn
-      FROM "aulas" a WHERE a."codigo" NOT IN ('LAB-1', 'TALL-1', 'AUD-1')) a ON a.rn = cp.rn;
-
-INSERT INTO "horarios"
-  ("curso_periodo_id", "materia_id", "asignacion_id", "maestro_id", "aula_id", "turno_id",
-   "dia_semana", "hora_inicio", "hora_fin")
-SELECT cp."id", m."id", ad."id", ad."maestro_id",
-       ac.aula_id, cp."turno_id", v.dia, v.hi::time, v.hf::time
-FROM (VALUES
-  ('primaria','1°','A','ART-107',2,'07:45','08:30'),
-  ('primaria','1°','A','ART-107',5,'07:45','08:30'),
-  ('primaria','1°','A','CNT-301',1,'10:45','11:30'),
-  ('primaria','1°','A','CNT-301',4,'10:45','11:30'),
-  ('primaria','1°','A','CSO-104',1,'08:30','09:15'),
-  ('primaria','1°','A','CSO-104',2,'10:00','10:45'),
-  ('primaria','1°','A','EFI-105',3,'10:00','10:45'),
-  ('primaria','1°','A','EFI-105',4,'08:30','09:15'),
-  ('primaria','1°','A','LEN-101',3,'07:45','08:30'),
-  ('primaria','1°','A','LEN-101',4,'10:00','10:45'),
-  ('primaria','1°','A','LEX-103',1,'10:00','10:45'),
-  ('primaria','1°','A','LEX-103',3,'08:30','09:15'),
-  ('primaria','1°','A','LIG-102',5,'07:00','07:45'),
-  ('primaria','1°','A','LIG-102',5,'08:30','09:15'),
-  ('primaria','1°','A','MAT-401',4,'07:45','08:30'),
-  ('primaria','1°','A','MAT-401',5,'10:45','11:30'),
-  ('primaria','1°','A','MUS-106',1,'07:00','07:45'),
-  ('primaria','1°','A','MUS-106',5,'10:00','10:45'),
-  ('primaria','1°','A','TTG-402',1,'07:45','08:30'),
-  ('primaria','1°','A','TTG-402',3,'07:00','07:45'),
-  ('primaria','1°','A','VER-201',2,'07:00','07:45'),
-  ('primaria','1°','A','VER-201',3,'10:45','11:30'),
-  ('primaria','1°','B','ART-107',1,'10:45','11:30'),
-  ('primaria','1°','B','ART-107',2,'10:00','10:45'),
-  ('primaria','1°','B','CNT-301',4,'10:00','10:45'),
-  ('primaria','1°','B','CNT-301',4,'10:45','11:30'),
-  ('primaria','1°','B','CSO-104',3,'07:00','07:45'),
-  ('primaria','1°','B','CSO-104',3,'10:45','11:30'),
-  ('primaria','1°','B','EFI-105',1,'07:00','07:45'),
-  ('primaria','1°','B','EFI-105',5,'07:00','07:45'),
-  ('primaria','1°','B','LEN-101',4,'07:45','08:30'),
-  ('primaria','1°','B','LEN-101',5,'10:45','11:30'),
-  ('primaria','1°','B','LEX-103',1,'08:30','09:15'),
-  ('primaria','1°','B','LEX-103',3,'07:45','08:30'),
-  ('primaria','1°','B','LIG-102',2,'07:00','07:45'),
-  ('primaria','1°','B','LIG-102',5,'07:45','08:30'),
-  ('primaria','1°','B','MAT-401',1,'10:00','10:45'),
-  ('primaria','1°','B','MAT-401',4,'07:00','07:45'),
-  ('primaria','1°','B','MUS-106',4,'08:30','09:15'),
-  ('primaria','1°','B','MUS-106',5,'08:30','09:15'),
-  ('primaria','1°','B','TTG-402',2,'07:45','08:30'),
-  ('primaria','1°','B','TTG-402',3,'10:00','10:45'),
-  ('primaria','1°','B','VER-201',1,'07:45','08:30'),
-  ('primaria','1°','B','VER-201',5,'10:00','10:45'),
-  ('primaria','2°','A','ART-107',1,'07:45','08:30'),
-  ('primaria','2°','A','ART-107',3,'07:45','08:30'),
-  ('primaria','2°','A','CNT-301',4,'07:45','08:30'),
-  ('primaria','2°','A','CNT-301',4,'10:00','10:45'),
-  ('primaria','2°','A','CSO-104',1,'10:00','10:45'),
-  ('primaria','2°','A','CSO-104',3,'08:30','09:15'),
-  ('primaria','2°','A','EFI-105',2,'07:00','07:45'),
-  ('primaria','2°','A','EFI-105',2,'10:00','10:45'),
-  ('primaria','2°','A','LEN-101',2,'08:30','09:15'),
-  ('primaria','2°','A','LEN-101',4,'08:30','09:15'),
-  ('primaria','2°','A','LEX-103',1,'10:45','11:30'),
-  ('primaria','2°','A','LEX-103',5,'07:45','08:30'),
-  ('primaria','2°','A','LIG-102',2,'07:45','08:30'),
-  ('primaria','2°','A','LIG-102',3,'07:00','07:45'),
-  ('primaria','2°','A','MAT-401',3,'10:45','11:30'),
-  ('primaria','2°','A','MAT-401',5,'08:30','09:15'),
-  ('primaria','2°','A','MUS-106',3,'10:00','10:45'),
-  ('primaria','2°','A','MUS-106',5,'07:00','07:45'),
-  ('primaria','2°','A','TTG-402',1,'07:00','07:45'),
-  ('primaria','2°','A','TTG-402',4,'10:45','11:30'),
-  ('primaria','2°','A','VER-201',5,'10:00','10:45'),
-  ('primaria','2°','A','VER-201',5,'10:45','11:30'),
-  ('primaria','2°','B','ART-107',2,'07:00','07:45'),
-  ('primaria','2°','B','ART-107',2,'07:45','08:30'),
-  ('primaria','2°','B','CNT-301',2,'10:00','10:45'),
-  ('primaria','2°','B','CNT-301',3,'07:00','07:45'),
-  ('primaria','2°','B','CSO-104',1,'07:00','07:45'),
-  ('primaria','2°','B','CSO-104',4,'07:45','08:30'),
-  ('primaria','2°','B','EFI-105',3,'10:00','10:45'),
-  ('primaria','2°','B','EFI-105',4,'10:45','11:30'),
-  ('primaria','2°','B','LEN-101',1,'08:30','09:15'),
-  ('primaria','2°','B','LEN-101',1,'10:45','11:30'),
-  ('primaria','2°','B','LEX-103',5,'07:00','07:45'),
-  ('primaria','2°','B','LEX-103',5,'08:30','09:15'),
-  ('primaria','2°','B','LIG-102',1,'10:00','10:45'),
-  ('primaria','2°','B','LIG-102',2,'10:45','11:30'),
-  ('primaria','2°','B','MAT-401',4,'10:00','10:45'),
-  ('primaria','2°','B','MAT-401',5,'10:00','10:45'),
-  ('primaria','2°','B','MUS-106',1,'07:45','08:30'),
-  ('primaria','2°','B','MUS-106',3,'07:45','08:30'),
-  ('primaria','2°','B','TTG-402',4,'08:30','09:15'),
-  ('primaria','2°','B','TTG-402',5,'10:45','11:30'),
-  ('primaria','2°','B','VER-201',3,'10:45','11:30'),
-  ('primaria','2°','B','VER-201',5,'07:45','08:30'),
-  ('primaria','3°','A','ART-107',1,'07:00','07:45'),
-  ('primaria','3°','A','ART-107',1,'08:30','09:15'),
-  ('primaria','3°','A','CNT-301',3,'07:00','07:45'),
-  ('primaria','3°','A','CNT-301',5,'10:45','11:30'),
-  ('primaria','3°','A','CSO-104',4,'07:00','07:45'),
-  ('primaria','3°','A','CSO-104',5,'10:00','10:45'),
-  ('primaria','3°','A','EFI-105',1,'10:45','11:30'),
-  ('primaria','3°','A','EFI-105',3,'10:45','11:30'),
-  ('primaria','3°','A','LEN-101',1,'07:45','08:30'),
-  ('primaria','3°','A','LEN-101',5,'08:30','09:15'),
-  ('primaria','3°','A','LEX-103',2,'07:00','07:45'),
-  ('primaria','3°','A','LEX-103',2,'07:45','08:30'),
-  ('primaria','3°','A','LIG-102',4,'08:30','09:15'),
-  ('primaria','3°','A','LIG-102',5,'07:45','08:30'),
-  ('primaria','3°','A','MAT-401',3,'07:45','08:30'),
-  ('primaria','3°','A','MAT-401',5,'07:00','07:45'),
-  ('primaria','3°','A','MUS-106',2,'10:00','10:45'),
-  ('primaria','3°','A','MUS-106',4,'07:45','08:30'),
-  ('primaria','3°','A','TTG-402',3,'10:00','10:45'),
-  ('primaria','3°','A','TTG-402',4,'10:00','10:45'),
-  ('primaria','3°','A','VER-201',3,'08:30','09:15'),
-  ('primaria','3°','A','VER-201',4,'10:45','11:30'),
-  ('primaria','3°','B','ART-107',3,'10:00','10:45'),
-  ('primaria','3°','B','ART-107',5,'10:45','11:30'),
-  ('primaria','3°','B','CNT-301',3,'08:30','09:15'),
-  ('primaria','3°','B','CNT-301',4,'07:00','07:45'),
-  ('primaria','3°','B','CSO-104',1,'10:45','11:30'),
-  ('primaria','3°','B','CSO-104',2,'07:00','07:45'),
-  ('primaria','3°','B','EFI-105',4,'08:30','09:15'),
-  ('primaria','3°','B','EFI-105',5,'10:00','10:45'),
-  ('primaria','3°','B','LEN-101',1,'07:45','08:30'),
-  ('primaria','3°','B','LEN-101',2,'07:45','08:30'),
-  ('primaria','3°','B','LEX-103',1,'07:00','07:45'),
-  ('primaria','3°','B','LEX-103',4,'10:00','10:45'),
-  ('primaria','3°','B','LIG-102',1,'08:30','09:15'),
-  ('primaria','3°','B','LIG-102',4,'07:45','08:30'),
-  ('primaria','3°','B','MAT-401',3,'07:00','07:45'),
-  ('primaria','3°','B','MAT-401',3,'07:45','08:30'),
-  ('primaria','3°','B','MUS-106',2,'10:00','10:45'),
-  ('primaria','3°','B','MUS-106',5,'07:00','07:45'),
-  ('primaria','3°','B','TTG-402',3,'10:45','11:30'),
-  ('primaria','3°','B','TTG-402',5,'07:45','08:30'),
-  ('primaria','3°','B','VER-201',4,'10:45','11:30'),
-  ('primaria','3°','B','VER-201',5,'08:30','09:15'),
-  ('primaria','4°','A','ART-107',2,'10:00','10:45'),
-  ('primaria','4°','A','ART-107',4,'08:30','09:15'),
-  ('primaria','4°','A','CNT-301',2,'07:00','07:45'),
-  ('primaria','4°','A','CNT-301',3,'08:30','09:15'),
-  ('primaria','4°','A','CSO-104',2,'07:45','08:30'),
-  ('primaria','4°','A','CSO-104',3,'10:00','10:45'),
-  ('primaria','4°','A','EFI-105',4,'07:45','08:30'),
-  ('primaria','4°','A','EFI-105',5,'08:30','09:15'),
-  ('primaria','4°','A','LEN-101',3,'07:00','07:45'),
-  ('primaria','4°','A','LEN-101',5,'10:00','10:45'),
-  ('primaria','4°','A','LEX-103',3,'07:45','08:30'),
-  ('primaria','4°','A','LEX-103',4,'07:00','07:45'),
-  ('primaria','4°','A','LIG-102',1,'07:00','07:45'),
-  ('primaria','4°','A','LIG-102',5,'10:45','11:30'),
-  ('primaria','4°','A','MAT-401',1,'07:45','08:30'),
-  ('primaria','4°','A','MAT-401',1,'10:45','11:30'),
-  ('primaria','4°','A','MUS-106',3,'10:45','11:30'),
-  ('primaria','4°','A','MUS-106',4,'10:45','11:30'),
-  ('primaria','4°','A','TTG-402',5,'07:00','07:45'),
-  ('primaria','4°','A','TTG-402',5,'07:45','08:30'),
-  ('primaria','4°','A','VER-201',1,'08:30','09:15'),
-  ('primaria','4°','A','VER-201',4,'10:00','10:45'),
-  ('primaria','4°','B','ART-107',5,'08:30','09:15'),
-  ('primaria','4°','B','ART-107',5,'10:00','10:45'),
-  ('primaria','4°','B','CNT-301',2,'07:00','07:45'),
-  ('primaria','4°','B','CNT-301',3,'07:45','08:30'),
-  ('primaria','4°','B','CSO-104',2,'10:00','10:45'),
-  ('primaria','4°','B','CSO-104',2,'10:45','11:30'),
-  ('primaria','4°','B','EFI-105',1,'08:30','09:15'),
-  ('primaria','4°','B','EFI-105',5,'10:45','11:30'),
-  ('primaria','4°','B','LEN-101',2,'08:30','09:15'),
-  ('primaria','4°','B','LEN-101',4,'07:00','07:45'),
-  ('primaria','4°','B','LEX-103',1,'07:45','08:30'),
-  ('primaria','4°','B','LEX-103',5,'07:45','08:30'),
-  ('primaria','4°','B','LIG-102',3,'07:00','07:45'),
-  ('primaria','4°','B','LIG-102',4,'08:30','09:15'),
-  ('primaria','4°','B','MAT-401',3,'10:00','10:45'),
-  ('primaria','4°','B','MAT-401',4,'10:45','11:30'),
-  ('primaria','4°','B','MUS-106',3,'10:45','11:30'),
-  ('primaria','4°','B','MUS-106',4,'07:45','08:30'),
-  ('primaria','4°','B','TTG-402',4,'10:00','10:45'),
-  ('primaria','4°','B','TTG-402',5,'07:00','07:45'),
-  ('primaria','4°','B','VER-201',1,'07:00','07:45'),
-  ('primaria','4°','B','VER-201',2,'07:45','08:30'),
-  ('primaria','5°','A','ART-107',2,'07:00','07:45'),
-  ('primaria','5°','A','ART-107',5,'07:00','07:45'),
-  ('primaria','5°','A','CNT-301',1,'10:00','10:45'),
-  ('primaria','5°','A','CNT-301',2,'07:45','08:30'),
-  ('primaria','5°','A','CSO-104',3,'10:45','11:30'),
-  ('primaria','5°','A','CSO-104',5,'10:45','11:30'),
-  ('primaria','5°','A','EFI-105',1,'07:45','08:30'),
-  ('primaria','5°','A','EFI-105',4,'10:45','11:30'),
-  ('primaria','5°','A','LEN-101',1,'08:30','09:15'),
-  ('primaria','5°','A','LEN-101',2,'10:45','11:30'),
-  ('primaria','5°','A','LEX-103',2,'10:00','10:45'),
-  ('primaria','5°','A','LEX-103',4,'10:00','10:45'),
-  ('primaria','5°','A','LIG-102',3,'07:45','08:30'),
-  ('primaria','5°','A','LIG-102',3,'08:30','09:15'),
-  ('primaria','5°','A','MAT-401',3,'10:00','10:45'),
-  ('primaria','5°','A','MAT-401',5,'10:00','10:45'),
-  ('primaria','5°','A','MUS-106',5,'07:45','08:30'),
-  ('primaria','5°','A','MUS-106',5,'08:30','09:15'),
-  ('primaria','5°','A','TTG-402',4,'07:45','08:30'),
-  ('primaria','5°','A','TTG-402',4,'08:30','09:15'),
-  ('primaria','5°','A','VER-201',1,'07:00','07:45'),
-  ('primaria','5°','A','VER-201',3,'07:00','07:45'),
-  ('primaria','5°','B','ART-107',3,'10:45','11:30'),
-  ('primaria','5°','B','ART-107',4,'07:45','08:30'),
-  ('primaria','5°','B','CNT-301',1,'07:00','07:45'),
-  ('primaria','5°','B','CNT-301',1,'10:00','10:45'),
-  ('primaria','5°','B','CSO-104',5,'07:00','07:45'),
-  ('primaria','5°','B','CSO-104',5,'10:00','10:45'),
-  ('primaria','5°','B','EFI-105',1,'07:45','08:30'),
-  ('primaria','5°','B','EFI-105',5,'08:30','09:15'),
-  ('primaria','5°','B','LEN-101',2,'10:00','10:45'),
-  ('primaria','5°','B','LEN-101',3,'08:30','09:15'),
-  ('primaria','5°','B','LEX-103',4,'10:45','11:30'),
-  ('primaria','5°','B','LEX-103',5,'10:45','11:30'),
-  ('primaria','5°','B','LIG-102',1,'10:45','11:30'),
-  ('primaria','5°','B','LIG-102',3,'10:00','10:45'),
-  ('primaria','5°','B','MAT-401',1,'08:30','09:15'),
-  ('primaria','5°','B','MAT-401',5,'07:45','08:30'),
-  ('primaria','5°','B','MUS-106',2,'07:45','08:30'),
-  ('primaria','5°','B','MUS-106',4,'10:00','10:45'),
-  ('primaria','5°','B','TTG-402',2,'07:00','07:45'),
-  ('primaria','5°','B','TTG-402',3,'07:45','08:30'),
-  ('primaria','5°','B','VER-201',3,'07:00','07:45'),
-  ('primaria','5°','B','VER-201',4,'08:30','09:15'),
-  ('primaria','6°','A','ART-107',4,'10:45','11:30'),
-  ('primaria','6°','A','ART-107',5,'08:30','09:15'),
-  ('primaria','6°','A','CNT-301',1,'07:45','08:30'),
-  ('primaria','6°','A','CNT-301',3,'10:00','10:45'),
-  ('primaria','6°','A','CSO-104',3,'07:45','08:30'),
-  ('primaria','6°','A','CSO-104',4,'10:00','10:45'),
-  ('primaria','6°','A','EFI-105',1,'07:00','07:45'),
-  ('primaria','6°','A','EFI-105',5,'07:45','08:30'),
-  ('primaria','6°','A','LEN-101',4,'07:45','08:30'),
-  ('primaria','6°','A','LEN-101',5,'10:45','11:30'),
-  ('primaria','6°','A','LEX-103',3,'10:45','11:30'),
-  ('primaria','6°','A','LEX-103',5,'07:00','07:45'),
-  ('primaria','6°','A','LIG-102',2,'10:00','10:45'),
-  ('primaria','6°','A','LIG-102',5,'10:00','10:45'),
-  ('primaria','6°','A','MAT-401',1,'08:30','09:15'),
-  ('primaria','6°','A','MAT-401',2,'08:30','09:15'),
-  ('primaria','6°','A','MUS-106',3,'07:00','07:45'),
-  ('primaria','6°','A','MUS-106',4,'08:30','09:15'),
-  ('primaria','6°','A','TTG-402',2,'07:00','07:45'),
-  ('primaria','6°','A','TTG-402',2,'07:45','08:30'),
-  ('primaria','6°','A','VER-201',1,'10:00','10:45'),
-  ('primaria','6°','A','VER-201',1,'10:45','11:30'),
-  ('primaria','6°','B','ART-107',4,'10:00','10:45'),
-  ('primaria','6°','B','ART-107',5,'07:00','07:45'),
-  ('primaria','6°','B','CNT-301',3,'10:45','11:30'),
-  ('primaria','6°','B','CNT-301',5,'07:45','08:30'),
-  ('primaria','6°','B','CSO-104',4,'08:30','09:15'),
-  ('primaria','6°','B','CSO-104',5,'10:45','11:30'),
-  ('primaria','6°','B','EFI-105',4,'07:00','07:45'),
-  ('primaria','6°','B','EFI-105',4,'07:45','08:30'),
-  ('primaria','6°','B','LEN-101',3,'07:45','08:30'),
-  ('primaria','6°','B','LEN-101',3,'10:00','10:45'),
-  ('primaria','6°','B','LEX-103',2,'07:45','08:30'),
-  ('primaria','6°','B','LEX-103',3,'07:00','07:45'),
-  ('primaria','6°','B','LIG-102',5,'08:30','09:15'),
-  ('primaria','6°','B','LIG-102',5,'10:00','10:45'),
-  ('primaria','6°','B','MAT-401',1,'07:45','08:30'),
-  ('primaria','6°','B','MAT-401',2,'10:00','10:45'),
-  ('primaria','6°','B','MUS-106',2,'07:00','07:45'),
-  ('primaria','6°','B','MUS-106',4,'10:45','11:30'),
-  ('primaria','6°','B','TTG-402',1,'07:00','07:45'),
-  ('primaria','6°','B','TTG-402',1,'08:30','09:15'),
-  ('primaria','6°','B','VER-201',1,'10:45','11:30'),
-  ('primaria','6°','B','VER-201',3,'08:30','09:15'),
-  ('secundaria','1°','A','ART-107',3,'10:45','11:30'),
-  ('secundaria','1°','A','BIO-302',2,'07:45','08:30'),
-  ('secundaria','1°','A','BIO-302',5,'10:00','10:45'),
-  ('secundaria','1°','A','CNT-301',1,'07:00','07:45'),
-  ('secundaria','1°','A','CNT-301',5,'07:00','07:45'),
-  ('secundaria','1°','A','CSO-104',3,'07:00','07:45'),
-  ('secundaria','1°','A','CSO-104',4,'07:45','08:30'),
-  ('secundaria','1°','A','EFI-105',1,'08:30','09:15'),
-  ('secundaria','1°','A','FIS-303',3,'07:45','08:30'),
-  ('secundaria','1°','A','FIS-303',3,'10:00','10:45'),
-  ('secundaria','1°','A','LEN-101',2,'10:00','10:45'),
-  ('secundaria','1°','A','LEN-101',5,'07:45','08:30'),
-  ('secundaria','1°','A','LEX-103',1,'07:45','08:30'),
-  ('secundaria','1°','A','LEX-103',5,'08:30','09:15'),
-  ('secundaria','1°','A','LIG-102',1,'10:45','11:30'),
-  ('secundaria','1°','A','LIG-102',2,'08:30','09:15'),
-  ('secundaria','1°','A','MAT-401',2,'10:45','11:30'),
-  ('secundaria','1°','A','MAT-401',4,'10:45','11:30'),
-  ('secundaria','1°','A','QUI-304',2,'07:00','07:45'),
-  ('secundaria','1°','A','QUI-304',5,'10:45','11:30'),
-  ('secundaria','1°','A','VER-201',4,'07:00','07:45'),
-  ('secundaria','1°','A','VER-201',4,'08:30','09:15'),
-  ('secundaria','1°','B','ART-107',4,'08:30','09:15'),
-  ('secundaria','1°','B','BIO-302',2,'07:00','07:45'),
-  ('secundaria','1°','B','BIO-302',2,'07:45','08:30'),
-  ('secundaria','1°','B','CNT-301',5,'10:00','10:45'),
-  ('secundaria','1°','B','CNT-301',5,'10:45','11:30'),
-  ('secundaria','1°','B','CSO-104',1,'10:00','10:45'),
-  ('secundaria','1°','B','CSO-104',4,'10:00','10:45'),
-  ('secundaria','1°','B','EFI-105',3,'07:45','08:30'),
-  ('secundaria','1°','B','FIS-303',3,'10:00','10:45'),
-  ('secundaria','1°','B','FIS-303',5,'08:30','09:15'),
-  ('secundaria','1°','B','LEN-101',3,'07:00','07:45'),
-  ('secundaria','1°','B','LEN-101',5,'07:00','07:45'),
-  ('secundaria','1°','B','LEX-103',1,'10:45','11:30'),
-  ('secundaria','1°','B','LEX-103',4,'07:00','07:45'),
-  ('secundaria','1°','B','LIG-102',1,'07:45','08:30'),
-  ('secundaria','1°','B','LIG-102',2,'10:00','10:45'),
-  ('secundaria','1°','B','MAT-401',1,'07:00','07:45'),
-  ('secundaria','1°','B','MAT-401',3,'10:45','11:30'),
-  ('secundaria','1°','B','QUI-304',4,'10:45','11:30'),
-  ('secundaria','1°','B','QUI-304',5,'07:45','08:30'),
-  ('secundaria','1°','B','VER-201',1,'08:30','09:15'),
-  ('secundaria','1°','B','VER-201',4,'07:45','08:30'),
-  ('secundaria','2°','A','ART-107',3,'10:00','10:45'),
-  ('secundaria','2°','A','BIO-302',1,'07:00','07:45'),
-  ('secundaria','2°','A','BIO-302',5,'07:00','07:45'),
-  ('secundaria','2°','A','CNT-301',4,'07:00','07:45'),
-  ('secundaria','2°','A','CNT-301',5,'07:45','08:30'),
-  ('secundaria','2°','A','CSO-104',2,'07:00','07:45'),
-  ('secundaria','2°','A','CSO-104',5,'08:30','09:15'),
-  ('secundaria','2°','A','EFI-105',5,'10:00','10:45'),
-  ('secundaria','2°','A','FIL-202',4,'08:30','09:15'),
-  ('secundaria','2°','A','FIS-303',1,'07:45','08:30'),
-  ('secundaria','2°','A','FIS-303',3,'10:45','11:30'),
-  ('secundaria','2°','A','LEN-101',3,'08:30','09:15'),
-  ('secundaria','2°','A','LEN-101',4,'10:45','11:30'),
-  ('secundaria','2°','A','LEX-103',4,'07:45','08:30'),
-  ('secundaria','2°','A','LIG-102',1,'08:30','09:15'),
-  ('secundaria','2°','A','MAT-401',1,'10:00','10:45'),
-  ('secundaria','2°','A','MAT-401',4,'10:00','10:45'),
-  ('secundaria','2°','A','MUS-106',3,'07:45','08:30'),
-  ('secundaria','2°','A','QUI-304',2,'10:00','10:45'),
-  ('secundaria','2°','A','QUI-304',3,'07:00','07:45'),
-  ('secundaria','2°','A','TTG-402',5,'10:45','11:30'),
-  ('secundaria','2°','A','VER-201',2,'07:45','08:30'),
-  ('secundaria','2°','B','ART-107',3,'07:00','07:45'),
-  ('secundaria','2°','B','BIO-302',1,'08:30','09:15'),
-  ('secundaria','2°','B','BIO-302',4,'10:45','11:30'),
-  ('secundaria','2°','B','CNT-301',4,'08:30','09:15'),
-  ('secundaria','2°','B','CNT-301',5,'07:00','07:45'),
-  ('secundaria','2°','B','CSO-104',2,'07:45','08:30'),
-  ('secundaria','2°','B','CSO-104',5,'07:45','08:30'),
-  ('secundaria','2°','B','EFI-105',3,'10:45','11:30'),
-  ('secundaria','2°','B','FIL-202',2,'10:00','10:45'),
-  ('secundaria','2°','B','FIS-303',1,'10:45','11:30'),
-  ('secundaria','2°','B','FIS-303',4,'10:00','10:45'),
-  ('secundaria','2°','B','LEN-101',1,'07:00','07:45'),
-  ('secundaria','2°','B','LEN-101',5,'08:30','09:15'),
-  ('secundaria','2°','B','LEX-103',5,'10:00','10:45'),
-  ('secundaria','2°','B','LIG-102',3,'07:45','08:30'),
-  ('secundaria','2°','B','MAT-401',2,'07:00','07:45'),
-  ('secundaria','2°','B','MAT-401',3,'08:30','09:15'),
-  ('secundaria','2°','B','MUS-106',3,'10:00','10:45'),
-  ('secundaria','2°','B','QUI-304',1,'07:45','08:30'),
-  ('secundaria','2°','B','QUI-304',5,'10:45','11:30'),
-  ('secundaria','2°','B','TTG-402',4,'07:45','08:30'),
-  ('secundaria','2°','B','VER-201',4,'07:00','07:45'),
-  ('secundaria','3°','A','ART-107',5,'10:45','11:30'),
-  ('secundaria','3°','A','BIO-302',1,'07:45','08:30'),
-  ('secundaria','3°','A','BIO-302',4,'10:00','10:45'),
-  ('secundaria','3°','A','CNT-301',1,'08:30','09:15'),
-  ('secundaria','3°','A','CNT-301',5,'10:00','10:45'),
-  ('secundaria','3°','A','CSO-104',4,'10:45','11:30'),
-  ('secundaria','3°','A','CSO-104',5,'07:00','07:45'),
-  ('secundaria','3°','A','EFI-105',3,'07:00','07:45'),
-  ('secundaria','3°','A','FIL-202',3,'10:00','10:45'),
-  ('secundaria','3°','A','FIS-303',2,'10:00','10:45'),
-  ('secundaria','3°','A','FIS-303',4,'07:45','08:30'),
-  ('secundaria','3°','A','LEN-101',2,'07:00','07:45'),
-  ('secundaria','3°','A','LEN-101',3,'10:45','11:30'),
-  ('secundaria','3°','A','LEX-103',1,'07:00','07:45'),
-  ('secundaria','3°','A','LEX-103',4,'08:30','09:15'),
-  ('secundaria','3°','A','LIG-102',1,'10:00','10:45'),
-  ('secundaria','3°','A','LIG-102',2,'10:45','11:30'),
-  ('secundaria','3°','A','MAT-401',4,'07:00','07:45'),
-  ('secundaria','3°','A','MAT-401',5,'07:45','08:30'),
-  ('secundaria','3°','A','MUS-106',2,'07:45','08:30'),
-  ('secundaria','3°','A','TTG-402',3,'07:45','08:30'),
-  ('secundaria','3°','A','VER-201',5,'08:30','09:15'),
-  ('secundaria','3°','B','ART-107',3,'07:45','08:30'),
-  ('secundaria','3°','B','BIO-302',4,'07:45','08:30'),
-  ('secundaria','3°','B','BIO-302',5,'07:00','07:45'),
-  ('secundaria','3°','B','CNT-301',1,'08:30','09:15'),
-  ('secundaria','3°','B','CNT-301',1,'10:45','11:30'),
-  ('secundaria','3°','B','CSO-104',3,'08:30','09:15'),
-  ('secundaria','3°','B','CSO-104',4,'07:00','07:45'),
-  ('secundaria','3°','B','EFI-105',3,'07:00','07:45'),
-  ('secundaria','3°','B','FIL-202',2,'07:00','07:45'),
-  ('secundaria','3°','B','FIS-303',1,'07:45','08:30'),
-  ('secundaria','3°','B','FIS-303',2,'07:45','08:30'),
-  ('secundaria','3°','B','LEN-101',4,'10:45','11:30'),
-  ('secundaria','3°','B','LEN-101',5,'07:45','08:30'),
-  ('secundaria','3°','B','LEX-103',3,'10:00','10:45'),
-  ('secundaria','3°','B','LEX-103',3,'10:45','11:30'),
-  ('secundaria','3°','B','LIG-102',4,'10:00','10:45'),
-  ('secundaria','3°','B','LIG-102',5,'10:45','11:30'),
-  ('secundaria','3°','B','MAT-401',4,'08:30','09:15'),
-  ('secundaria','3°','B','MAT-401',5,'08:30','09:15'),
-  ('secundaria','3°','B','MUS-106',1,'07:00','07:45'),
-  ('secundaria','3°','B','TTG-402',5,'10:00','10:45'),
-  ('secundaria','3°','B','VER-201',2,'10:00','10:45'),
-  ('secundaria','4°','A','ART-107',3,'07:00','07:45'),
-  ('secundaria','4°','A','BIO-302',5,'07:45','08:30'),
-  ('secundaria','4°','A','BIO-302',5,'10:45','11:30'),
-  ('secundaria','4°','A','CNT-301',2,'10:00','10:45'),
-  ('secundaria','4°','A','CNT-301',3,'07:45','08:30'),
-  ('secundaria','4°','A','CSO-104',2,'10:45','11:30'),
-  ('secundaria','4°','A','CSO-104',4,'08:30','09:15'),
-  ('secundaria','4°','A','EFI-105',4,'10:00','10:45'),
-  ('secundaria','4°','A','FIL-202',5,'10:00','10:45'),
-  ('secundaria','4°','A','FIS-303',1,'08:30','09:15'),
-  ('secundaria','4°','A','FIS-303',1,'10:45','11:30'),
-  ('secundaria','4°','A','LEN-101',4,'07:00','07:45'),
-  ('secundaria','4°','A','LEN-101',5,'07:00','07:45'),
-  ('secundaria','4°','A','LEX-103',3,'10:00','10:45'),
-  ('secundaria','4°','A','LIG-102',2,'07:00','07:45'),
-  ('secundaria','4°','A','LIG-102',3,'10:45','11:30'),
-  ('secundaria','4°','A','MAT-401',1,'07:00','07:45'),
-  ('secundaria','4°','A','MAT-401',2,'07:45','08:30'),
-  ('secundaria','4°','A','QUI-304',1,'07:45','08:30'),
-  ('secundaria','4°','A','QUI-304',4,'10:45','11:30'),
-  ('secundaria','4°','A','TTG-402',5,'08:30','09:15'),
-  ('secundaria','4°','A','VER-201',4,'07:45','08:30'),
-  ('secundaria','4°','B','ART-107',1,'08:30','09:15'),
-  ('secundaria','4°','B','BIO-302',1,'07:00','07:45'),
-  ('secundaria','4°','B','BIO-302',5,'07:45','08:30'),
-  ('secundaria','4°','B','CNT-301',3,'10:00','10:45'),
-  ('secundaria','4°','B','CNT-301',4,'07:45','08:30'),
-  ('secundaria','4°','B','CSO-104',1,'07:45','08:30'),
-  ('secundaria','4°','B','CSO-104',5,'08:30','09:15'),
-  ('secundaria','4°','B','EFI-105',1,'10:45','11:30'),
-  ('secundaria','4°','B','FIL-202',3,'07:45','08:30'),
-  ('secundaria','4°','B','FIS-303',2,'10:00','10:45'),
-  ('secundaria','4°','B','FIS-303',3,'07:00','07:45'),
-  ('secundaria','4°','B','LEN-101',1,'10:00','10:45'),
-  ('secundaria','4°','B','LEN-101',5,'10:00','10:45'),
-  ('secundaria','4°','B','LEX-103',2,'07:00','07:45'),
-  ('secundaria','4°','B','LIG-102',3,'10:45','11:30'),
-  ('secundaria','4°','B','LIG-102',5,'07:00','07:45'),
-  ('secundaria','4°','B','MAT-401',2,'07:45','08:30'),
-  ('secundaria','4°','B','MAT-401',2,'08:30','09:15'),
-  ('secundaria','4°','B','QUI-304',4,'08:30','09:15'),
-  ('secundaria','4°','B','QUI-304',4,'10:00','10:45'),
-  ('secundaria','4°','B','TTG-402',4,'10:45','11:30'),
-  ('secundaria','4°','B','VER-201',5,'10:45','11:30'),
-  ('secundaria','5°','A','BIO-302',1,'08:30','09:15'),
-  ('secundaria','5°','A','BIO-302',3,'07:45','08:30'),
-  ('secundaria','5°','A','CNT-301',4,'08:30','09:15'),
-  ('secundaria','5°','A','CNT-301',5,'08:30','09:15'),
-  ('secundaria','5°','A','CSO-104',1,'07:45','08:30'),
-  ('secundaria','5°','A','CSO-104',5,'07:45','08:30'),
-  ('secundaria','5°','A','EFI-105',5,'10:45','11:30'),
-  ('secundaria','5°','A','FIL-202',2,'07:45','08:30'),
-  ('secundaria','5°','A','FIS-303',4,'07:00','07:45'),
-  ('secundaria','5°','A','FIS-303',4,'10:00','10:45'),
-  ('secundaria','5°','A','LEN-101',1,'07:00','07:45'),
-  ('secundaria','5°','A','LEN-101',1,'10:45','11:30'),
-  ('secundaria','5°','A','LEX-103',3,'07:00','07:45'),
-  ('secundaria','5°','A','LIG-102',4,'07:45','08:30'),
-  ('secundaria','5°','A','LIG-102',4,'10:45','11:30'),
-  ('secundaria','5°','A','MAT-401',2,'10:00','10:45'),
-  ('secundaria','5°','A','MAT-401',3,'08:30','09:15'),
-  ('secundaria','5°','A','MUS-106',2,'07:00','07:45'),
-  ('secundaria','5°','A','QUI-304',3,'10:45','11:30'),
-  ('secundaria','5°','A','QUI-304',5,'07:00','07:45'),
-  ('secundaria','5°','A','TTG-402',5,'10:00','10:45'),
-  ('secundaria','5°','A','VER-201',3,'10:00','10:45'),
-  ('secundaria','5°','B','BIO-302',4,'10:00','10:45'),
-  ('secundaria','5°','B','BIO-302',5,'10:00','10:45'),
-  ('secundaria','5°','B','CNT-301',1,'07:45','08:30'),
-  ('secundaria','5°','B','CNT-301',2,'07:45','08:30'),
-  ('secundaria','5°','B','CSO-104',3,'07:45','08:30'),
-  ('secundaria','5°','B','CSO-104',3,'10:00','10:45'),
-  ('secundaria','5°','B','EFI-105',5,'07:45','08:30'),
-  ('secundaria','5°','B','FIL-202',5,'10:45','11:30'),
-  ('secundaria','5°','B','FIS-303',4,'07:45','08:30'),
-  ('secundaria','5°','B','FIS-303',5,'07:00','07:45'),
-  ('secundaria','5°','B','LEN-101',3,'10:45','11:30'),
-  ('secundaria','5°','B','LEN-101',4,'08:30','09:15'),
-  ('secundaria','5°','B','LEX-103',2,'10:00','10:45'),
-  ('secundaria','5°','B','LIG-102',1,'07:00','07:45'),
-  ('secundaria','5°','B','LIG-102',4,'10:45','11:30'),
-  ('secundaria','5°','B','MAT-401',1,'10:45','11:30'),
-  ('secundaria','5°','B','MAT-401',2,'10:45','11:30'),
-  ('secundaria','5°','B','MUS-106',3,'07:00','07:45'),
-  ('secundaria','5°','B','QUI-304',1,'08:30','09:15'),
-  ('secundaria','5°','B','QUI-304',4,'07:00','07:45'),
-  ('secundaria','5°','B','TTG-402',5,'08:30','09:15'),
-  ('secundaria','5°','B','VER-201',2,'07:00','07:45'),
-  ('secundaria','6°','A','ART-107',4,'07:45','08:30'),
-  ('secundaria','6°','A','BIO-302',3,'07:00','07:45'),
-  ('secundaria','6°','A','BIO-302',4,'10:45','11:30'),
-  ('secundaria','6°','A','CSO-104',1,'07:00','07:45'),
-  ('secundaria','6°','A','CSO-104',1,'10:45','11:30'),
-  ('secundaria','6°','A','EFI-105',2,'07:45','08:30'),
-  ('secundaria','6°','A','FIL-202',3,'10:45','11:30'),
-  ('secundaria','6°','A','FIS-303',5,'08:30','09:15'),
-  ('secundaria','6°','A','FIS-303',5,'10:00','10:45'),
-  ('secundaria','6°','A','LEN-101',1,'10:00','10:45'),
-  ('secundaria','6°','A','LEN-101',3,'10:00','10:45'),
-  ('secundaria','6°','A','LEX-103',1,'08:30','09:15'),
-  ('secundaria','6°','A','LIG-102',4,'07:00','07:45'),
-  ('secundaria','6°','A','LIG-102',4,'10:00','10:45'),
-  ('secundaria','6°','A','MAT-401',2,'07:00','07:45'),
-  ('secundaria','6°','A','MAT-401',4,'08:30','09:15'),
-  ('secundaria','6°','A','QUI-304',3,'07:45','08:30'),
-  ('secundaria','6°','A','QUI-304',5,'07:45','08:30'),
-  ('secundaria','6°','A','TTE-403',5,'07:00','07:45'),
-  ('secundaria','6°','A','TTE-403',5,'10:45','11:30'),
-  ('secundaria','6°','A','TTG-402',2,'10:00','10:45'),
-  ('secundaria','6°','A','VER-201',1,'07:45','08:30'),
-  ('secundaria','6°','B','ART-107',1,'07:00','07:45'),
-  ('secundaria','6°','B','BIO-302',3,'10:00','10:45'),
-  ('secundaria','6°','B','BIO-302',5,'08:30','09:15'),
-  ('secundaria','6°','B','CSO-104',1,'08:30','09:15'),
-  ('secundaria','6°','B','CSO-104',4,'10:45','11:30'),
-  ('secundaria','6°','B','EFI-105',2,'07:45','08:30'),
-  ('secundaria','6°','B','FIL-202',1,'07:45','08:30'),
-  ('secundaria','6°','B','FIS-303',5,'10:00','10:45'),
-  ('secundaria','6°','B','FIS-303',5,'10:45','11:30'),
-  ('secundaria','6°','B','LEN-101',2,'07:00','07:45'),
-  ('secundaria','6°','B','LEN-101',4,'10:00','10:45'),
-  ('secundaria','6°','B','LEX-103',4,'08:30','09:15'),
-  ('secundaria','6°','B','LIG-102',3,'08:30','09:15'),
-  ('secundaria','6°','B','LIG-102',4,'07:00','07:45'),
-  ('secundaria','6°','B','MAT-401',4,'07:45','08:30'),
-  ('secundaria','6°','B','MAT-401',5,'07:00','07:45'),
-  ('secundaria','6°','B','QUI-304',1,'10:45','11:30'),
-  ('secundaria','6°','B','QUI-304',3,'10:45','11:30'),
-  ('secundaria','6°','B','TTE-403',2,'10:00','10:45'),
-  ('secundaria','6°','B','TTE-403',5,'07:45','08:30'),
-  ('secundaria','6°','B','TTG-402',3,'07:00','07:45'),
-  ('secundaria','6°','B','VER-201',3,'07:45','08:30')
-) AS v(nivel, grado, paralelo, mat, dia, hi, hf)
-JOIN "cursos" c ON c."nivel" = v.nivel AND c."grado" = v.grado AND c."paralelo" = v.paralelo
-JOIN "cursos_periodo" cp ON cp."curso_id" = c."id" AND cp."periodo_id" = (SELECT "id" FROM tmp_periodo)
-JOIN "materias" m ON m."codigo" = v.mat
-JOIN "asignaciones_docentes" ad ON ad."curso_periodo_id" = cp."id"
-                               AND ad."materia_id" = m."id"
-                               AND ad."estado" = 'activo'
-JOIN tmp_aula_curso ac ON ac.curso_periodo_id = cp."id"
-WHERE NOT EXISTS (
-  SELECT 1 FROM "horarios" h
-  WHERE h."curso_periodo_id" = cp."id"
-    AND h."dia_semana" = v.dia AND h."hora_inicio" = v.hi::time
-);
-
--- Encargos por trimestre (T1 y T2 cerrados, T3 en curso al 13 de octubre)
+-- Una evaluacion cerrada por trimestre y materia/curso; genera notas visibles en los tres trimestres.
 INSERT INTO "encargos"
-  ("asignacion_id", "tipo", "titulo", "descripcion", "ponderacion",
-   "fecha_publicacion", "fecha_limite", "estado")
-SELECT ad."id", v.tipo, v.titulo, v.descripcion, v.pond::numeric,
-       v.pub::timestamptz, v.lim::timestamptz, v.estado
+  ("asignacion_id", "tipo", "titulo", "descripcion", "ponderacion", "fecha_publicacion", "fecha_limite", "estado")
+SELECT ad.id, 'Examen', 'Evaluacion de prueba T' || t.numero,
+       'Evaluacion de prueba para datos academicos.', 100,
+       (t.inicio + 10)::timestamptz, (t.inicio + 14)::timestamptz, 'cerrado'
 FROM "asignaciones_docentes" ad
-CROSS JOIN (VALUES
-  ('Tarea',  'Guía de trabajo T1',   'Actividad inicial de la unidad del primer trimestre.', 40, '2026-02-16 08:00:00-04', '2026-03-13 20:00:00-04', 'cerrado'),
-  ('Examen', 'Evaluación sumativa T1','Examen parcial del primer trimestre.',                 60, '2026-04-06 08:00:00-04', '2026-04-10 20:00:00-04', 'cerrado'),
-  ('Tarea',  'Guía de trabajo T2',   'Actividad inicial de la unidad del segundo trimestre.', 40, '2026-06-01 08:00:00-04', '2026-07-10 20:00:00-04', 'cerrado'),
-  ('Examen', 'Evaluación sumativa T2','Examen parcial del segundo trimestre.',                60, '2026-08-10 08:00:00-04', '2026-08-14 20:00:00-04', 'cerrado'),
-  ('Tarea',  'Guía de trabajo T3',   'Actividad en curso del tercer trimestre.',              40, '2026-09-21 08:00:00-04', '2026-10-30 20:00:00-04', 'publicado')
-) AS v(tipo, titulo, descripcion, pond, pub, lim, estado)
-WHERE ad."estado" = 'activo'
-  AND NOT EXISTS (
-    SELECT 1 FROM "encargos" x WHERE x."asignacion_id" = ad."id" AND x."titulo" = v.titulo
-  );
+JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
+JOIN "trimestres" t ON t.periodo_id = cp.periodo_id;
 
--- Entregas de guías (T1 y T2 completas, T3 solo excelente y estandar)
-INSERT INTO "encargo_entregas"
-  ("encargo_id", "estudiante_id", "archivo_url", "nombre_archivo", "tipo_mime",
-   "tamanio_bytes", "comentario", "fecha_entrega", "estado_entrega")
-SELECT e."id", ins."estudiante_id",
-       'entregas/2026/enc-' || e."id" || '-est-' || ins."estudiante_id" || '.pdf',
-       'tarea.pdf', 'application/pdf',
-       (100000 + ((ins."estudiante_id" * 13 + e."id") % 900000))::bigint,
-       CASE WHEN p.perfil IN ('bajo', 'regular') THEN 'Entrega con apoyo del tutor.' ELSE NULL END,
-       CASE
-         WHEN ((ins."estudiante_id" * 13 + e."id") % 5) < v.retraso THEN e."fecha_limite" + ((((ins."estudiante_id" * 13 + e."id") % 3) + 1) || ' days')::interval
-         ELSE e."fecha_publicacion" + ((((ins."estudiante_id" * 13 + e."id") % 10) + 1) || ' days')::interval
-       END,
-       CASE WHEN ((ins."estudiante_id" * 13 + e."id") % 5) < v.retraso THEN 'con_retraso' ELSE 'a_tiempo' END
-FROM "encargos" e
-JOIN "asignaciones_docentes" ad ON ad."id" = e."asignacion_id"
-JOIN tmp_inscripciones ins ON ins."curso_periodo_id" = ad."curso_periodo_id"
-JOIN tmp_perfiles p ON p."estudiante_id" = ins."estudiante_id"
-CROSS JOIN LATERAL (
-  SELECT CASE WHEN e."titulo" LIKE '%T3' THEN 0
-              WHEN p.perfil = 'bajo' THEN 2
-              WHEN p.perfil = 'regular' THEN 1
-              ELSE 0 END AS retraso
-) v
-WHERE e."tipo" = 'Tarea'
-  AND (e."titulo" LIKE '%T1' OR e."titulo" LIKE '%T2'
-       OR (e."titulo" LIKE '%T3' AND p.perfil IN ('excelente', 'estandar')))
-ON CONFLICT ("encargo_id", "estudiante_id") DO NOTHING;
-
--- Calificaciones (excelente 84-96, estandar 70-82, regular 52-64, bajo 29-41)
 INSERT INTO "calificaciones" ("encargo_id", "estudiante_id", "nota", "fecha_calificacion")
-SELECT e."id", ins."estudiante_id",
-       ROUND(CAST(GREATEST(0, LEAST(100,
-         CASE p.perfil
-           WHEN 'bajo'     THEN 35
-           WHEN 'regular'  THEN 58
-           WHEN 'estandar' THEN 76
-           ELSE 90
-         END + ((ins."estudiante_id" + e."id") % 13) - 6
-       )) AS numeric), 2),
-       e."fecha_publicacion" + interval '14 days'
-FROM "encargos" e
-JOIN "asignaciones_docentes" ad ON ad."id" = e."asignacion_id"
-JOIN tmp_inscripciones ins ON ins."curso_periodo_id" = ad."curso_periodo_id"
-JOIN tmp_perfiles p ON p."estudiante_id" = ins."estudiante_id"
-WHERE e."estado" IN ('publicado', 'cerrado')
-  AND (e."titulo" LIKE '%T1' OR e."titulo" LIKE '%T2'
-       OR (e."titulo" LIKE '%T3' AND p.perfil IN ('excelente', 'estandar')))
-ON CONFLICT ("encargo_id", "estudiante_id") DO UPDATE SET "nota" = EXCLUDED."nota";
+SELECT en.id, i.estudiante_id,
+       (60 + ((i.estudiante_id * 7 + ad.id * 3 + t.numero * 11) % 36))::numeric(5,2),
+       en.fecha_publicacion + interval '14 days'
+FROM "encargos" en
+JOIN "asignaciones_docentes" ad ON ad.id = en.asignacion_id
+JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
+JOIN "trimestres" t ON t.periodo_id = cp.periodo_id
+  AND en.titulo = 'Evaluacion de prueba T' || t.numero
+JOIN "inscripciones" i ON i.curso_periodo_id = cp.id AND i.estado = 'activo';
 
--- Asistencia hasta el tercer trimestre (excelente perfecta, bajo con faltas)
 INSERT INTO "asistencia" ("estudiante_id", "asignacion_id", "fecha", "estado", "justificacion")
-SELECT ins."estudiante_id",
-       ad."id",
-       d.fecha,
-       CASE
-         WHEN ((ins."estudiante_id" * 7919 + ad."id" * 104729 + d.dia * 31) % 100) < v.faltan      THEN 'ausente'
-         WHEN ((ins."estudiante_id" * 7919 + ad."id" * 104729 + d.dia * 31) % 100) < v.tarde       THEN 'atraso'
-         WHEN ((ins."estudiante_id" * 7919 + ad."id" * 104729 + d.dia * 31) % 100) < v.justificado THEN 'justificado'
-         ELSE 'presente'
-       END,
-       CASE
-         WHEN ((ins."estudiante_id" * 7919 + ad."id" * 104729 + d.dia * 31) % 100) < v.justificado
-          AND ((ins."estudiante_id" * 7919 + ad."id" * 104729 + d.dia * 31) % 100) >= v.tarde
-         THEN 'Justificación médica'
-         ELSE NULL
-       END
-FROM tmp_inscripciones ins
-JOIN "asignaciones_docentes" ad ON ad."curso_periodo_id" = ins."curso_periodo_id"
-CROSS JOIN (VALUES
-  (1, DATE '2026-02-17'),
-  (2, DATE '2026-02-19'),
-  (3, DATE '2026-03-03'),
-  (4, DATE '2026-03-19'),
-  (5, DATE '2026-04-07'),
-  (6, DATE '2026-04-09'),
-  (7, DATE '2026-05-26'),
-  (8, DATE '2026-06-11'),
-  (9, DATE '2026-07-16'),
-  (10, DATE '2026-08-13'),
-  (11, DATE '2026-09-17'),
-  (12, DATE '2026-10-08')
-) AS d(dia, fecha)
-JOIN tmp_perfiles p ON p."estudiante_id" = ins."estudiante_id"
-CROSS JOIN LATERAL (
-  SELECT CASE p.perfil WHEN 'bajo' THEN 45 WHEN 'regular' THEN 28 WHEN 'estandar' THEN 8 ELSE 0 END AS faltan,
-         CASE p.perfil WHEN 'bajo' THEN 52 WHEN 'regular' THEN 36 WHEN 'estandar' THEN 12 ELSE 0 END AS tarde,
-         CASE p.perfil WHEN 'bajo' THEN 58 WHEN 'regular' THEN 42 WHEN 'estandar' THEN 15 ELSE 0 END AS justificado
-) v
-WHERE ad."estado" = 'activo'
-ON CONFLICT ("estudiante_id", "asignacion_id", "fecha") DO NOTHING;
-
--- Corte de avance al tercer trimestre (13 de octubre de 2026)
-CREATE TEMP TABLE tmp_corte ON COMMIT DROP AS SELECT DATE '2026-10-13' AS corte;
-
--- Plan de pagos general 2026 (10 cuotas de febrero a noviembre)
-INSERT INTO "planes_pago"
-  ("periodo_id", "nivel", "nombre", "cantidad_cuotas", "monto_total", "monto_cuota", "dia_vencimiento", "estado")
-SELECT p."id", 'general', 'Plan General 2026', 10, 4000.00, 400.00, 10, 'generado'
-FROM tmp_periodo p
-ON CONFLICT ("periodo_id", "nivel") DO UPDATE SET
-  "nombre" = EXCLUDED."nombre",
-  "cantidad_cuotas" = EXCLUDED."cantidad_cuotas", "monto_total" = EXCLUDED."monto_total",
-  "monto_cuota" = EXCLUDED."monto_cuota", "estado" = 'generado';
-
-INSERT INTO "cuotas_plan_pago" ("plan_id", "numero", "anio", "mes", "fecha_vencimiento", "monto", "estado")
-SELECT pp."id", v.numero, 2026, v.mes,
-       (DATE '2026-02-10' + ((v.numero - 1) * interval '1 month'))::date,
-       400.00,
-       CASE WHEN v.numero <= 9 THEN 'pagado' ELSE 'pendiente' END
-FROM "planes_pago" pp
-CROSS JOIN (VALUES (1,2),(2,3),(3,4),(4,5),(5,6),(6,7),(7,8),(8,9),(9,10),(10,11)) AS v(numero, mes)
-WHERE pp."periodo_id" = (SELECT "id" FROM tmp_periodo) AND pp."nivel" = 'general'
-ON CONFLICT ("plan_id", "numero") DO UPDATE SET
-  "fecha_vencimiento" = EXCLUDED."fecha_vencimiento",
-  "monto" = EXCLUDED."monto", "estado" = EXCLUDED."estado";
-
--- Limpieza de pensiones de conceptos viejos antes de regenerar
-DELETE FROM "pago_pensiones"
-WHERE "pension_id" IN (
-  SELECT "id" FROM "pensiones"
-  WHERE "periodo_id" = (SELECT "id" FROM tmp_periodo) AND "concepto" <> 'Matricula 2026'
-);
-DELETE FROM "pagos"
-WHERE "id" NOT IN (SELECT "pago_id" FROM "pago_pensiones")
-  AND "estudiante_id" IN (SELECT "estudiante_id" FROM tmp_inscripciones);
-DELETE FROM "pensiones"
-WHERE "periodo_id" = (SELECT "id" FROM tmp_periodo) AND "concepto" <> 'Matricula 2026';
-
--- Pensiones por cuota (al dia, mora leve, mora grave y becados anulados)
-INSERT INTO "pensiones"
-  ("estudiante_id", "periodo_id", "plan_pago_id", "numero_cuota", "concepto", "mes",
-   "monto", "fecha_vencimiento", "estado")
-SELECT ins."estudiante_id", p."id", pp."id", c."numero", 'Matricula 2026', c."mes",
-       c."monto", c."fecha_vencimiento",
-       CASE
-         WHEN e.perfil >= 95 THEN 'anulado'
-         WHEN c."numero" = 10 THEN 'pendiente'
-         WHEN c."fecha_vencimiento" >= (SELECT corte FROM tmp_corte) AND c."numero" < 9 THEN 'pendiente'
-         WHEN e.perfil < 55 THEN 'pagado'
-         WHEN c."numero" < 9 - v.mora THEN 'pagado'
-         WHEN c."numero" = 9 AND e.adelanto < 35 THEN 'pagado'
-         ELSE 'vencido'
-       END
-FROM tmp_inscripciones ins
-CROSS JOIN tmp_periodo p
-JOIN "planes_pago" pp ON pp."periodo_id" = p."id" AND pp."nivel" = 'general'
-JOIN "cuotas_plan_pago" c ON c."plan_id" = pp."id"
-CROSS JOIN LATERAL (
-  SELECT ((ins."estudiante_id" * 31 + 7) % 100) AS perfil,
-         ((ins."estudiante_id" * 53 + 11) % 100) AS adelanto
-) e
-CROSS JOIN LATERAL (
-  SELECT CASE WHEN e.perfil < 72 THEN 0
-              WHEN e.perfil < 86 THEN 2
-              ELSE 4 END AS mora
-) v
-ON CONFLICT ("estudiante_id", "periodo_id", "concepto", "mes") DO UPDATE SET
-  "monto" = EXCLUDED."monto", "estado" = EXCLUDED."estado",
-  "plan_pago_id" = EXCLUDED."plan_pago_id", "numero_cuota" = EXCLUDED."numero_cuota",
-  "fecha_vencimiento" = EXCLUDED."fecha_vencimiento";
-
--- Pagos confirmados por cada pensión pagada
-INSERT INTO "pagos"
-  ("estudiante_id", "monto", "metodo", "numero_transaccion", "comprobante_url", "fecha_pago", "registrado_por", "estado", "observacion")
-SELECT pe."estudiante_id",
-       pe."monto",
-       CASE ((pe."estudiante_id" * 13) % 4)::int
-         WHEN 0 THEN 'Efectivo'
-         WHEN 1 THEN 'Transferencia'
-         WHEN 2 THEN 'QR'
-         ELSE 'Tarjeta'
-       END,
-       'TRX-' || LPAD(pe."id"::text, 8, '0'),
-       NULL,
-       LEAST((pe."fecha_vencimiento" - (((pe."estudiante_id" * 17) % 5) || ' days')::interval)::date,
-             (SELECT corte FROM tmp_corte)),
-       (SELECT u."id" FROM "usuario_cuenta" x JOIN "usuarios" u ON u."id" = x."usuario_id" WHERE x."username" = 'control01'),
-       'confirmado',
-       NULL
-FROM "pensiones" pe
-WHERE pe."periodo_id" = (SELECT "id" FROM tmp_periodo) AND pe."estado" = 'pagado'
-  AND NOT EXISTS (SELECT 1 FROM "pagos" pg WHERE pg."numero_transaccion" = 'TRX-' || LPAD(pe."id"::text, 8, '0'));
-
--- Vínculo pago con pensión
-INSERT INTO "pago_pensiones" ("pago_id", "pension_id", "monto")
-SELECT pg."id", pe."id", pe."monto"
-FROM "pagos" pg
-JOIN "pensiones" pe ON pg."numero_transaccion" = 'TRX-' || LPAD(pe."id"::text, 8, '0')
-WHERE pe."periodo_id" = (SELECT "id" FROM tmp_periodo)
-  AND NOT EXISTS (
-    SELECT 1 FROM "pago_pensiones" x WHERE x."pago_id" = pg."id" AND x."pension_id" = pe."id"
-  );
-
--- Marcas de generación del período
-UPDATE "periodos_academicos"
-SET "estructura_generada" = true, "horarios_generados" = true, "plan_pagos_generado" = true
-WHERE "id" = (SELECT "id" FROM tmp_periodo);
-
-DROP TABLE tmp_periodo;
+SELECT i.estudiante_id, ad.id, t.inicio + dias.dia,
+       CASE WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 11 = 0 THEN 'ausente'
+            WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 7 = 0 THEN 'atraso'
+            ELSE 'presente' END,
+       CASE WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 11 = 0 THEN 'Ausencia de prueba' ELSE NULL END
+FROM "asignaciones_docentes" ad
+JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
+JOIN "trimestres" t ON t.periodo_id = cp.periodo_id
+JOIN "inscripciones" i ON i.curso_periodo_id = cp.id AND i.estado = 'activo'
+CROSS JOIN (VALUES (5), (12), (19)) AS dias(dia);
 
 COMMIT;
+
+SELECT r.rol, uc.username, uc.email
+FROM "usuario_cuenta" uc
+JOIN "usuarios" u ON u.id = uc.usuario_id
+JOIN "roles" r ON r.id = u.rol_id
+ORDER BY CASE r.rol WHEN 'director' THEN 1 WHEN 'control' THEN 2 WHEN 'profesor' THEN 3 ELSE 4 END,
+         uc.username;
+
+
+-- Copia las filas de esta consulta a Esquems/datos_gamificacion.sql,
+-- en el bloque INSERT INTO tmp_gm_seed indicado allí.
+SELECT string_agg(
+         format('(%s, %s, %s, %L, %L, %L)', u.id, e.id, cp.id,
+                c.paralelo, u.nombre, u.apellido_paterno),
+         E',\n' ORDER BY c.paralelo, u.apellido_paterno, u.nombre
+       ) AS filas_para_gamificacion
+FROM "estudiantes" e
+JOIN "usuarios" u ON u.id = e.usuario_id
+JOIN "inscripciones" i ON i.estudiante_id = e.id AND i.estado = 'activo'
+JOIN "cursos_periodo" cp ON cp.id = i.curso_periodo_id
+JOIN "cursos" c ON c.id = cp.curso_id
+WHERE c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo IN ('A', 'B');

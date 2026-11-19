@@ -1,47 +1,35 @@
-# Save the output of this file and use kubectl create -f to import
-# it into Kubernetes.
-#
-# Created with podman-6.2.0
-apiVersion: v1
-kind: Pod
-metadata:
-  creationTimestamp: "2026-11-17T19:35:26Z"
-  labels:
-    app: shalomantivirus-pod
-  name: shalomantivirus-pod
-spec:
-  containers:
-  - image: docker.io/clamav/clamav:latest
-    name: shalomantivirus
-  - args:
-    - server
-    - /data
-    - --console-address
-    - :9001
-    env:
-    - name: MINIO_ROOT_PASSWORD
-      value: adminpassword
-    - name: MINIO_SERVER_URL
-      value: http://0.0.0.0:9000
-    - name: MINIO_BROWSER_REDIRECT_URL
-      value: http://0.0.0.0:9001
-    - name: MINIO_ROOT_USER
-      value: admin
-    image: cgr.dev/chainguard/minio:latest
-    name: miniostorage
+services:
+  shalomantivirus:
+    image: docker.io/clamav/clamav:latest
+    container_name: shalom_antivirus
     ports:
-    - containerPort: 9000
-      hostIP: 0.0.0.0
-      hostPort: 9000
-    - containerPort: 9001
-      hostIP: 0.0.0.0
-      hostPort: 9001
-    securityContext:
-      runAsNonRoot: true
-    volumeMounts:
-    - mountPath: /data
-      name: minio-minio-data-pvc
-  volumes:
-  - name: minio-minio-data-pvc
-    persistentVolumeClaim:
-      claimName: minio-minio-data
+      - "3310:3310"
+    networks:
+      - shalom_backend
+
+  miniostorage:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: miniostorage
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    environment:
+      MINIO_ROOT_PASSWORD: adminpassword
+      MINIO_SERVER_URL: http://0.0.0.0:9000
+      MINIO_BROWSER_REDIRECT_URL: http://0.0.0.0:9001
+      MINIO_ROOT_USER: admin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-minio-data:/data
+
+volumes:
+  minio-minio-data:
+
+networks:
+  shalom_backend:
+    external: true
+    name: shalom_backend

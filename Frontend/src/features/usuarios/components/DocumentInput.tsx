@@ -297,7 +297,7 @@ export function DocumentInput({
                 <View className="flex-row items-center gap-1.5 flex-1 min-w-[180px]">
                   <Ionicons name="document-text" size={14} color="#16A34A" />
                   <Text className="text-[11px] text-green-700 font-medium" numberOfLines={1}>
-                    {doc.fileUri ? `Nuevo seleccionado: ${label}` : `En servidor MinIO: ${label}`}
+                    {doc.fileUri ? `Archivo seleccionado: ${label}` : `Archivo guardado: ${label}`}
                   </Text>
                 </View>
               ) : (

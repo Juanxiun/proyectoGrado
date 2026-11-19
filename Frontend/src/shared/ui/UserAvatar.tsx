@@ -1,4 +1,3 @@
-// UserAvatar -> foto propia, MinIO e iniciales como respaldo
 import { useEffect, useState } from 'react';
 import { Image, Text, View } from 'react-native';
 import { Canvas, Image as SkiaImage, useImage } from '@shopify/react-native-skia';

@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -442,7 +442,7 @@ export function AdministrativoManagementScreen() {
               <Text className="text-2xl font-bold text-gray-900">Personal Administrativo</Text>
             </View>
             <Text className="text-gray-500 text-xs">
-              Gestión de directores, control y personal administrativo institucional con Bento Grid y MinIO.
+              Directorio de directores, control y personal administrativo.
             </Text>
           </View>
 
@@ -510,7 +510,7 @@ export function AdministrativoManagementScreen() {
             <ScrollView className="p-5 max-h-[75vh]" contentContainerStyle={{ gap: 16 }}>
               <View className="gap-4">
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
-              <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial (MinIO)</Text>
+              <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial</Text>
               <ProfilePhotoPicker photoUri={adminPhoto} onChange={setAdminPhoto} required={false} />
             </BentoCard>
 

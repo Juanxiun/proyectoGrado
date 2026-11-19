@@ -43,6 +43,17 @@ import {
   getEntrega,
   listEntregas,
 } from "./controllers/entregas.controller.ts";
+import {
+  actualizarEstadoPregunta,
+  aprobarTrimestral,
+  borrarTrimestral,
+  descargarPdfTrimestral,
+  generarTrimestral,
+  getContextoTrimestral,
+  listarTrimestrales,
+  obtenerTrimestral,
+  regenerarPregunta,
+} from "./controllers/evaluacionTrimestral.controller.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? 8883);
 
@@ -118,6 +129,17 @@ rt.put("/asistencia/:id", requireAuth(ROLES_DOCENTES), updateAsistencia);
 rt.delete("/asistencia/:id", requireAuth(ROLES_DOCENTES), deleteAsistencia);
 
 // notificaciones -> publicar eventos redis
+
+// rutas -> evaluaciones trimestrales (estrictamente solo docentes y area directiva; 403 para estudiantes)
+rt.get("/evaluaciones-trimestrales/contexto", requireAuth(ROLES_DOCENTES), getContextoTrimestral);
+rt.get("/evaluaciones-trimestrales", requireAuth(ROLES_DOCENTES), listarTrimestrales);
+rt.get("/evaluaciones-trimestrales/:id", requireAuth(ROLES_DOCENTES), obtenerTrimestral);
+rt.post("/evaluaciones-trimestrales/generar", requireAuth(ROLES_DOCENTES), generarTrimestral);
+rt.patch("/evaluaciones-trimestrales/:id/preguntas/:preguntaId/estado", requireAuth(ROLES_DOCENTES), actualizarEstadoPregunta);
+rt.post("/evaluaciones-trimestrales/:id/preguntas/:preguntaId/regenerar", requireAuth(ROLES_DOCENTES), regenerarPregunta);
+rt.post("/evaluaciones-trimestrales/:id/aprobar", requireAuth(ROLES_DOCENTES), aprobarTrimestral);
+rt.get("/evaluaciones-trimestrales/:id/pdf", requireAuth(ROLES_DOCENTES), descargarPdfTrimestral);
+rt.delete("/evaluaciones-trimestrales/:id", requireAuth(ROLES_DOCENTES), borrarTrimestral);
 
 // rutas -> verificar salud servicio
 rt.get("/health", (ctx: Context) => {

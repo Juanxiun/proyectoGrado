@@ -1,4 +1,3 @@
-// CargaDestacada -> carga mientras llega el feedback de Mistral
 import { ActivityIndicator, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,8 +8,8 @@ interface CargaDestacadaProps {
 }
 
 export function CargaDestacada({
-  mensaje = 'Generando tu retroalimentación personalizada…',
-  submensaje = 'Mistral está analizando tus respuestas. Esto toma unos segundos.',
+  mensaje = 'Preparando tu retroalimentación…',
+  submensaje = 'Estamos revisando tus respuestas. Esto tomará unos segundos.',
   color = '#801529',
 }: CargaDestacadaProps) {
   return (

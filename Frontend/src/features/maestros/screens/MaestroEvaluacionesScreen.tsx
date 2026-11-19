@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   Text,
   TextInput,
   TouchableOpacity,
@@ -10,12 +11,38 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../../context/AuthContext';
 import { academicServicesApi } from '../../../api/academicServices.api';
+import { evaluacionTrimestralApi } from '../../../api/evaluacionTrimestral.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
 import { StatusBadge } from '../../../displays/components/StatusBadge';
 import { DateTimePicker } from '../../../displays/components/DateTimePicker';
 import { useResponsive } from '../../../utils/responsive';
 import { formatFechaHora } from '../../../utils/fechas';
 import { extraerEvaluaciones, type ItemEvaluacion } from '../../academico/utils/seguimiento';
+import { EvaluacionesTrimestralesSection } from '../components/EvaluacionesTrimestralesSection';
+
+const STORAGE_SECTION_KEY = 'maestro_eval_active_section';
+const STORAGE_ASIG_KEY = 'maestro_eval_selected_asig';
+
+function readWebStorage(key: string): string | null {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      return window.localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function writeWebStorage(key: string, value: string): void {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      /* ignore storage errors */
+    }
+  }
+}
 
 interface AsignacionDocente {
   id: string;
@@ -30,13 +57,30 @@ export function MaestroEvaluacionesScreen() {
   const { isMobile } = useResponsive();
 
   const [loading, setLoading] = useState(true);
+  const [activeSection, setActiveSectionState] = useState<'regulares' | 'trimestrales'>(() => {
+    const saved = readWebStorage(STORAGE_SECTION_KEY);
+    return saved === 'trimestrales' ? 'trimestrales' : 'regulares';
+  });
+  const [trimestralesGenerandoCount, setTrimestralesGenerandoCount] = useState(0);
   const [asignaciones, setAsignaciones] = useState<AsignacionDocente[]>([]);
   const [evaluaciones, setEvaluaciones] = useState<ItemEvaluacion[]>([]);
 
   const [showForm, setShowForm] = useState(false);
   const [editingEval, setEditingEval] = useState<ItemEvaluacion | null>(null);
 
-  const [selectedAsignacionId, setSelectedAsignacionId] = useState('');
+  const [selectedAsignacionId, setSelectedAsignacionIdState] = useState(
+    () => readWebStorage(STORAGE_ASIG_KEY) || '',
+  );
+
+  const setActiveSection = (section: 'regulares' | 'trimestrales') => {
+    setActiveSectionState(section);
+    writeWebStorage(STORAGE_SECTION_KEY, section);
+  };
+
+  const setSelectedAsignacionId = (id: string) => {
+    setSelectedAsignacionIdState(id);
+    if (id) writeWebStorage(STORAGE_ASIG_KEY, id);
+  };
   const [titulo, setTitulo] = useState('');
   const [tipo, setTipo] = useState<'examen' | 'evaluacion' | 'parcial'>('examen');
   const [descripcion, setDescripcion] = useState('');
@@ -72,8 +116,19 @@ export function MaestroEvaluacionesScreen() {
       }));
 
       setAsignaciones(mappedAsig);
-      if (mappedAsig.length > 0 && !selectedAsignacionId) {
-        setSelectedAsignacionId(mappedAsig[0].id);
+      if (mappedAsig.length > 0) {
+        const savedStillValid = mappedAsig.some((a) => a.id === selectedAsignacionId);
+        if (!savedStillValid) {
+          setSelectedAsignacionId(mappedAsig[0].id);
+        }
+      }
+
+      try {
+        const trimRes = await evaluacionTrimestralApi.list();
+        const activos = (trimRes.data ?? []).filter((e) => e.estado === 'generando');
+        setTrimestralesGenerandoCount(activos.length);
+      } catch {
+        /* ignorar si no hay acceso */
       }
 
       setEvaluaciones(extraerEvaluaciones(encRes.data, 'Materia'));
@@ -160,23 +215,83 @@ export function MaestroEvaluacionesScreen() {
   return (
     <View className="flex-1 gap-4">
       <BentoCard className="p-5">
-        <View className="flex-row items-center justify-between">
+        <View className="flex-row flex-wrap items-center justify-between gap-3">
           <View>
             <Text className="text-2xl font-bold text-gray-900">Gestión de Evaluaciones</Text>
             <Text className="text-sm text-gray-500 mt-1">
-              Diseña, programa y parametriza exámenes y pruebas presenciales o virtuales.
+              Administra evaluaciones regulares y genera pruebas trimestrales.
             </Text>
           </View>
+          {activeSection === 'regulares' && (
+            <TouchableOpacity
+              onPress={handleOpenCreate}
+              className="bg-maroon px-4 py-2.5 rounded-xl flex-row items-center gap-2 shadow-sm"
+            >
+              <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
+              <Text className="text-white text-xs font-bold">Nueva Evaluación</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View className="flex-row gap-2 mt-4 pt-3 border-t border-gray-100">
           <TouchableOpacity
-            onPress={handleOpenCreate}
-            className="bg-maroon px-4 py-2.5 rounded-xl flex-row items-center gap-2 shadow-sm"
+            onPress={() => setActiveSection('regulares')}
+            className={`px-4 py-2 rounded-xl flex-row items-center gap-2 ${
+              activeSection === 'regulares' ? 'bg-maroon' : 'bg-gray-100'
+            }`}
           >
-            <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" />
-            <Text className="text-white text-xs font-bold">Nueva Evaluación</Text>
+            <Ionicons
+              name="clipboard-outline"
+              size={15}
+              color={activeSection === 'regulares' ? '#FFFFFF' : '#4B5563'}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                activeSection === 'regulares' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Evaluaciones Regulares
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setActiveSection('trimestrales')}
+            className={`px-4 py-2 rounded-xl flex-row items-center gap-2 ${
+              activeSection === 'trimestrales' ? 'bg-maroon' : 'bg-gray-100'
+            }`}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={15}
+              color={activeSection === 'trimestrales' ? '#FFFFFF' : '#4B5563'}
+            />
+            <Text
+              className={`text-xs font-bold ${
+                activeSection === 'trimestrales' ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Evaluaciones Trimestrales
+            </Text>
+            {trimestralesGenerandoCount > 0 && (
+              <View className="bg-amber-400 px-1.5 py-0.5 rounded-full flex-row items-center gap-1">
+                <ActivityIndicator size={9} color="#78350F" />
+                <Text className="text-[10px] font-black text-amber-950">
+                  {trimestralesGenerandoCount}
+                </Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </BentoCard>
 
+      {activeSection === 'trimestrales' ? (
+        <EvaluacionesTrimestralesSection
+          asignaciones={asignaciones}
+          selectedAsignacionId={selectedAsignacionId}
+          onSelectAsignacion={setSelectedAsignacionId}
+        />
+      ) : (
+        <>
       {showForm && (
         <BentoCard className="p-5 border-2 border-maroon/20">
           <View className="flex-row items-center justify-between mb-4">
@@ -350,6 +465,8 @@ export function MaestroEvaluacionesScreen() {
             </BentoCard>
           ))}
         </View>
+      )}
+        </>
       )}
     </View>
   );

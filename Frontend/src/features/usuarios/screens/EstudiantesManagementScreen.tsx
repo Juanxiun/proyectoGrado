@@ -1076,7 +1076,7 @@ export function EstudiantesManagementScreen() {
               {step === 1 && (
                 <View className="gap-4">
                   <BentoCard className="p-4 bg-gray-50 border border-gray-200">
-                    <Text className="text-xs font-bold text-maroon mb-3 uppercase">1. Fotografía del Tutor (MinIO)</Text>
+                    <Text className="text-xs font-bold text-maroon mb-3 uppercase">1. Fotografía del Tutor</Text>
                     <ProfilePhotoPicker photoUri={tutorPhoto} onChange={setTutorPhoto} required={false} />
                   </BentoCard>
 
@@ -1210,7 +1210,7 @@ export function EstudiantesManagementScreen() {
                       )}
 
                       <BentoCard className="p-4 bg-gray-50 border border-gray-200">
-                        <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Estudiante (MinIO)</Text>
+                        <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía del Estudiante</Text>
                         <ProfilePhotoPicker photoUri={studentPhoto} onChange={setStudentPhoto} required={false} />
                       </BentoCard>
 

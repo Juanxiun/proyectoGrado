@@ -83,7 +83,7 @@ function BarraCurso({ etiqueta, porcentaje, color }: { etiqueta: string; porcent
   return <View className="gap-1.5"><View className="flex-row items-center justify-between"><Text className="text-xs font-medium text-gray-600">{etiqueta}</Text><Text className="text-xs font-bold text-gray-900">{Math.round(valor)}%</Text></View><View className="h-2.5 rounded-full bg-gray-100 overflow-hidden"><View className="h-full rounded-full" style={{ width: `${valor}%`, backgroundColor: color }} /></View></View>;
 }
 
-export function MaestroSeguimientoScreen() {
+export function MaestroSeguimientoScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
   const { user } = useAuth();
   const [asignaciones, setAsignaciones] = useState<Asignacion[]>([]);
   const [cargando, setCargando] = useState(true);
@@ -151,21 +151,11 @@ export function MaestroSeguimientoScreen() {
   }, []);
 
   const asignacion = asignaciones.find((a) => a.materiaId === materiaId && a.curso === curso && a.paralelo === paralelo);
-  const materiasConCursos = useMemo(() => {
-    const grupos = new Map<string, { materia: string; cursos: Asignacion[] }>();
-    for (const item of asignaciones) {
-      const grupo = grupos.get(item.materiaId) ?? { materia: item.materia, cursos: [] };
-      if (!grupo.cursos.some((cursoItem) => cursoItem.cursoPeriodoId === item.cursoPeriodoId)) grupo.cursos.push(item);
-      grupos.set(item.materiaId, grupo);
-    }
-    return [...grupos.entries()].map(([materiaId, grupo]) => ({
-      materiaId,
-      ...grupo,
-      cursos: grupo.cursos.sort((a, b) =>
-        a.curso.localeCompare(b.curso, 'es') || a.paralelo.localeCompare(b.paralelo, 'es')
-      ),
-    })).sort((a, b) => a.materia.localeCompare(b.materia, 'es'));
-  }, [asignaciones]);
+  const resumenAsignaciones = useMemo(() => ({
+    cursos: new Set(asignaciones.map((item) => item.cursoPeriodoId)).size,
+    materias: new Set(asignaciones.map((item) => item.materiaId)).size,
+    asignaciones: asignaciones.length,
+  }), [asignaciones]);
 
   useEffect(() => { setEstudianteSeleccionado(''); }, [asignacion?.id]);
 
@@ -415,27 +405,25 @@ export function MaestroSeguimientoScreen() {
   if (cargando) return <View className="py-16 items-center"><ActivityIndicator size="large" color="#801529" /><Text className="text-sm text-gray-500 mt-3">Cargando tus cursos…</Text></View>;
 
   return <ScrollView className="flex-1" contentContainerClassName="gap-4 p-4 pb-8">
-    <View className="gap-1"><Text className="text-xl font-black text-gray-900">Seguimiento académico</Text><Text className="text-sm text-gray-500">Tus cursos, asistencia, calificaciones y progreso.</Text></View>
+    <View className="gap-1"><Text className="text-xl font-black text-gray-900">Seguimiento académico</Text><Text className="text-sm text-gray-500">Resumen de tu carga académica. Abre Cursos para consultar estudiantes, asistencia y calificaciones.</Text></View>
 
-    <View className="gap-4">
-      {materiasConCursos.length ? materiasConCursos.map((grupo) => <BentoCard key={grupo.materiaId} className="p-5 bg-white border border-gray-100 shadow-sm">
-        <View className="mb-4 flex-row items-center justify-between border-b border-gray-100 pb-3">
-          <View className="flex-row items-center gap-2.5"><View className="h-8 w-8 items-center justify-center rounded-lg bg-maroon/10"><Ionicons name="book-outline" size={16} color="#801529" /></View><Text className="text-base font-bold text-gray-900">{grupo.materia}</Text></View>
-          <Text className="text-xs font-semibold text-gray-400">{grupo.cursos.length} {grupo.cursos.length === 1 ? 'curso' : 'cursos'}</Text>
-        </View>
-        <View className="flex-row flex-wrap gap-3.5">
-          {grupo.cursos.map((item) => {
-            const par = item.paralelo.toUpperCase();
-            const nombreNivel = NIVEL_LABEL[nivelDe(item.nivel) ?? 'primaria'];
-            return <TouchableOpacity key={item.cursoPeriodoId} onPress={() => abrirAsignacion(item, 'estudiantes')} activeOpacity={0.7} className="flex-1 min-w-[245px] max-w-[380px] justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4">
-              <View className="flex-row items-start justify-between"><View className="h-11 w-11 items-center justify-center rounded-2xl bg-maroon shadow-sm"><Text className="text-lg font-black text-white">{par}</Text></View><View className="rounded-md bg-maroon/10 px-2 py-0.5"><Text className="text-[10px] font-bold uppercase text-maroon">Paralelo {par}</Text></View></View>
-              <View><Text className="text-base font-bold text-gray-900">{item.curso}° Paralelo "{par}"</Text><Text className="mt-0.5 text-xs text-gray-500">Nivel {nombreNivel}</Text></View>
-              <View className="flex-row items-center justify-between border-t border-gray-200/70 pt-2"><Text className="text-[11px] font-medium text-gray-500">{nombreNivel}</Text><View className="flex-row items-center gap-1"><Text className="text-xs font-bold text-maroon">Ver seguimiento</Text><Ionicons name="arrow-forward" size={13} color="#801529" /></View></View>
-            </TouchableOpacity>;
-          })}
-        </View>
-      </BentoCard>) : <BentoCard className="items-center p-8"><Ionicons name="school-outline" size={34} color="#9CA3AF" /><Text className="mt-3 text-center text-sm font-bold text-gray-800">No tienes cursos asignados</Text><Text className="mt-1 text-center text-xs text-gray-500">Cuando te asignen materias, aparecerán aquí.</Text></BentoCard>}
+    <View className="flex-row flex-wrap gap-4">
+      {([
+        ['school-outline', 'Cursos asignados', resumenAsignaciones.cursos],
+        ['book-outline', 'Materias que impartes', resumenAsignaciones.materias],
+        ['clipboard-outline', 'Asignaciones curso-materia', resumenAsignaciones.asignaciones],
+      ] as const).map(([icono, etiqueta, valor]) => <BentoCard key={etiqueta} className="min-w-[210px] flex-1 flex-row items-center gap-4 border border-gray-100 bg-white p-5 shadow-sm">
+        <View className="h-12 w-12 items-center justify-center rounded-2xl bg-maroon/10"><Ionicons name={icono} size={23} color="#801529" /></View>
+        <View><Text className="text-2xl font-black text-gray-900">{valor}</Text><Text className="mt-0.5 text-xs font-medium text-gray-500">{etiqueta}</Text></View>
+      </BentoCard>)}
     </View>
+
+    <BentoCard className="flex-row flex-wrap items-center justify-between gap-4 border border-gray-100 bg-white p-5 shadow-sm">
+      <View className="flex-1 gap-1"><Text className="text-base font-bold text-gray-900">Consulta el detalle de tus cursos</Text><Text className="text-sm text-gray-500">La lista de cursos y materias está centralizada en Cursos para evitar mostrarla dos veces.</Text></View>
+      <TouchableOpacity onPress={() => onNavigate?.('Cursos')} activeOpacity={0.8} className="flex-row items-center gap-2 rounded-xl bg-maroon px-4 py-3">
+        <Ionicons name="school-outline" size={17} color="#FFFFFF" /><Text className="text-sm font-bold text-white">Ir a Cursos</Text><Ionicons name="arrow-forward" size={15} color="#FFFFFF" />
+      </TouchableOpacity>
+    </BentoCard>
 
     {asignacion ? <Modal visible transparent animationType="fade" statusBarTranslucent onRequestClose={volverCursos}>
       <View className="flex-1 justify-end bg-black/50 md:justify-center md:p-5">

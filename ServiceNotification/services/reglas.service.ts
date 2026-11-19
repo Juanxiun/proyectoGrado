@@ -485,8 +485,8 @@ const REGLAS: ReglaNotificacion[] = [
     tipo: "material",
     canal: "academico",
     prioridad: "media",
-    titulo: (p) => `Material procesado: ${texto(p.title, "Material académico")}`,
-    mensaje: (p) => `El contenido "${texto(p.title, "tu material")}" ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y las actividades generadas.`,
+    titulo: (p) => `Material listo: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El contenido "${texto(p.title, "tu material")}" ya está listo. Revisa el resumen y las actividades generadas.`,
     audiencia: "usuario",
     usuarios: async (p) => {
       const teacherId = numero(p.teacher_id);
@@ -498,8 +498,8 @@ const REGLAS: ReglaNotificacion[] = [
     tipo: "material",
     canal: "academico",
     prioridad: "media",
-    titulo: (p) => `Procesando material: ${texto(p.title, "Material académico")}`,
-    mensaje: (p) => `El documento "${texto(p.title, "tu material")}" se está procesando con IA. Tiempo estimado: ${texto(p.estimated_minutes, "3")} minutos.`,
+    titulo: (p) => `Preparando material: ${texto(p.title, "Material académico")}`,
+    mensaje: (p) => `El documento "${texto(p.title, "tu material")}" se está preparando. Tiempo estimado: ${texto(p.estimated_minutes, "3")} minutos.`,
     audiencia: "usuario",
     usuarios: async (p) => {
       const teacherId = numero(p.teacher_id);
@@ -512,10 +512,23 @@ const REGLAS: ReglaNotificacion[] = [
     canal: "academico",
     prioridad: "media",
     titulo: (p) => `Contenido listo: ${texto(p.title, "Material de estudio")}`,
-    mensaje: (p) => `El contenido: ${texto(p.title, "tu tema")} ya fue procesado por Gemma y Mistral. Revisa el resumen personalizado y resuelve las actividades que te prepararon.`,
+    mensaje: (p) => `El contenido "${texto(p.title, "tu tema")}" ya está disponible. Revisa el resumen y resuelve las actividades.`,
     audiencia: "curso",
     asignacion: (p) => numero(p.assignment_id),
     cursoPeriodo: (p) => numero(p.cursoPeriodoId),
+  },
+  {
+    evento: "evaluacion.trimestral.lista",
+    tipo: "evaluacion",
+    canal: "academico",
+    prioridad: "alta",
+    titulo: (p) => `Evaluación trimestral lista: ${texto(p.titulo, "Prueba Trimestral")}`,
+    mensaje: (p) => `Tu prueba trimestral "${texto(p.titulo, "Evaluación Trimestral")}" ya fue generada y está lista para revisión y aprobación.`,
+    audiencia: "usuario",
+    usuarios: async (p) => {
+      const usuarioId = numero(p.usuarioId ?? p.teacher_id);
+      return usuarioId ? [usuarioId] : [];
+    },
   },
 ];
 

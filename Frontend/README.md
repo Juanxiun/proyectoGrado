@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | `director` (también aliases admin/administrador) | `Direccion` | Dashboard, Administración, Docentes, Estudiantes, Estructura Académica, Inscripciones, Seguimiento, Aula y Evaluación, Horarios, Economía |
 | `control` (aliases gerencia/secretaria/administrativo/editor) | `Control` | Dashboard, Administración, Docentes, Estudiantes, Inscripciones, Aula y Evaluación, Horarios, Economía |
-| `profesor` (alias maestro) | `Maestros` | Dashboard, Cursos, Materias, Evaluaciones, Horarios |
+| `profesor` (alias maestro) | `Maestros` | Seguimiento (inicio y lista de cursos), Materias, Evaluaciones, Horarios |
 | `estudiante` (aliases alumno/apoderado; rol por defecto) | `Usuarios` | Dashboard, Cursos, Materias, Evaluaciones, Horarios, Mi Deuda |
 
 ## Rutas

@@ -110,9 +110,9 @@ export function InAppDocumentViewerModal({
       return (
         <View className="flex-1 items-center justify-center p-8">
           <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
-          <Text className="text-gray-700 font-bold text-base mt-3">URL del archivo no disponible</Text>
+          <Text className="text-gray-700 font-bold text-base mt-3">Archivo no disponible</Text>
           <Text className="text-gray-400 text-xs text-center mt-1">
-            No se pudo generar el enlace de visualización en MinIO.
+            No se pudo cargar la vista previa del documento.
           </Text>
         </View>
       );
@@ -247,7 +247,7 @@ export function InAppDocumentViewerModal({
             <View className="flex-row items-center gap-2">
               <View className="w-2 h-2 rounded-full bg-green-500" />
               <Text className="text-xs text-gray-600 font-medium">
-                Visor integrado MinIO • Content-Disposition: inline
+                Vista previa del documento
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} className="bg-gray-200 px-4 py-1.5 rounded-lg">

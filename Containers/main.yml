@@ -1,140 +1,107 @@
-# Save the output of this file and use kubectl create -f to import
-# it into Kubernetes.
-#
-# Created with podman-6.2.0
-apiVersion: v1
-kind: Pod
-metadata:
-  creationTimestamp: "2026-11-17T19:34:06Z"
-  labels:
-    app: postgresdb-pod
-  name: postgresdb-pod
-spec:
-  containers:
-  - args:
-    - postgres
-    env:
-    - name: POSTGRES_PASSWORD
-      value: S@ndia1234
-    - name: POSTGRES_USER
-      value: Juanxiu
+services:
+  postgresdb:
     image: docker.io/library/postgres:16-alpine
-    livenessProbe:
-      exec:
-        command:
-        - /bin/sh
-        - -c
-        - pg_isready -U Juanxiu -d TorneoCB
-      failureThreshold: 5
-      periodSeconds: 10
-      timeoutSeconds: 5
-    name: postgresdb
+    container_name: postgresdb
+    command:
+      - postgres
+    environment:
+      POSTGRES_PASSWORD: "S@ndia1234"
+      POSTGRES_USER: Juanxiu
     ports:
-    - containerPort: 5432
-      hostPort: 5432
-    resources:
-      limits:
-        cpu: "2"
-        memory: 2Gi
-    volumeMounts:
-    - mountPath: /var/lib/postgresql/data
-      name: docker-2-postgres-data-pvc
-  - env:
-    - name: PGADMIN_DEFAULT_PASSWORD
-      value: S@ndia1234
-    - name: PGADMIN_CONFIG_SERVER_MODE
-      value: "True"
-    - name: PGADMIN_DEFAULT_EMAIL
-      value: admin@admin.com
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Juanxiu -d TorneoCB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+    volumes:
+      - docker-2-postgres-data:/var/lib/postgresql/data
+
+  pgadmin:
     image: docker.io/dpage/pgadmin4:9.17
-    name: pgadmin
+    container_name: pgadmin
+    environment:
+      PGADMIN_DEFAULT_PASSWORD: "S@ndia1234"
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
     ports:
-    - containerPort: 80
-      hostPort: 30001
-    securityContext:
-      runAsNonRoot: true
-    volumeMounts:
-    - mountPath: /var/lib/pgadmin
-      name: docker-2-pgadmin-data-pvc
-  - image: docker.io/redis/redisinsight:latest
-    name: redisinsightpanel
+      - "30001:80"
+    volumes:
+      - docker-2-pgadmin-data:/var/lib/pgadmin
+
+  redisinsightpanel:
+    image: docker.io/redis/redisinsight:latest
+    container_name: redisinsightpanel
     ports:
-    - containerPort: 5540
-      hostPort: 8002
-    securityContext: {}
-    volumeMounts:
-    - mountPath: /data
-      name: docker-2-redis-insight-data-pvc
-  - args:
-    - redis-server
-    - --user
-    - default
-    - "off"
-    - --user
-    - admin
-    - "on"
-    - '>AdminCachePass123'
-    - ~*
-    - '&*'
-    - +@all
-    - --user
-    - cache_user
-    - "on"
-    - '>UserCachePass123'
-    - ~*
-    - '&*'
-    - +@all
-    - --maxmemory
-    - 512mb
-    - --maxmemory-policy
-    - allkeys-lru
-    - --appendonly
-    - "no"
+      - "8002:5540"
+    volumes:
+      - docker-2-redis-insight-data:/data
+
+  rediscacheserver:
     image: docker.io/library/redis:7.4-alpine
-    name: rediscacheserver
+    container_name: rediscacheserver
+    command:
+      - redis-server
+      - --user
+      - default
+      - "off"
+      - --user
+      - admin
+      - "on"
+      - ">AdminCachePass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --user
+      - cache_user
+      - "on"
+      - ">UserCachePass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "no"
     ports:
-    - containerPort: 6379
-      hostPort: 6379
-    volumeMounts:
-    - mountPath: /data
-      name: docker-2-redis-cache-data-pvc
-  - command:
-    - redis-server
-    - --protected-mode
-    - "no"
-    - --user
-    - default
-    - "off"
-    - --user
-    - admin
-    - "on"
-    - '>AdminRagPass123'
-    - ~*
-    - '&*'
-    - +@all
-    - --appendonly
-    - "yes"
+      - "6379:6379"
+    volumes:
+      - docker-2-redis-cache-data:/data
+
+  redisragserver:
     image: docker.io/redis/redis-stack-server:latest
-    name: redisragserver
+    container_name: redisragserver
+    command:
+      - redis-server
+      - --protected-mode
+      - "no"
+      - --user
+      - default
+      - "off"
+      - --user
+      - admin
+      - "on"
+      - ">AdminRagPass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --appendonly
+      - "yes"
     ports:
-    - containerPort: 6379
-      hostPort: 6380
-    volumeMounts:
-    - mountPath: /data
-      name: docker-2-redis-rag-data-pvc
-  volumes:
-  - name: docker-2-postgres-data-pvc
-    persistentVolumeClaim:
-      claimName: docker-2-postgres-data
-  - name: docker-2-pgadmin-data-pvc
-    persistentVolumeClaim:
-      claimName: docker-2-pgadmin-data
-  - name: docker-2-redis-insight-data-pvc
-    persistentVolumeClaim:
-      claimName: docker-2-redis-insight-data
-  - name: docker-2-redis-cache-data-pvc
-    persistentVolumeClaim:
-      claimName: docker-2-redis-cache-data
-  - name: docker-2-redis-rag-data-pvc
-    persistentVolumeClaim:
-      claimName: docker-2-redis-rag-data
+      - "6380:6379"
+    volumes:
+      - docker-2-redis-rag-data:/data
+
+volumes:
+  docker-2-postgres-data:
+  docker-2-pgadmin-data:
+  docker-2-redis-insight-data:
+  docker-2-redis-cache-data:
+  docker-2-redis-rag-data:

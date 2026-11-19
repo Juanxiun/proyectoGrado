@@ -16,7 +16,6 @@ import { MaestroCursosScreen } from '../features/maestros/screens/MaestroCursosS
 import { MaestroMateriasScreen } from '../features/maestros/screens/MaestroMateriasScreen';
 import { MaestroEvaluacionesScreen } from '../features/maestros/screens/MaestroEvaluacionesScreen';
 import { MaestroRendimientoScreen } from '../features/maestros/screens/MaestroRendimientoScreen';
-import { MaestroSeguimientoScreen } from '../features/maestros/screens/MaestroSeguimientoScreen';
 import { EstudianteCursosScreen } from '../features/usuarios/screens/EstudianteCursosScreen';
 import { EstudianteMateriasScreen } from '../features/usuarios/screens/EstudianteMateriasScreen';
 import { EstudianteEvaluacionesScreen } from '../features/usuarios/screens/EstudianteEvaluacionesScreen';
@@ -40,7 +39,10 @@ interface RoleShellProps {
 export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: RoleShellProps) {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
-  const [activeRoute, setActiveRoute] = useState('Dashboard');
+  const roleName = user?.rol.toLowerCase() ?? '';
+  const isTeacher = roleName.includes('maestro') || roleName.includes('profesor') || roleName.includes('docente');
+  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno');
+  const [activeRoute, setActiveRoute] = useState(() => isTeacher ? 'Seguimiento' : 'Dashboard');
   const [schedulePeriodoId, setSchedulePeriodoId] = useState('');
   const [seguimientoPeriodoId, setSeguimientoPeriodoId] = useState('');
   const [materiaTab, setMateriaTab] = useState<'materiales' | 'tareas'>('tareas');
@@ -56,9 +58,6 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
 
   const userName = getFullName(user.nombre, user.apellidoPaterno);
   const userEmail = user.email;
-  const roleName = user.rol.toLowerCase();
-  const isTeacher = roleName.includes('maestro') || roleName.includes('profesor') || roleName.includes('docente');
-  const isStudent = roleName.includes('estudiante') || roleName.includes('alumno');
   const titleByRoute: Record<string, string> = {
     Dashboard: isStudent ? 'Panel Estudiantil' : panelTitle,
     Profile: 'Mi Perfil',
@@ -116,7 +115,7 @@ export function RoleShell({ navItems, panelTitle = 'Panel Administrativo' }: Rol
       case 'Horario':
         return <ScheduleScreen initialPeriodoId={schedulePeriodoId} />;
       case 'Seguimiento':
-        if (isTeacher) return <MaestroSeguimientoScreen />;
+        if (isTeacher) return <SeguimientoScreen initialPeriodoId={seguimientoPeriodoId} teacherMode />;
         return <SeguimientoScreen initialPeriodoId={seguimientoPeriodoId} />;
       case 'Economia':
         return <EconomyManagementScreen />;

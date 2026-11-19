@@ -20,12 +20,10 @@ export const DIRECTOR_NAV: NavItem[] = [
 export const CONTROL_NAV = DIRECTOR_NAV;
 
 export const MAESTROS_NAV: NavItem[] = [
-  { key: 'home', label: 'Inicio', icon: 'home-outline', route: 'Dashboard' },
-  { key: 'cursos', label: 'Cursos', icon: 'school-outline', route: 'Cursos' },
+  { key: 'seguimiento', label: 'Seguimiento', icon: 'analytics-outline', route: 'Seguimiento' },
   { key: 'materias', label: 'Materias', icon: 'book-outline', route: 'Materias' },
   { key: 'evaluaciones', label: 'Evaluaciones', icon: 'clipboard-outline', route: 'Evaluaciones' },
   { key: 'horarios', label: 'Horarios', icon: 'time-outline', route: 'Horarios' },
-  { key: 'seguimiento', label: 'Seguimiento', icon: 'analytics-outline', route: 'Seguimiento' },
 ];
 
 export const USUARIOS_NAV: NavItem[] = [

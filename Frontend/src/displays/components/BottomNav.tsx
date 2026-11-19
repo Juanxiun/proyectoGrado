@@ -1,4 +1,4 @@
-// BottomNav -> barra de navegación inferior
+import { memo } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { NavItem } from './Sidebar';
@@ -9,7 +9,7 @@ interface BottomNavProps {
   onNavigate: (route: string) => void;
 }
 
-export function BottomNav({ items, activeRoute, onNavigate }: BottomNavProps) {
+export const BottomNav = memo(function BottomNav({ items, activeRoute, onNavigate }: BottomNavProps) {
   const visible = items.slice(0, 6);
 
   return (
@@ -38,5 +38,4 @@ export function BottomNav({ items, activeRoute, onNavigate }: BottomNavProps) {
       })}
     </View>
   );
-}
-
+});

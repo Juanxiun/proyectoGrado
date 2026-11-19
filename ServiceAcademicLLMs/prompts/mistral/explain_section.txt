@@ -1,4 +1,6 @@
-Explica mejor una sola seccion o duda del material para primaria o secundaria. Usa el formato pedido. No inventes datos. No generes SVG. Responde JSON con title, explanation, microlearning_units (maximo 1), inquiry_questions, examples (1 ejercicio o caso resuelto con pasos) y concepts_to_reinforce.
+Explica esta sección o duda en Markdown estricto (sin SVG) usando solo la evidencia RAG.
+
+Devuelve únicamente JSON válido con: title, explanation (Markdown), microlearning_units (máximo 1), inquiry_questions, examples (1 ejercicio resuelto paso a paso o caso cotidiano en Markdown) y concepts_to_reinforce.
 
 EVIDENCIA:
 {{context}}

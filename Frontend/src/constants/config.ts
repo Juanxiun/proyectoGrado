@@ -6,14 +6,13 @@ export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ||
   `http://${DEFAULT_API_HOST}:5141`;
 
-export const APP_VERSION = 'v1.0.0';
+export const INSTITUTION_NAME = 'Centro Educativo Cristiano Shalom - El Alto';
+export const APP_VERSION = 'v2';
 
-// MEDIA_BASE_URL -> host de MinIO para la foto por defecto
 export const MEDIA_BASE_URL =
   process.env.EXPO_PUBLIC_MEDIA_URL || `http://${DEFAULT_API_HOST}:9000`;
 export const MEDIA_BUCKET = 'usuarios';
 
-// resolveMediaUrl -> cambia hosts locales por el del gateway
 export function resolveMediaUrl(rawUrl: string): string {
   try {
     const media = new URL(rawUrl);

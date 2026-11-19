@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Alert as RNAlert, View } from 'react-native';
+import { APP_VERSION, INSTITUTION_NAME } from '../../../constants/config';
 import { useAuth } from '../../../context/AuthContext';
-import { Alert, AuthLayout, Button, HintRow, TextField, TextLink } from '../../../shared/ui';
+import { Alert, AuthLayout, Button, TextField, TextLink } from '../../../shared/ui';
 import {
   PASSWORD_MAX,
   USERNAME_MAX,
@@ -39,10 +40,9 @@ export function LoginScreen() {
 
   return (
     <AuthLayout
-      eyebrow="Acceso institucional"
-      title="Sistema de Gestión Académica"
-      subtitle="Ingrese sus credenciales para acceder al panel."
-      footerLinks={['Soporte', 'Privacidad', 'Términos']}
+      eyebrow={`Acceso institucional · ${APP_VERSION}`}
+      title={INSTITUTION_NAME}
+      subtitle="Ingrese sus credenciales para continuar."
     >
       <View className="gap-4">
         {error ? <Alert tone="danger" message={error} /> : null}
@@ -104,13 +104,6 @@ export function LoginScreen() {
           loading={loading}
           onPress={handleSubmit}
         />
-
-        <View className="pt-2">
-          <HintRow
-            icon="shield-checkmark-outline"
-            text="Acceso restringido a personal autorizado del colegio."
-          />
-        </View>
       </View>
     </AuthLayout>
   );

@@ -2,19 +2,20 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # Docker Compose injects runtime settings from the repository root .env.
+    model_config = SettingsConfigDict(extra="ignore")
 
     app_env: str = "development"
     log_level: str = "INFO"
     port: int = 8890
     # ollama -> en Docker usa host.docker.internal, en local 127.0.0.1
     ollama_base_url: str = "http://host.docker.internal:11434"
-    # ollama -> modelos locales (mismos modelos que antes, con etiqueta de Ollama)
-    ollama_gemma_model: str = "gemma4:e4b"
-    ollama_mistral_model: str = "mistral:7b"
+    # ollama -> modelos calibrados con skills y contexto 16k
+    ollama_gemma_model: str = "shalom-gemma"
+    ollama_mistral_model: str = "shalom-mistral"
     ollama_embedding_model: str = "nomic-embed-text"
     # ollama -> contexto efectivo por solicitud
-    ollama_num_ctx: int = 8192
+    ollama_num_ctx: int = 16384
     # ollama -> tiempo que el modelo permanece cargado en memoria
     ollama_keep_alive: str = "30m"
     # ollama -> desactivar razonamiento extendido en modelos que lo soportan

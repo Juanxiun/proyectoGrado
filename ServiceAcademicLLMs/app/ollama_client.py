@@ -27,6 +27,8 @@ OUTPUT_LIMITS = {
     "StudentLearningAnalysis": 1400,
     "QuizQualityFeedback": 220,
     "StudentLearningOverview": 450,
+    "TrimesterExamBatchOutput": 3400,
+    "TrimesterExamQuestion": 1400,
 }
 
 # ollama -> esquemas grandes sin reintento por limite de salida

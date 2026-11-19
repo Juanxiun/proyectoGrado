@@ -1095,7 +1095,7 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
         }
         warningNote={
           deleteTarget?.type === 'material'
-            ? 'El archivo adjunto también será eliminado permanentemente de MinIO.'
+            ? 'El archivo adjunto también será eliminado de forma permanente.'
             : undefined
         }
         loading={deleteLoading}

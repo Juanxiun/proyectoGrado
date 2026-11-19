@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Modal, Platform, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BentoCard } from '../../../displays/components/BentoCard';
@@ -497,7 +497,7 @@ export function DocentesManagementScreen() {
               <Text className="text-2xl font-bold text-gray-900">Personal Docente</Text>
             </View>
             <Text className="text-gray-500 text-xs">
-              Directorio y gestión institucional de maestros con formato Bento Grid y almacenamiento MinIO.
+              Directorio y gestión del plantel docente.
             </Text>
           </View>
 
@@ -567,7 +567,7 @@ export function DocentesManagementScreen() {
             <ScrollView className="p-5 max-h-[75vh]" contentContainerStyle={{ gap: 16 }}>
               <View className="gap-4">
             <BentoCard className="p-4 bg-cream/40 border border-gold/30">
-              <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial (MinIO)</Text>
+              <Text className="text-xs font-bold text-maroon mb-2 uppercase">Fotografía Oficial</Text>
               <ProfilePhotoPicker photoUri={docentePhoto} onChange={setDocentePhoto} required={false} />
             </BentoCard>
 

@@ -1,13 +1,4 @@
-
-
 \set ON_ERROR_STOP on
-\echo ''
-\echo '=============================================================='
-\echo '  Reinicio total de la base. Se borra todo lo que haya ahora.'
-\echo '=============================================================='
-\echo ''
-
-
 \set dbname ShalomDB
 
 \connect postgres
@@ -58,7 +49,7 @@ CREATE DATABASE :"dbnameGM" WITH OWNER = CURRENT_USER ENCODING = 'UTF8';
 \ir BDgm.sql
 \connect ShalomDB
 \echo ''
-\echo '  -> gamificacion lista'
+\echo '  -> esquema de gamificacion listo; para cargar su fixture, sigue el flujo pgAdmin de datos_gamificacion.sql'
 \echo ''
 
 \echo '=============================================================='
@@ -168,13 +159,8 @@ ORDER BY banda;
 \echo '=============================================================='
 \echo '  Base lista. Contrasena de todas las cuentas: Shalom2026'
 \echo ''
-\echo '    director01 / director02                  -> director'
-\echo '    control01 / control02 / control03      -> control'
-\echo '    gerencia01 / gerencia02               -> gerencia'
-\echo '    apoder01 … apoder12                   -> apoderado'
-\echo '    maestro01 … maestro32                 -> profesor'
-\echo '    est0001 … est0480                     -> estudiante (inscrito)'
-\echo '    est0481 … est0484                     -> estudiante (reserva pendiente)'
+\echo '    Las cuentas con sus usernames y correos institucionales se listan arriba.'
+\echo '    Estudiantes de prueba: 1ro de secundaria A y B; notas T1, T2 y T3.'
 \echo '=============================================================='
 \echo ''
 \echo '  Falta levantar Redis y MinIO: sin Redis las sesiones y el bus de'

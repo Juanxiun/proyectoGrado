@@ -1,5 +1,5 @@
-﻿import { useEffect, useState } from 'react';
-import { Alert, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { memo, useCallback, useEffect, useState } from 'react';
+import { Alert, Image, Modal, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { notificacionesApi } from '../../api/notificaciones.api';
 import { connectUsersWebSocket } from '../../api/users.websocket';
@@ -9,6 +9,8 @@ import { NotificationsModal } from '../../features/usuarios/components/Notificat
 import { UserAvatar } from '../../shared/ui';
 import { useResponsive } from '../../utils/responsive';
 
+const INSTITUTION_LOGO = require('../../../assets/favicon.png');
+
 interface AppHeaderProps {
   title: string;
   userName: string;
@@ -17,22 +19,22 @@ interface AppHeaderProps {
   onProfilePress?: () => void;
 }
 
-export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePress }: AppHeaderProps) {
+export const AppHeader = memo(function AppHeader({ title, userName, userEmail, userPhoto, onProfilePress }: AppHeaderProps) {
   const { user, logout } = useAuth();
   const { isMobile } = useResponsive();
   const [notifModalOpen, setNotifModalOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
-  const fetchUnread = async () => {
+  const fetchUnread = useCallback(async () => {
     if (!user?.id) return;
     try {
       const { noLeidas } = await notificacionesApi.count(user.id);
       setUnreadCount(noLeidas);
-    } catch (e) {
-      console.warn('Error fetching unread count:', e);
+    } catch {
+      /* ignorar error transitorio */
     }
-  };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -81,8 +83,11 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
 
   return (
     <View className={`flex-row items-center justify-between px-4 bg-[#F8F7F6] border-b border-gray-200 ${isMobile ? 'h-16' : 'py-3.5'}`}>
-      <View className="flex-row items-center gap-3">
-        <Text className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-gray-900 tracking-tight`}>{title}</Text>
+      <View className="flex-row items-center gap-2.5 flex-1 mr-2">
+        {isMobile && (
+          <Image source={INSTITUTION_LOGO} style={{ width: 28, height: 28 }} resizeMode="contain" />
+        )}
+        <Text className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-gray-900 tracking-tight`} numberOfLines={1}>{title}</Text>
       </View>
 
       <View className="flex-row items-center gap-3">
@@ -199,4 +204,4 @@ export function AppHeader({ title, userName, userEmail, userPhoto, onProfilePres
       </Modal>
     </View>
   );
-}
+});

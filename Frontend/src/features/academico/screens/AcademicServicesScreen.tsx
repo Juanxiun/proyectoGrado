@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -641,7 +641,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
   if (!allowed) return <BentoCard className="p-6 items-center"><Ionicons name="lock-closed-outline" size={38} color="#801529" /><Text className="text-lg font-bold text-gray-800 mt-3">Acceso de consulta restringido</Text><Text className="text-center text-gray-500 mt-1">Su rol no tiene permisos para administrar esta sección.</Text></BentoCard>;
   return <ScrollView className="flex-1" contentContainerClassName="gap-4 pb-8 min-w-0">
     {area === 'academic' && <AcademicManagementPanel onNavigate={onNavigate} />}
-    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones de estudiantes' : 'Aula y seguimiento'}</Text><Text className="text-sm text-gray-500 mt-1">Gestión conectada a los microservicios, con controles de acceso y validación previa.</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.title} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.title === d.title ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.title === d.title ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
+    <BentoCard className="p-5"><Text className="text-2xl font-bold text-gray-900">{area === 'academic' ? 'Estructura académica' : area === 'enrollment' ? 'Inscripciones de estudiantes' : 'Aula y seguimiento'}</Text><View className="flex-row flex-wrap gap-2 mt-4">{available.map((d) => <TouchableOpacity key={d.title} onPress={() => setSelected(d)} className={`px-3 py-2 rounded-xl ${selected.title === d.title ? 'bg-maroon' : 'bg-gray-100'}`}><Text className={`text-xs font-bold ${selected.title === d.title ? 'text-white' : 'text-gray-600'}`}>{d.title}</Text></TouchableOpacity>)}</View></BentoCard>
 
     {esMayaCurricular ? (
       <MayaCurricularScreen
@@ -1607,7 +1607,7 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
       itemName={deletingItem ? labelFor(deletingItem, selected.resource) : undefined}
       message={`¿Está seguro de que desea eliminar este registro de ${selected.title.toLowerCase()}?`}
       warningNote={selected.resource === 'materiales'
-        ? 'Se eliminará el registro y también el archivo físico de MinIO.'
+        ? 'Se eliminará el registro y el archivo adjunto de forma permanente.'
         : selected.resource === 'periodos'
           ? 'Se eliminarán también cursos, inscripciones, datos de estudiantes, pensiones, pagos, horarios, materiales y calificaciones de esta gestión.'
           : undefined}

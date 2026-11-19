@@ -1,5 +1,5 @@
-// AuthContext -> autenticación y sesión del usuario
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { clearApiCache } from '../api/client';
 import { storage } from '../utils/storage';
 import { useAuthActions } from '../hooks/useAuth';
 import { gamificacionApi } from '../api/gamificacion.api';
@@ -28,8 +28,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const syncUser = async () => {
       try {
-        const storedUser = await storage.getUser();
-        const storedToken = await storage.getToken();
+        const [storedUser, storedToken] = await Promise.all([
+          storage.getUser(),
+          storage.getToken(),
+        ]);
         if (storedUser && storedToken) {
           setUser(JSON.parse(storedUser) as AuthUsuario);
         } else {
@@ -98,6 +100,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // auth -> permitir cierre local sin conexión
     } finally {
+      clearApiCache();
       await storage.clear();
       setUser(null);
       setPending2FA(null);
