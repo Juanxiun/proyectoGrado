@@ -3,6 +3,7 @@ import {
   handleControllerError,
   parseNumericId,
   respond,
+  routeParam,
 } from "../utils/http.ts";
 import { requireAuth, requireEstudiante } from "../security/auth.ts";
 import {
@@ -167,7 +168,7 @@ export async function getRankingController(ctx: Context): Promise<void> {
 // controller -> resumen gamificacion estudiante
 export async function getResumenEstudianteMateria(ctx: Context): Promise<void> {
   try {
-    const estudianteId = String(ctx.params.estudianteId ?? "");
+    const estudianteId = String(routeParam(ctx, "estudianteId") ?? "");
     const usuarioId = String(ctx.request.url.searchParams.get("usuarioId") ?? "");
     const cursoPeriodoId = String(ctx.request.url.searchParams.get("cursoPeriodoId") ?? "");
     const materiaId = String(ctx.request.url.searchParams.get("materiaId") ?? "");

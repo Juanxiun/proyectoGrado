@@ -3,17 +3,19 @@ import "./config/env.config.ts";
 
 import { Application, Context, Next, Router } from "@oak/oak";
 import { oakCors } from "@tajpouria/cors";
-import { WebSocketServer } from "ws";
 
-import { requireDocente, requireControlAcademico } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
 import { routes as asistenciaRoutes } from "./controllers/asistencia.controller.ts";
 import { routes as calificacionesRoutes } from "./controllers/calificaciones.controller.ts";
 import { routes as temasRoutes } from "./controllers/temas.controller.ts";
 import { routes as examenesRoutes } from "./controllers/examenes.controller.ts";
 import { routes as reportesRoutes } from "./controllers/reportes.controller.ts";
-import { initRedisListener } from "./websocket/handler.ts";
-import { getRedis, closeRedis } from "./connects/Redis/redis.ts";
+import {
+  closeWebSockets,
+  handleWebSocketUpgrade,
+  initRedisListener,
+} from "./websocket/handler.ts";
+import { closeRedis } from "./connects/Redis/redis.ts";
 import { closePool } from "./connects/Database/connect.ts";
 
 // config -> puerto servicio
@@ -92,15 +94,16 @@ app.use((ctx: Context) => {
   ctx.response.body = { error: "Ruta no encontrada" };
 });
 
-// websocket -> servidor ws integrado
-const wss = new WebSocketServer({ noServer: true });
+// servidor -> HTTP (Oak) + WebSocket nativo en el mismo puerto
+let server: Deno.HttpServer | undefined;
 
 // graceful shutdown
 const shutdown = async () => {
   console.log("[Shutdown] Cerrando conexiones...");
+  await closeWebSockets();
   await closeRedis();
   await closePool();
-  wss.close();
+  server?.shutdown();
   Deno.exit(0);
 };
 
@@ -113,6 +116,7 @@ initRedisListener().catch((err) => {
 });
 
 console.log(`ServiceControlAcademico corriendo en http://localhost:${PORT}`);
+console.log(`   WS     /ws?token=... (canales control:* -> requiere profesor|director|control)`);
 console.log(`   POST   /webhook`);
 console.log(`   GET    /asistencia`);
 console.log(`   POST   /asistencia`);
@@ -130,4 +134,14 @@ console.log(`   GET    /reportes/calificaciones`);
 console.log(`   GET    /reportes/riesgo`);
 console.log(`   GET    /health`);
 
-await app.listen({ port: PORT });
+server = Deno.serve({ port: PORT }, (request) => {
+  if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    return handleWebSocketUpgrade(request);
+  }
+  return app.handle(request).then((response) =>
+    response ?? new Response(JSON.stringify({ error: "Ruta no encontrada" }), {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    })
+  );
+});

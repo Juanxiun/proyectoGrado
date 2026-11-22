@@ -120,13 +120,13 @@ export interface CalificacionControl {
   asignacion?: {
     id: string;
     materiaNombre: string;
-    cursoPeriodoId: string;
-    cursoNombre: string;
+    cursoPeriodoId?: string;
+    cursoNombre?: string;
   } | null;
   tema?: {
     id: string;
     titulo: string;
-    unidad: number;
+    unidad?: number;
   } | null;
 }
 

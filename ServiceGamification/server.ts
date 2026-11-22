@@ -4,10 +4,14 @@ import "./config/env.config.ts";
 import { Application, Context, Next, Router } from "@oak/oak";
 import { oakCors } from "@tajpouria/cors";
 
-import { requireEstudiante } from "./security/auth.ts";
 import { handleWebhookEvent } from "./controllers/webhookHandler.ts";
 import { routes } from "./controllers/gamificacion.controller.ts";
-import { getRedis, closeRedis } from "./connects/Redis/redis.ts";
+import {
+  closeWebSockets,
+  handleWebSocketUpgrade,
+  initRedisListener,
+} from "./websocket/handler.ts";
+import { closeRedis } from "./connects/Redis/redis.ts";
 import { closePool } from "./connects/Database/connect.ts";
 
 // config -> puerto servicio
@@ -79,18 +83,29 @@ app.use((ctx: Context) => {
   ctx.response.body = { error: "Ruta no encontrada" };
 });
 
+// servidor -> HTTP (Oak) + WebSocket nativo en el mismo puerto
+let server: Deno.HttpServer | undefined;
+
 // proceso -> apagado del servidor
 const shutdown = async () => {
   console.log("[Shutdown] Cerrando conexiones...");
+  await closeWebSockets();
   await closeRedis();
   await closePool();
+  server?.shutdown();
   Deno.exit(0);
 };
 
 Deno.addSignalListener("SIGINT", shutdown);
 Deno.addSignalListener("SIGTERM", shutdown);
 
+// iniciar listener redis para eventos
+initRedisListener().catch((err) => {
+  console.error("[RedisListener] Error iniciando:", err);
+});
+
 console.log(`ServiceGamification corriendo en http://localhost:${PORT}`);
+console.log(`   WS     /ws?token=... (canales gamificacion:* -> requiere estudiante)`);
 console.log(`   POST   /webhook`);
 console.log(`   GET    /gamificacion/resumen`);
 console.log(`   POST   /gamificacion/actividad`);
@@ -101,4 +116,14 @@ console.log(`   POST   /gamificacion/tienda/canjear`);
 console.log(`   GET    /gamificacion/ranking`);
 console.log(`   GET    /health`);
 
-await app.listen({ port: PORT });
+server = Deno.serve({ port: PORT }, (request) => {
+  if (request.headers.get("upgrade")?.toLowerCase() === "websocket") {
+    return handleWebSocketUpgrade(request);
+  }
+  return app.handle(request).then((response) =>
+    response ?? new Response(JSON.stringify({ error: "Ruta no encontrada" }), {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    })
+  );
+});

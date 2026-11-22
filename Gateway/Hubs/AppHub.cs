@@ -1,76 +1,65 @@
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using RestApi.Services;
-using System.Text.Json;
 
 namespace RestApi.Hubs;
 
-public sealed class AppHub : Hub
+// gateway -> hub websocket concurrente para procesos asincronos y notificaciones
+public sealed class AppHub(
+    PendingRequestTracker tracker,
+    WebhookDispatcherService webhookDispatcher,
+    JwtTokenValidator jwtValidator,
+    IHubContext<AppHub> hubContext) : Hub
 {
-    private readonly PendingRequestTracker _tracker;
-    private readonly WebhookDispatcherService _webhookDispatcher;
-    private readonly JwtTokenValidator _jwtValidator;
+    private static readonly string[] AuthPropertyNames = ["authToken", "authorization", "token"];
 
-    public AppHub(
-        PendingRequestTracker tracker,
-        WebhookDispatcherService webhookDispatcher,
-        JwtTokenValidator jwtValidator)
-    {
-        _tracker = tracker;
-        _webhookDispatcher = webhookDispatcher;
-        _jwtValidator = jwtValidator;
-    }
-
-    public async Task ExecuteAction(string requestId, string action, object? payload)
+    public Task ExecuteAction(string requestId, string action, object? payload)
     {
         if (string.IsNullOrWhiteSpace(requestId))
         {
-            await Clients.Caller.SendAsync("ReceiveResponse", new
-            {
-                requestId,
-                status = 400,
-                error = "requestId no proporcionado"
-            });
-            return;
+            return Clients.Caller.SendAsync("ReceiveResponse", new { requestId, status = 400, error = "requestId no proporcionado" });
         }
 
-        if (!string.Equals(action, "auth.login", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(action, "login", StringComparison.OrdinalIgnoreCase)
-            && !HasAuthenticationToken(payload))
+        if (!IsLoginAction(action) && !HasAuthenticationToken(payload))
         {
-            await Clients.Caller.SendAsync("ReceiveResponse", new
-            {
-                requestId,
-                status = 401,
-                error = "Token de autenticación requerido"
-            });
-            return;
+            return Clients.Caller.SendAsync("ReceiveResponse", new { requestId, status = 401, error = "Token de autenticación requerido" });
         }
 
-        _tracker.Register(requestId, Context.ConnectionId);
+        var connectionId = Context.ConnectionId;
+        tracker.Register(requestId, connectionId);
 
-        var dispatched = await _webhookDispatcher.DispatchAsync(requestId, action, payload);
-
-        if (!dispatched)
+        // gateway -> despacho desacoplado sin bloquear el hilo del hub
+        _ = Task.Run(async () =>
         {
-            _tracker.TryGetAndRemove(requestId, out _);
-            await Clients.Caller.SendAsync("ReceiveResponse", new
+            var dispatched = await webhookDispatcher.DispatchAsync(requestId, action, payload, CancellationToken.None);
+            if (!dispatched && tracker.TryGetAndRemove(requestId, out var targetConn) && targetConn is not null)
             {
-                requestId,
-                status = 502,
-                error = "No se pudo entregar el Webhook al servicio Backend"
-            });
-        }
+                await hubContext.Clients.Client(targetConn).SendAsync("ReceiveResponse", new
+                {
+                    requestId,
+                    status = 502,
+                    error = "No se pudo entregar el Webhook al servicio Backend",
+                });
+            }
+        });
+
+        return Clients.Caller.SendAsync("ActionAccepted", new
+        {
+            requestId,
+            action,
+            acceptedAt = DateTime.UtcNow.ToString("O"),
+        });
     }
 
-    // hub -> unir grupo notificaciones usuario
+    // gateway -> suscribir cliente a grupo privado de notificaciones
     public async Task SuscribirNotificaciones(string usuarioId, string authToken)
     {
-        if (!_jwtValidator.TryValidate(authToken, out var subject))
+        if (!jwtValidator.TryValidate(authToken, out var subject))
         {
             await Clients.Caller.SendAsync("NotificacionSuscripcion", new
             {
                 ok = false,
-                error = "Token inválido o expirado"
+                error = "Token inválido o expirado",
             });
             return;
         }
@@ -80,7 +69,7 @@ public sealed class AppHub : Hub
             await Clients.Caller.SendAsync("NotificacionSuscripcion", new
             {
                 ok = false,
-                error = "El token no corresponde al usuario solicitado"
+                error = "El token no corresponde al usuario solicitado",
             });
             return;
         }
@@ -89,20 +78,28 @@ public sealed class AppHub : Hub
         await Clients.Caller.SendAsync("NotificacionSuscripcion", new
         {
             ok = true,
-            usuarioId = subject
+            usuarioId = subject,
         });
     }
+
+    public override Task OnDisconnectedAsync(Exception? exception)
+    {
+        tracker.RemoveByConnectionId(Context.ConnectionId);
+        return base.OnDisconnectedAsync(exception);
+    }
+
+    private static bool IsLoginAction(string action)
+        => string.Equals(action, "auth.login", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(action, "login", StringComparison.OrdinalIgnoreCase);
 
     private static bool HasAuthenticationToken(object? payload)
     {
         if (payload is null) return false;
+        if (payload is JsonElement element) return HasAuthToken(element);
         try
         {
             using var document = JsonDocument.Parse(JsonSerializer.Serialize(payload));
-            if (document.RootElement.ValueKind != JsonValueKind.Object) return false;
-            return new[] { "authToken", "authorization", "token" }
-                .Any(name => document.RootElement.TryGetProperty(name, out var value)
-                    && !string.IsNullOrWhiteSpace(value.GetString()));
+            return HasAuthToken(document.RootElement);
         }
         catch
         {
@@ -110,9 +107,12 @@ public sealed class AppHub : Hub
         }
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    private static bool HasAuthToken(JsonElement element)
     {
-        _tracker.RemoveByConnectionId(Context.ConnectionId);
-        return base.OnDisconnectedAsync(exception);
+        if (element.ValueKind != JsonValueKind.Object) return false;
+        return AuthPropertyNames.Any(name =>
+            element.TryGetProperty(name, out var value)
+            && value.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(value.GetString()));
     }
 }

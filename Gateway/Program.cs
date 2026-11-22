@@ -1,37 +1,60 @@
+using System.Net;
 using Microsoft.AspNetCore.Http.Features;
-using Microsoft.AspNetCore.SignalR;
 using RestApi.Hubs;
 using RestApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
+
+// gateway -> signalr concurrente para multiples procesos simultaneos
 builder.Services.AddSignalR(options =>
 {
-    options.EnableDetailedErrors = true;
+    options.EnableDetailedErrors = builder.Environment.IsDevelopment();
+    options.MaximumParallelInvocationsPerClient = 16;
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
+    options.MaximumReceiveMessageSize = 10 * 1024 * 1024;
 });
+
 builder.Services.AddSingleton<PendingRequestTracker>();
+builder.Services.AddSingleton<DataChangedChannel>();
+builder.Services.AddHostedService<DataChangedBroadcaster>();
 
 builder.Services.Configure<FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 167_772_160; // limite -> 160 megabytes
+    options.MultipartBodyLengthLimit = 167_772_160;
 });
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 167_772_160; // limite -> 160 megabytes
+    options.Limits.MaxRequestBodySize = 167_772_160;
 });
 
 builder.Services.AddOpenApi();
 
-builder.Services.AddHttpClient<UserServiceClient>();
-builder.Services.AddHttpClient<AcademicServiceClient>();
-builder.Services.AddHttpClient<EnrollmentServiceClient>();
-builder.Services.AddHttpClient<HomeworkServiceClient>();
-builder.Services.AddHttpClient<NotificationServiceClient>();
-builder.Services.AddHttpClient<DashboardServiceClient>();
-builder.Services.AddHttpClient<BillingServiceClient>();
-builder.Services.AddHttpClient<GamificationServiceClient>();
-builder.Services.AddHttpClient<ControlAcademicoServiceClient>();
-builder.Services.AddHttpClient<WebhookDispatcherService>();
+// gateway -> pool http optimizado para alta concurrencia entre servicios
+static SocketsHttpHandler CreatePooledHandler() => new()
+{
+    MaxConnectionsPerServer = 128,
+    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+    PooledConnectionIdleTimeout = TimeSpan.FromMinutes(2),
+    EnableMultipleHttp2Connections = true,
+    AutomaticDecompression = DecompressionMethods.All,
+};
+
+builder.Services.AddHttpClient<UserServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<AcademicServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<EnrollmentServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<HomeworkServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<NotificationServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<DashboardServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<BillingServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<GamificationServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<ControlAcademicoServiceClient>().ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+builder.Services.AddHttpClient<WebhookDispatcherService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+}).ConfigurePrimaryHttpMessageHandler(CreatePooledHandler);
+
 builder.Services.AddSingleton<JwtTokenValidator>();
 builder.Services.AddCors(options =>
 {
@@ -51,14 +74,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors();
-app.UseWebSockets();
+app.UseWebSockets(new WebSocketOptions
+{
+    KeepAliveInterval = TimeSpan.FromSeconds(20),
+});
 
 app.Use(async (context, next) =>
 {
-    context.Request.EnableBuffering();
     await next();
 
-    // gateway -> unico notificar clientes signalr
+    // gateway -> difusion no bloqueante de cambios a clientes signalr
     var isApiWrite = !HttpMethods.IsGet(context.Request.Method)
         && !HttpMethods.IsHead(context.Request.Method)
         && context.Request.Path.StartsWithSegments("/api")
@@ -75,13 +100,8 @@ app.Use(async (context, next) =>
         {
             resource = "horarios";
         }
-        var hub = context.RequestServices.GetRequiredService<Microsoft.AspNetCore.SignalR.IHubContext<AppHub>>();
-        await hub.Clients.All.SendAsync("DataChanged", new
-        {
-            resource,
-            method = context.Request.Method,
-            timestamp = DateTime.UtcNow.ToString("O")
-        });
+        var changes = context.RequestServices.GetRequiredService<DataChangedChannel>();
+        changes.TryPublish(new DataChangedEvent(resource, context.Request.Method, DateTimeOffset.UtcNow));
     }
 });
 
@@ -93,7 +113,7 @@ app.MapGet("/health", () => new
     status = "ok",
     service = "RestApi",
     timestamp = DateTime.UtcNow.ToString("O"),
-    version = "1.1.0"
+    version = "1.2.0",
 }).WithName("RestApiHealth");
 
 app.Run();

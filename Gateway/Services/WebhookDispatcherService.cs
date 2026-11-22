@@ -1,146 +1,105 @@
-using System.Text;
-using System.Text.Json;
+using System.Net.Http.Json;
 
 namespace RestApi.Services;
 
+/// <summary>Enruta eventos del hub hacia el microservicio correspondiente sin acoplar el gateway a cada servicio.</summary>
 public sealed class WebhookDispatcherService
 {
+    private static readonly TimeSpan DispatchTimeout = TimeSpan.FromSeconds(10);
+
     private readonly HttpClient _http;
-    private readonly string _userServiceWebhookUrl;
-    private readonly string _academicServiceWebhookUrl;
-    private readonly string _enrollmentServiceWebhookUrl;
-    private readonly string _homeworkServiceWebhookUrl;
-    private readonly string _notificationServiceWebhookUrl;
-    private readonly string _dashboardServiceWebhookUrl;
-    private readonly string _controlAcademicoServiceWebhookUrl;
-    private readonly string _userCallbackUrl;
-    private readonly string _academicCallbackUrl;
-    private readonly string _enrollmentCallbackUrl;
-    private readonly string _homeworkCallbackUrl;
-    private readonly string _notificationCallbackUrl;
-    private readonly string _dashboardCallbackUrl;
-    private readonly string _controlAcademicoCallbackUrl;
+    private readonly Dictionary<string, ServiceEndpoint> _endpoints;
+    private readonly ServiceRoute[] _routes;
+
+    private sealed record ServiceEndpoint(string WebhookUrl, string CallbackUrl);
+    private sealed record ServiceRoute(Func<string, bool> Matches, string Service);
 
     public WebhookDispatcherService(HttpClient http, IConfiguration config)
     {
         _http = http;
-        var userBase = config["Services:UserService"] ?? "http://localhost:8880";
-        var academicBase = config["Services:AcademicService"] ?? "http://localhost:8881";
-        var enrollmentBase = config["Services:EnrollmentService"] ?? "http://localhost:8882";
-        var homeworkBase = config["Services:HomeworkService"] ?? "http://localhost:8883";
-        var notificationBase = config["Services:NotificationService"] ?? "http://localhost:8884";
-        var dashboardBase = config["Services:DashboardService"] ?? "http://localhost:8885";
-        var controlAcademicoBase = config["Services:ControlAcademicoService"] ?? "http://localhost:8888";
-
-        _userServiceWebhookUrl = $"{userBase.TrimEnd('/')}/webhook";
-        _academicServiceWebhookUrl = $"{academicBase.TrimEnd('/')}/webhook";
-        _enrollmentServiceWebhookUrl = $"{enrollmentBase.TrimEnd('/')}/webhook";
-        _homeworkServiceWebhookUrl = $"{homeworkBase.TrimEnd('/')}/webhook";
-        _notificationServiceWebhookUrl = $"{notificationBase.TrimEnd('/')}/webhook";
-        _dashboardServiceWebhookUrl = $"{dashboardBase.TrimEnd('/')}/webhook";
-        _controlAcademicoServiceWebhookUrl = $"{controlAcademicoBase.TrimEnd('/')}/webhook";
-
-        var gatewayBaseUrl = config["Gateway:PublicUrl"] ?? "http://localhost:5141";
-        _userCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/user-service";
-        _academicCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/academic-service";
-        _enrollmentCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/enrollment-service";
-        _homeworkCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/homework-service";
-        _notificationCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/notification-service";
-        _dashboardCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/dashboard-service";
-        _controlAcademicoCallbackUrl = $"{gatewayBaseUrl.TrimEnd('/')}/api/webhooks/control-academico-service";
+        var gateway = (config["Gateway:PublicUrl"] ?? "http://localhost:5141").TrimEnd('/');
+        _endpoints = new Dictionary<string, ServiceEndpoint>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["User"] = BuildEndpoint(config, "UserService", 8880, gateway, "user-service"),
+            ["Academic"] = BuildEndpoint(config, "AcademicService", 8881, gateway, "academic-service"),
+            ["Enrollment"] = BuildEndpoint(config, "EnrollmentService", 8882, gateway, "enrollment-service"),
+            ["Homework"] = BuildEndpoint(config, "HomeworkService", 8883, gateway, "homework-service"),
+            ["Notification"] = BuildEndpoint(config, "NotificationService", 8884, gateway, "notification-service"),
+            ["Dashboard"] = BuildEndpoint(config, "DashboardService", 8885, gateway, "dashboard-service"),
+            ["ControlAcademico"] = BuildEndpoint(config, "ControlAcademicoService", 8888, gateway, "control-academico-service"),
+        };
+        // orden -> respeta la precedencia historica (dashboard/notificacion/homework antes que control)
+        _routes =
+        [
+            new ServiceRoute(IsDashboardEvent, "Dashboard"),
+            new ServiceRoute(IsNotificationEvent, "Notification"),
+            new ServiceRoute(IsHomeworkEvent, "Homework"),
+            new ServiceRoute(IsEnrollmentEvent, "Enrollment"),
+            new ServiceRoute(IsAcademicEvent, "Academic"),
+            new ServiceRoute(IsControlAcademicoEvent, "ControlAcademico"),
+        ];
     }
 
-    public Task<bool> DispatchAsync(string eventId, string eventType, object? payload)
+    private static ServiceEndpoint BuildEndpoint(
+        IConfiguration config,
+        string section,
+        int defaultPort,
+        string gateway,
+        string callbackPath)
     {
-        // orden -> tablero notificaciones primero
-        if (IsDashboardEvent(eventType))
-        {
-            return DispatchToDashboardServiceAsync(eventId, eventType, payload);
-        }
-
-        if (IsNotificationEvent(eventType))
-        {
-            return DispatchToNotificationServiceAsync(eventId, eventType, payload);
-        }
-
-        if (IsHomeworkEvent(eventType))
-        {
-            return DispatchToHomeworkServiceAsync(eventId, eventType, payload);
-        }
-
-        if (IsEnrollmentEvent(eventType))
-        {
-            return DispatchToEnrollmentServiceAsync(eventId, eventType, payload);
-        }
-
-        if (IsAcademicEvent(eventType))
-        {
-            return DispatchToAcademicServiceAsync(eventId, eventType, payload);
-        }
-
-        if (IsControlAcademicoEvent(eventType))
-        {
-            return DispatchToControlAcademicoServiceAsync(eventId, eventType, payload);
-        }
-
-        return DispatchToUserServiceAsync(eventId, eventType, payload);
+        var baseUrl = (config[$"Services:{section}"] ?? $"http://localhost:{defaultPort}").TrimEnd('/');
+        return new ServiceEndpoint($"{baseUrl}/webhook", $"{gateway}/api/webhooks/{callbackPath}");
     }
 
-    public Task<bool> DispatchToUserServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_userServiceWebhookUrl, _userCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToAcademicServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_academicServiceWebhookUrl, _academicCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToEnrollmentServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_enrollmentServiceWebhookUrl, _enrollmentCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToHomeworkServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_homeworkServiceWebhookUrl, _homeworkCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToNotificationServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_notificationServiceWebhookUrl, _notificationCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToDashboardServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_dashboardServiceWebhookUrl, _dashboardCallbackUrl, eventId, eventType, payload);
-
-    public Task<bool> DispatchToControlAcademicoServiceAsync(string eventId, string eventType, object? payload)
-        => PostWebhookAsync(_controlAcademicoServiceWebhookUrl, _controlAcademicoCallbackUrl, eventId, eventType, payload);
-
-    private async Task<bool> PostWebhookAsync(
-        string webhookUrl,
-        string callbackUrl,
+    public Task<bool> DispatchAsync(
         string eventId,
         string eventType,
-        object? payload)
+        object? payload,
+        CancellationToken cancellationToken = default)
     {
-        var webhookPayload = new
+        var service = _routes.FirstOrDefault(route => route.Matches(eventType))?.Service ?? "User";
+        return PostWebhookAsync(_endpoints[service], eventId, eventType, payload, cancellationToken);
+    }
+
+    private async Task<bool> PostWebhookAsync(
+        ServiceEndpoint endpoint,
+        string eventId,
+        string eventType,
+        object? payload,
+        CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(DispatchTimeout);
+
+        var body = new
         {
             eventId,
             eventType,
-            callbackUrl,
+            callbackUrl = endpoint.CallbackUrl,
             timestamp = DateTime.UtcNow.ToString("O"),
-            payload
+            payload,
         };
-
-        var json = JsonSerializer.Serialize(webhookPayload);
-        var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         try
         {
-            var response = await _http.PostAsync(webhookUrl, content);
+            using var response = await _http.PostAsJsonAsync(endpoint.WebhookUrl, body, timeout.Token);
             return response.IsSuccessStatusCode;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine($"[WebhookDispatcher] Timeout enviando webhook a {endpoint.WebhookUrl}");
+            return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WebhookDispatcher] Error enviando webhook a {webhookUrl}: {ex.Message}");
+            Console.WriteLine($"[WebhookDispatcher] Error enviando webhook a {endpoint.WebhookUrl}: {ex.Message}");
             return false;
         }
     }
 
     public static bool IsAcademicEvent(string eventType)
     {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        var type = Normalize(eventType);
         return type.StartsWith("periodos.")
             || type.StartsWith("trimestres.")
             || type.StartsWith("aulas.")
@@ -156,7 +115,7 @@ public sealed class WebhookDispatcherService
 
     public static bool IsEnrollmentEvent(string eventType)
     {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        var type = Normalize(eventType);
         return type.StartsWith("cursosperiodo.")
             || type.StartsWith("cursos-periodo.")
             || type.StartsWith("inscripciones.")
@@ -166,7 +125,7 @@ public sealed class WebhookDispatcherService
 
     public static bool IsHomeworkEvent(string eventType)
     {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        var type = Normalize(eventType);
         return type.StartsWith("materiales.")
             || type.StartsWith("encargos.")
             || type.StartsWith("calificaciones.")
@@ -176,24 +135,24 @@ public sealed class WebhookDispatcherService
 
     public static bool IsNotificationEvent(string eventType)
     {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        var type = Normalize(eventType);
         return type.StartsWith("notificaciones.")
             || type.StartsWith("notificacion.");
     }
 
     public static bool IsDashboardEvent(string eventType)
-    {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
-        return type.StartsWith("dashboard.");
-    }
+        => Normalize(eventType).StartsWith("dashboard.");
 
     public static bool IsControlAcademicoEvent(string eventType)
     {
-        var type = (eventType ?? string.Empty).Trim().ToLowerInvariant();
+        var type = Normalize(eventType);
         return type.StartsWith("asistencia.")
             || type.StartsWith("calificaciones.")
             || type.StartsWith("temas.")
             || type.StartsWith("examenes.")
             || type.StartsWith("reportes.");
     }
+
+    private static string Normalize(string eventType)
+        => (eventType ?? string.Empty).Trim().ToLowerInvariant();
 }

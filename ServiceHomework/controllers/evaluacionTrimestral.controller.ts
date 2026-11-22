@@ -30,7 +30,7 @@ function handleError(ctx: Context, err: unknown): void {
 export async function getContextoTrimestral(ctx: Context): Promise<void> {
   try {
     const asignacionParam = ctx.request.url.searchParams.get("asignacionId");
-    const asignacionId = parseNumericId(asignacionParam, "asignacionId");
+    const asignacionId = Number(parseNumericId(asignacionParam, "asignacionId"));
     const data = await getContextoEvaluacionTrimestral(asignacionId);
     respond(ctx, 200, data);
   } catch (err) {
@@ -41,7 +41,7 @@ export async function getContextoTrimestral(ctx: Context): Promise<void> {
 export async function listarTrimestrales(ctx: Context): Promise<void> {
   try {
     const asignacionParam = ctx.request.url.searchParams.get("asignacionId");
-    const asignacionId = asignacionParam ? parseNumericId(asignacionParam, "asignacionId") : undefined;
+    const asignacionId = asignacionParam ? Number(parseNumericId(asignacionParam, "asignacionId")) : undefined;
     const data = await listEvaluacionesTrimestrales(asignacionId);
     respond(ctx, 200, { data });
   } catch (err) {
@@ -51,7 +51,7 @@ export async function listarTrimestrales(ctx: Context): Promise<void> {
 
 export async function obtenerTrimestral(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     const data = await getEvaluacionTrimestralById(id);
     respond(ctx, 200, data);
   } catch (err) {
@@ -72,7 +72,7 @@ export async function generarTrimestral(ctx: Context): Promise<void> {
 
 export async function actualizarEstadoPregunta(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     const preguntaId = routeParam(ctx, "preguntaId") ?? "";
     const body = await ctx.request.body.json().catch(() => ({}));
     const estado = body.estado;
@@ -88,7 +88,7 @@ export async function actualizarEstadoPregunta(ctx: Context): Promise<void> {
 
 export async function regenerarPregunta(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     const preguntaId = routeParam(ctx, "preguntaId") ?? "";
     const body = await ctx.request.body.json().catch(() => ({}));
     const indicaciones = String(body.indicaciones ?? body.comentario ?? "");
@@ -101,7 +101,7 @@ export async function regenerarPregunta(ctx: Context): Promise<void> {
 
 export async function aprobarTrimestral(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     const data = await aprobarEvaluacionTrimestral(id);
     respond(ctx, 200, data);
   } catch (err) {
@@ -111,7 +111,7 @@ export async function aprobarTrimestral(ctx: Context): Promise<void> {
 
 export async function descargarPdfTrimestral(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     const download = ctx.request.url.searchParams.get("download") === "1";
     const { bytes, fileName } = await obtenerPdfEvaluacionTrimestral(id);
     ctx.response.status = 200;
@@ -129,7 +129,7 @@ export async function descargarPdfTrimestral(ctx: Context): Promise<void> {
 
 export async function borrarTrimestral(ctx: Context): Promise<void> {
   try {
-    const id = parseNumericId(routeParam(ctx, "id"), "id");
+    const id = Number(parseNumericId(routeParam(ctx, "id"), "id"));
     await eliminarEvaluacionTrimestral(id);
     respond(ctx, 200, { ok: true });
   } catch (err) {
