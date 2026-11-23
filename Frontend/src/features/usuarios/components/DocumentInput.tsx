@@ -313,7 +313,7 @@ export function DocumentInput({
                     }`}
                   >
                     {critical
-                      ? '⚠️ Sin archivo digital (PDF de CI es crítico)'
+                      ? 'Sin archivo digital (PDF de CI es crítico)'
                       : 'Sin archivo adjunto (Opcional)'}
                   </Text>
                 </View>

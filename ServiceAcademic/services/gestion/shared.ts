@@ -128,7 +128,7 @@ export interface PlanRow {
 }
 
 export const DEFAULT_GRADES = ["1°", "2°", "3°", "4°", "5°", "6°"];
-const DEFAULT_LEVELS: Array<{ nivel: NivelEducativo; grados: string[]; paralelos: Record<string, number> }> = [
+export const DEFAULT_LEVELS: Array<{ nivel: NivelEducativo; grados: string[]; paralelos: Record<string, number> }> = [
   { nivel: "primaria", grados: DEFAULT_GRADES, paralelos: {} },
   { nivel: "secundaria", grados: DEFAULT_GRADES, paralelos: {} },
 ];

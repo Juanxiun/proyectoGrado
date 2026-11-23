@@ -650,7 +650,7 @@ export function InteractiveScheduleBuilder({
                     }`}
                   >
                     <Text className={`text-[11px] font-bold ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                      {isSelected ? '✓ Seleccionada para colocar' : 'Asignar a Grilla'}
+                      {isSelected ? 'Seleccionada para colocar' : 'Asignar a Grilla'}
                     </Text>
                   </TouchableOpacity>
                 </View>

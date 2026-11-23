@@ -33,9 +33,11 @@ export function inicioSemana(fecha: string): string {
 
 // curso -> nivel, rango y puntos al siguiente nivel
 export function calcularProgresion(puntosCurso: number): { nivel: number; rango: "D" | "C" | "B" | "A" | "S"; puntosSiguienteNivel: number } {
-  const nivel = Math.min(gamificationConfig.progresion.nivelMaximo, Math.floor(Math.max(0, puntosCurso) / gamificationConfig.progresion.puntosPorNivel));
-  const rango = nivel < 10 ? "D" : nivel < 20 ? "C" : nivel < 45 ? "B" : nivel < 60 ? "A" : "S";
-  return { nivel, rango, puntosSiguienteNivel: nivel >= gamificationConfig.progresion.nivelMaximo ? 0 : gamificationConfig.progresion.puntosPorNivel - (Math.max(0, puntosCurso) % gamificationConfig.progresion.puntosPorNivel) };
+  const puntos = Math.max(0, puntosCurso);
+  const nivel = Math.min(gamificationConfig.progresion.nivelMaximo, Math.floor(puntos / gamificationConfig.progresion.puntosPorNivel));
+  const rangos = gamificationConfig.progresion.rangosPorPuntos;
+  const rango = puntos >= rangos.S ? "S" : puntos >= rangos.A ? "A" : puntos >= rangos.B ? "B" : puntos >= rangos.C ? "C" : "D";
+  return { nivel, rango, puntosSiguienteNivel: nivel >= gamificationConfig.progresion.nivelMaximo ? 0 : gamificationConfig.progresion.puntosPorNivel - (puntos % gamificationConfig.progresion.puntosPorNivel) };
 }
 
 // actividad -> aciertos, tiempo y puntos por calidad

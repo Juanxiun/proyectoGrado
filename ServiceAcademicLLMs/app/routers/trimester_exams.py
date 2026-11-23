@@ -1,13 +1,11 @@
 import asyncio
 import logging
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Request
 from app.routers.security import require_internal_secret
 from app.services.trimester_exam import (
-    TrimesterExamCompilePdfRequest,
     TrimesterExamGenerateRequest,
     TrimesterExamRagTopicsRequest,
     TrimesterExamRegenerateRequest,
-    compile_trimester_exam_pdf,
     generate_trimester_exam,
     inspect_rag_topics,
     regenerate_trimester_question,
@@ -157,24 +155,3 @@ async def trimester_exam_rag_by_id(
     if not item:
         raise HTTPException(status_code=404, detail="Evaluación trimestral no encontrada en RAG.")
     return item
-
-
-# LLM -> compilacion rapida de examen a PDF
-@router.post("/compile-pdf")
-async def trimester_exam_compile_pdf(
-    payload: TrimesterExamCompilePdfRequest,
-    x_webhook_secret: str | None = Header(default=None),
-):
-    require_internal_secret(x_webhook_secret)
-    if not payload.preguntas:
-        raise HTTPException(status_code=400, detail="No hay preguntas para compilar el PDF.")
-    try:
-        pdf_bytes = compile_trimester_exam_pdf(payload)
-        return Response(
-            content=pdf_bytes,
-            media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="evaluacion_trimestral.pdf"'},
-        )
-    except Exception as exc:
-        logger.exception("Error compilando PDF de evaluación trimestral")
-        raise HTTPException(status_code=500, detail="No se pudo compilar el documento PDF.") from exc

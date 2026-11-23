@@ -27,6 +27,7 @@ export const gamificationConfig = {
   progresion: {
     puntosPorNivel: 100,
     nivelMaximo: 67,
+    rangosPorPuntos: { D: 0, C: 400, B: 1000, A: 2000, S: 4500 },
     multiplicadoresMaximosSemanales: 2,
     costoMultiplicador: 40,
   },

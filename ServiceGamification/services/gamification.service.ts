@@ -239,14 +239,14 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
        WHERE usuario_id = $1 AND fecha = $2 AND curso_periodo_id = $3 AND paralelo = $4`,
       [usuarioId, fecha, infoEst?.cursoPeriodoId ?? "", infoEst?.paralelo ?? ""],
     ),
-    query<{ titulo: string; materia_nombre: string; porcentaje_acierto: number; aciertos: number; total: number; fecha_fin: string | null; feedback: string | null }>(
-      `SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin, feedback FROM (
-         SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin AS fecha_fin, respuestas->0->>'feedback' AS feedback, fecha_inicio AS orden
+    query<{ titulo: string; materia_nombre: string; porcentaje_acierto: number; aciertos: number; total: number; fecha_fin: string | null; feedback: string | null; tipo_registro: string }>(
+      `SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin, feedback, tipo_registro FROM (
+         SELECT titulo, materia_nombre, porcentaje_acierto, aciertos, total, fecha_fin AS fecha_fin, respuestas->0->>'feedback' AS feedback, fecha_inicio AS orden, 'actividad'::text AS tipo_registro
          FROM actividades_gamificadas
          WHERE usuario_id = $1 AND (fecha_inicio AT TIME ZONE 'America/La_Paz')::date = $2
          UNION ALL
          SELECT CASE WHEN metadata->>'evento' = 'investigacion' THEN 'Investigación diaria: ' || COALESCE(metadata->>'titulo', 'tema') WHEN metadata->>'evento' = 'tema_completado' THEN 'Tema completado: ' || COALESCE(metadata->>'tituloTema', metadata->>'titulo', 'tema') ELSE COALESCE(metadata->>'titulo', 'Resumen ' || COALESCE(metadata->>'formato', 'estudiado')) END,
-                COALESCE(metadata->>'materiaNombre', 'Estudio personal'), 1.0, 1, 1, creada_en, NULL::text, creada_en
+                COALESCE(metadata->>'materiaNombre', 'Estudio personal'), 0.0, 0, 0, creada_en, NULL::text, creada_en, metadata->>'evento'
          FROM puntos_individuales
          WHERE usuario_id = $1 AND fecha = $2 AND metadata->>'evento' IN ('resumen_completado', 'investigacion', 'tema_completado')
        ) aprendizaje ORDER BY orden DESC LIMIT 10`,
@@ -274,6 +274,7 @@ export async function getResumenEstudiante(usuarioId: string): Promise<{
     aprendizajeHoy: actividadesHoyRes.rows.map((item) => ({
       titulo: item.titulo,
       materiaNombre: item.materia_nombre,
+      tipo: item.tipo_registro,
       porcentajeAcierto: Number(item.porcentaje_acierto),
       aciertos: item.aciertos,
       total: item.total,

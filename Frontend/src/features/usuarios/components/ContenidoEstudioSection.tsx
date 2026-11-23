@@ -13,7 +13,8 @@ import { DocumentWebView } from './DocumentWebView';
 import { PdfPaginasViewer } from './PdfPaginasViewer';
 import { ResumenInteractivo } from './ResumenInteractivo';
 import { EjemploCanvas } from './EjemploCanvas';
-import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
+import { MapaMentalExpandible } from './EsquemaSkia';
+import { MarkdownContent, formatearTextoMatematico } from '../../../shared/ui/MarkdownContent';
 import { BarraProgresoTema } from '../../../shared/ui/BarraProgresoTema';
 import { API_BASE_URL } from '../../../constants/config';
 
@@ -98,7 +99,7 @@ function PiezaArrastrable({ texto, destino, alSoltar, alTocar }: { texto: string
     <Animated.View {...gesto.panHandlers} style={{ transform: posicion.getTranslateTransform(), zIndex: 10 }}>
       <TouchableOpacity activeOpacity={0.8} onPress={alTocar} className="flex-row items-center gap-2 rounded-2xl border-2 border-indigo-200 bg-white px-3.5 py-3 shadow-sm">
         <Ionicons name="reorder-two-outline" size={18} color="#6366F1" />
-        <Text className="text-sm font-bold text-gray-800">{texto}</Text>
+        <Text className="text-sm font-bold text-gray-800">{formatearTextoMatematico(texto)}</Text>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -274,6 +275,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
   const [seccionExplicada, setSeccionExplicada] = useState<string | null>(null);
   const [explicacionLoading, setExplicacionLoading] = useState<string | null>(null);
   const [modalExplicacionVisible, setModalExplicacionVisible] = useState(false);
+  const [mapaExpandido, setMapaExpandido] = useState(false);
   const inicioRetoRef = useRef(0);
   const inicioLecturaTemaRef = useRef(0);
   const sesionTemaRef = useRef('');
@@ -830,7 +832,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
 
   const renderReto = (activity: ActividadAprendizaje) => {
     const choose = (answer: string) => responderSeleccion(activity, answer);
-    if (activity.tipo === 'SELECCION_MULTIPLE') return <View className="gap-2">{activity.options?.map((option) => <TouchableOpacity key={option} onPress={() => choose(option)} className={`p-4 rounded-2xl border ${respuestaActual === option ? 'border-maroon bg-maroon/10' : 'border-gray-200 bg-white'}`}><Text className="text-sm font-semibold text-gray-800">{option}</Text></TouchableOpacity>)}</View>;
+    if (activity.tipo === 'SELECCION_MULTIPLE') return <View className="gap-2">{activity.options?.map((option) => <TouchableOpacity key={option} onPress={() => choose(option)} className={`p-4 rounded-2xl border ${respuestaActual === option ? 'border-maroon bg-maroon/10' : 'border-gray-200 bg-white'}`}><Text className="text-sm font-semibold text-gray-800">{formatearTextoMatematico(option)}</Text></TouchableOpacity>)}</View>;
 
     if (activity.tipo === 'DRAG_AND_DROP') {
       const itemsColocados = respuestaActual ? respuestaActual.split(';').filter(Boolean) : [];
@@ -947,7 +949,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     <View className="h-6 w-6 items-center justify-center rounded-full bg-[#801F3F]">
                       <Text className="text-xs font-black text-white">{index + 1}</Text>
                     </View>
-                    <Text className="text-sm font-semibold text-gray-900 flex-1">{item}</Text>
+                    <Text className="text-sm font-semibold text-gray-900 flex-1">{formatearTextoMatematico(item)}</Text>
                   </TouchableOpacity>
 
                   <View className="flex-row items-center gap-1">
@@ -1001,7 +1003,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   <TouchableOpacity
                     key={left}
                     onPress={() => seleccionarConcepto(left)}
-                    className={`p-3 rounded-xl text-center border-2 ${
+                    className={`p-3 rounded-xl border-2 flex-row items-center justify-between gap-1.5 ${
                       seleccionado
                         ? 'bg-maroon border-maroon'
                         : conectado
@@ -1009,9 +1011,10 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                         : 'bg-gray-100 border-transparent'
                     }`}
                   >
-                    <Text className={`text-xs font-semibold ${seleccionado ? 'text-white' : conectado ? 'text-indigo-900' : 'text-gray-800'}`}>
-                      {seleccionado ? '⬤ ' : ''}{left}{conectado ? ' ✓' : ''}
+                    <Text className={`flex-1 text-xs font-semibold ${seleccionado ? 'text-white' : conectado ? 'text-indigo-900' : 'text-gray-800'}`}>
+                      {formatearTextoMatematico(left)}
                     </Text>
+                    {conectado ? <Ionicons name="checkmark-circle" size={14} color={seleccionado ? '#FFFFFF' : '#4338CA'} /> : null}
                   </TouchableOpacity>
                 );
               })}
@@ -1033,7 +1036,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     }`}
                   >
                     <Text className={`text-xs font-semibold ${conectado ? 'text-indigo-900' : parejaSeleccionada ? 'text-indigo-800' : 'text-gray-700'}`}>
-                      {right}
+                      {formatearTextoMatematico(right)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -1050,8 +1053,8 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     key={left}
                     className="flex-row items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50 p-2"
                   >
-                    <Text className="text-xs font-semibold text-indigo-900">
-                      {left} <Text className="text-indigo-500">→</Text> {right}
+                    <Text className="flex-1 text-xs font-semibold text-indigo-900">
+                      {formatearTextoMatematico(left)} <Text className="text-indigo-500">→</Text> {formatearTextoMatematico(right)}
                     </Text>
                     <TouchableOpacity
                       onPress={() => quitarConexion(left)}
@@ -1086,14 +1089,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
           </Text>
           {tieneHueco ? (
             <View className="flex-row flex-wrap items-center gap-1.5">
-              <Text className="text-base font-semibold text-gray-800">{partes[0]}</Text>
+              <Text className="text-base font-semibold text-gray-800">{formatearTextoMatematico(partes[0])}</Text>
               {respuestaActual ? (
                 <TouchableOpacity
                   activeOpacity={0.8}
                   onPress={() => choose('')}
                   className="flex-row items-center gap-1.5 rounded-xl bg-[#801F3F] px-3.5 py-1.5 shadow-sm"
                 >
-                  <Text className="text-sm font-bold text-white">{respuestaActual}</Text>
+                  <Text className="text-sm font-bold text-white">{formatearTextoMatematico(respuestaActual)}</Text>
                   <Ionicons name="close-circle" size={16} color="#FFFFFF" />
                 </TouchableOpacity>
               ) : (
@@ -1101,11 +1104,11 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   <Text className="text-xs font-bold text-indigo-600">Toca una opción</Text>
                 </View>
               )}
-              <Text className="text-base font-semibold text-gray-800">{partes.slice(1).join('_____')}</Text>
+              <Text className="text-base font-semibold text-gray-800">{formatearTextoMatematico(partes.slice(1).join('_____'))}</Text>
             </View>
           ) : (
             <View className="gap-3">
-              <Text className="text-base font-semibold text-gray-800">{pregunta}</Text>
+              <MarkdownContent texto={pregunta} baseFontSize={15} textColor="#1F2937" />
               <View className="flex-row items-center gap-2 pt-1">
                 <Text className="text-xs font-bold text-gray-600">Tu respuesta:</Text>
                 {respuestaActual ? (
@@ -1114,7 +1117,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                     onPress={() => choose('')}
                     className="flex-row items-center gap-1.5 rounded-xl bg-[#801F3F] px-3.5 py-1.5 shadow-sm"
                   >
-                    <Text className="text-sm font-bold text-white">{respuestaActual}</Text>
+                    <Text className="text-sm font-bold text-white">{formatearTextoMatematico(respuestaActual)}</Text>
                     <Ionicons name="close-circle" size={16} color="#FFFFFF" />
                   </TouchableOpacity>
                 ) : (
@@ -1156,7 +1159,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                         estaSeleccionada ? 'text-[#801F3F]' : 'text-gray-800'
                       }`}
                     >
-                      {opcion}
+                      {formatearTextoMatematico(opcion)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -1292,33 +1295,43 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   </Text>
                   <StatusBadge label={cartaRutaActual.esEsquema ? 'Conexiones' : 'Microlearning'} variant="warning" />
                 </View>
-                <Text className="text-xl font-black text-gray-900">{cartaRutaActual.titulo}</Text>
-                <Text className="text-sm leading-6 text-gray-800">{cartaRutaActual.explicacion}</Text>
+                <Text className="text-xl font-black text-gray-900">{formatearTextoMatematico(cartaRutaActual.titulo)}</Text>
                 <View className="mt-1">
                   <MarkdownContent texto={cartaRutaActual.explicacion} />
                 </View>
                 {cartaRutaActual.indagacion ? (
                   <View className="mt-2 rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <Text className="text-[10px] font-black uppercase text-violet-800">Pregunta de indagación</Text>
-                    <Text className="mt-1 text-sm font-semibold text-violet-950">{cartaRutaActual.indagacion}</Text>
                     <View className="mt-1">
-                      <MarkdownContent texto={cartaRutaActual.indagacion} />
+                      <MarkdownContent texto={cartaRutaActual.indagacion} baseFontSize={14} textColor="#2E1065" />
                     </View>
                   </View>
                 ) : null}
 
                 {cartaRutaActual.esEsquema ? (
-                  <View className="mt-3 gap-2">
+                  <View className="mt-3 gap-2.5">
+                    <TouchableOpacity
+                      onPress={() => setMapaExpandido(true)}
+                      activeOpacity={0.85}
+                      className="flex-row items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5"
+                    >
+                      <Ionicons name="expand-outline" size={16} color="#6D28D9" />
+                      <Text className="text-xs font-extrabold text-violet-900">Expandir mapa mental (acercar y mover)</Text>
+                    </TouchableOpacity>
                     {cartaRutaActual.svg ? (
-                      <View className="rounded-xl bg-white p-3 border border-amber-200">
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setMapaExpandido(true)}
+                        className="rounded-xl bg-white p-3 border border-amber-200"
+                      >
                         <MarkdownContent texto={cartaRutaActual.svg} />
-                      </View>
+                      </TouchableOpacity>
                     ) : null}
                     {parteRutaActual.carta_6_esquema?.nodes?.length ? (
                       <View className="gap-2">
                         {parteRutaActual.carta_6_esquema.nodes.map((nodo, nIdx) => (
                           <View key={`${nodo.id || nIdx}`} className="rounded-xl border border-amber-200 bg-white p-3">
-                            <Text className="text-xs font-black text-amber-900">{nodo.label}</Text>
+                            <Text className="text-xs font-black text-amber-900">{formatearTextoMatematico(nodo.label)}</Text>
                             {nodo.detail ? (
                               <View className="mt-1">
                                 <MarkdownContent texto={nodo.detail} />
@@ -1402,7 +1415,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                         >
                           <View className="flex-1">
                             <Text className="text-xs font-semibold text-violet-800 leading-tight">
-                              {preg}
+                              {formatearTextoMatematico(preg)}
                             </Text>
                           </View>
                           {indagacionCargando && preguntaIndagacionActiva === preg ? (
@@ -1426,9 +1439,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                             Respuesta del profesor virtual
                           </Text>
                         </View>
-                        <Text className="text-sm text-amber-800 leading-relaxed">
-                          {indagacionRespuesta}
-                        </Text>
+                        <MarkdownContent texto={indagacionRespuesta} baseFontSize={14} textColor="#92400E" />
                         {indagacionCargando ? (
                           <View className="mt-2 flex-row items-center gap-2">
                             <ActivityIndicator size="small" color="#D97706" />
@@ -1443,9 +1454,10 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 <TouchableOpacity
                   disabled={retoLoading}
                   onPress={() => void completarTemaRuta().then((guardado) => { if (guardado) void iniciarReto(String(parteRutaActual.numero)); })}
-                  className="rounded-xl bg-[#801F3F] p-3.5 shadow-sm"
+                  className="flex-row items-center justify-center gap-2 rounded-xl bg-[#801F3F] p-3.5 shadow-sm"
                 >
-                  <Text className="text-center text-sm font-black text-white">🎯 Empezar ejercicios finales</Text>
+                  <Ionicons name="play-circle" size={19} color="#FFFFFF" />
+                  <Text className="text-center text-sm font-black text-white">Empezar ejercicios finales</Text>
                 </TouchableOpacity>
               </BentoCard>
             ) : null}
@@ -1505,7 +1517,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             <Text className="text-sm text-gray-700">Aciertos: {resultadoReto.correctas}/{resultadoReto.total} · {resultadoReto.total ? Math.round(resultadoReto.correctas / resultadoReto.total * 100) : 0}%</Text>
             <Text className="font-bold text-[#801F3F]">Puntos obtenidos: {resultadoReto.puntosGanados}</Text>
             <Text className="text-sm text-gray-700">Tiempo total: {formatearDuracion(resultadoReto.tiempoTotalMs)}</Text>
-            {resultadoReto.speedrun ? <Text className="text-sm font-black text-amber-700">🏆 Logro Speedrun: +{resultadoReto.bonusSpeedrun} puntos{resultadoReto.bonusSpeedrun < 2 ? ' (límite diario aplicado)' : ''}</Text> : null}
+            {resultadoReto.speedrun ? (
+              <View className="flex-row items-center gap-1.5 rounded-full bg-amber-100 px-3 py-1">
+                <Ionicons name="trophy" size={15} color="#B45309" />
+                <Text className="text-xs font-black text-amber-800">
+                  Logro Speedrun: +{resultadoReto.bonusSpeedrun} puntos{resultadoReto.bonusSpeedrun < 2 ? ' (límite diario aplicado)' : ''}
+                </Text>
+              </View>
+            ) : null}
           </BentoCard>
           <BentoCard className="p-5 rounded-2xl border-2 border-maroon bg-maroon/5">
             <View className="flex-row items-center gap-2 mb-2">
@@ -1580,51 +1599,79 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
             <BentoCard className="border-2 border-rose-500 bg-rose-50 p-4">
               <View className="flex-row items-center gap-2 mb-3">
                 <Ionicons name="close-circle" size={20} color="#DC2626" />
-                <Text className="text-base font-black text-rose-900 uppercase tracking-wider">Preguntas para reparar ({falladasReto.length})</Text>
+                <Text className="text-base font-black text-rose-900 uppercase tracking-wider">Retroalimentación por pregunta incorrecta ({falladasReto.length})</Text>
               </View>
-              <View className="gap-2">
+              <View className="gap-3">
                 {falladasReto.map((answer, idx) => {
                   const actividad = reto?.activities.find((item) => item.activity_id === answer.activity_id);
                   const titulo = actividad?.question || activityPrompt(actividad || { activity_id: answer.activity_id, tipo: 'COMPLETAR' });
+                  const respuestaEstudiante = respuestas[answer.activity_id];
+                  const explicacionKey = `${titulo}-paso_a_paso`;
+                  const cargandoEsta = explicacionLoading === explicacionKey;
                   return (
-                    <View key={answer.activity_id} className="p-3 rounded-xl bg-white border border-rose-200 shadow-sm">
-                      <View className="flex-row items-center gap-2 mb-1">
-                        <View className="w-2 h-2 rounded-full bg-rose-500" />
-                        <Text className="text-xs font-black text-rose-900">{idx + 1}. {titulo}</Text>
+                    <View key={answer.activity_id} className="p-3.5 rounded-2xl bg-white border border-rose-200 shadow-sm gap-2">
+                      <View className="flex-row items-start gap-2">
+                        <View className="mt-1 h-5 w-5 items-center justify-center rounded-full bg-rose-600">
+                          <Text className="text-[10px] font-black text-white">{idx + 1}</Text>
+                        </View>
+                        <View className="flex-1">
+                          <MarkdownContent texto={titulo} baseFontSize={13} textColor="#881337" />
+                          {answer.concept ? (
+                            <Text className="mt-0.5 text-[10px] font-bold uppercase text-rose-600">
+                              Concepto: {formatearTextoMatematico(answer.concept)}
+                            </Text>
+                          ) : null}
+                        </View>
                       </View>
-                      <View className="gap-1 mt-1">
-                        {answer.feedback?.where_failed && (
+                      <View className="gap-1.5">
+                        {respuestaEstudiante ? (
+                          <View className="rounded-lg bg-rose-50/70 p-2 border border-rose-100">
+                            <Text className="text-[10px] font-bold text-rose-800 mb-0.5">Tu respuesta:</Text>
+                            <Text className="text-xs font-semibold text-rose-900">{formatearTextoMatematico(respuestaEstudiante)}</Text>
+                          </View>
+                        ) : null}
+                        {answer.feedback?.where_failed ? (
                           <View className="rounded-lg bg-rose-50/60 p-2 border border-rose-100">
-                            <Text className="text-[10px] font-bold text-rose-800 mb-0.5">Tu error:</Text>
-                            <MarkdownContent texto={answer.feedback.where_failed} baseFontSize={11} textColor="#9F1239" />
+                            <Text className="text-[10px] font-bold text-rose-800 mb-0.5">Dónde ocurrió el error:</Text>
+                            <MarkdownContent texto={answer.feedback.where_failed} baseFontSize={12} textColor="#9F1239" />
                           </View>
-                        )}
-                        {answer.feedback?.correct_answer && (
-                          <View className="rounded-lg bg-emerald-50/60 p-2 border border-emerald-100">
+                        ) : null}
+                        {answer.feedback?.correct_answer ? (
+                          <View className="rounded-lg bg-emerald-50/70 p-2 border border-emerald-100">
                             <Text className="text-[10px] font-bold text-emerald-800 mb-0.5">Respuesta correcta:</Text>
-                            <MarkdownContent texto={answer.feedback.correct_answer} baseFontSize={11} textColor="#065F46" />
+                            <MarkdownContent texto={answer.feedback.correct_answer} baseFontSize={12} textColor="#065F46" />
                           </View>
-                        )}
-                        {answer.feedback?.explanation && (
-                          <View className="rounded-lg bg-gray-50 p-2 border border-gray-100 mt-0.5">
+                        ) : null}
+                        {answer.feedback?.explanation ? (
+                          <View className="rounded-lg bg-gray-50 p-2 border border-gray-100">
                             <Text className="text-[10px] font-bold text-gray-700 mb-0.5">Explicación:</Text>
-                            <MarkdownContent texto={answer.feedback.explanation} baseFontSize={11} textColor="#374151" />
+                            <MarkdownContent texto={answer.feedback.explanation} baseFontSize={12} textColor="#374151" />
                           </View>
-                        )}
+                        ) : null}
                       </View>
+                      <TouchableOpacity
+                        disabled={Boolean(explicacionLoading)}
+                        onPress={() => void explicarMejor({
+                          title: formatearTextoMatematico(titulo),
+                          explanation: [
+                            `Pregunta: ${titulo}`,
+                            respuestaEstudiante ? `Respuesta del estudiante: ${respuestaEstudiante}` : '',
+                            answer.feedback?.correct_answer ? `Respuesta correcta: ${answer.feedback.correct_answer}` : '',
+                            answer.feedback?.where_failed ? `Error detectado: ${answer.feedback.where_failed}` : '',
+                            answer.feedback?.explanation || 'Explica paso a paso cómo resolver correctamente esta pregunta.',
+                          ].filter(Boolean).join('\n'),
+                        }, 'paso_a_paso')}
+                        className="mt-1 self-start flex-row items-center gap-1.5 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2"
+                      >
+                        <Ionicons name="bulb-outline" size={14} color="#BE123C" />
+                        <Text className="text-xs font-bold text-rose-800">
+                          {cargandoEsta ? 'Preparando explicación…' : 'Explicar esta pregunta paso a paso'}
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   );
                 })}
               </View>
-              <TouchableOpacity
-                onPress={() => void explicarMejor({
-                  title: 'Revisión de respuestas incorrectas',
-                  explanation: falladasReto.map((answer, index) => `${index + 1}. ${answer.concept || 'Pregunta'}\n${answer.feedback?.explanation || answer.feedback?.where_failed || 'Revisa la pregunta y compara tu respuesta con la correcta.'}`).join('\n\n'),
-                }, 'paso_a_paso')}
-                className="mt-3 self-start rounded-xl border border-rose-200 bg-rose-50 px-3 py-2"
-              >
-                <Text className="text-xs font-bold text-rose-700">Explicar por qué fallé</Text>
-              </TouchableOpacity>
             </BentoCard>
           )}
 
@@ -1656,11 +1703,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
               <Text className="text-center text-xs font-bold text-white">Repetir prueba</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              disabled
-              onPress={() => setTema(null)}
-              className="flex-1 rounded-xl bg-gray-200 px-6 py-3"
+              onPress={() => {
+                setReto(null);
+                setResultadoReto(null);
+                setTemaRutaAbierto(null);
+              }}
+              className="flex-1 rounded-xl border border-gray-200 bg-white px-6 py-3"
             >
-              <Text className="text-center text-xs font-bold text-gray-400">Volver a temas</Text>
+              <Text className="text-center text-xs font-bold text-gray-700">Volver a temas</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1760,6 +1810,14 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
         </View>
       </View>
     </Modal>
+    <MapaMentalExpandible
+      visible={mapaExpandido}
+      onClose={() => setMapaExpandido(false)}
+      titulo={cartaRutaActual?.titulo || parteRutaActual?.titulo || 'Mapa mental'}
+      svgXml={cartaRutaActual?.svg}
+      nodes={(parteRutaActual?.carta_6_esquema?.nodes || []) as never}
+      edges={(parteRutaActual?.carta_6_esquema?.edges || []) as never}
+    />
   </>;
 
   // agrupar -> materiales por tema
@@ -1796,7 +1854,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                   </View>
                   <Text className="text-lg font-black text-gray-900">Unidad {unidadNum}</Text>
                 </View>
-                <View className="text-xs text-gray-400 font-mono">{temasUnidad.length} tema{temasUnidad.length !== 1 ? 's' : ''}</View>
+                <Text className="text-xs text-gray-400 font-mono">{temasUnidad.length} tema{temasUnidad.length !== 1 ? 's' : ''}</Text>
               </View>
 
               <View className="gap-2">
@@ -1850,7 +1908,7 @@ export function ContenidoEstudioSection({ asignacionId, nivel, grado, materiaId,
                 </View>
                 <Text className="text-lg font-black text-gray-900">Sin unidad asignada</Text>
               </View>
-              <View className="text-xs text-gray-400 font-mono">{materialesSinTemaMalla.length} recurso{materialesSinTemaMalla.length !== 1 ? 's' : ''}</View>
+              <Text className="text-xs text-gray-400 font-mono">{materialesSinTemaMalla.length} recurso{materialesSinTemaMalla.length !== 1 ? 's' : ''}</Text>
             </View>
             <View className="gap-2">
               {materialesSinTemaMalla.map(renderMaterialSinTema)}

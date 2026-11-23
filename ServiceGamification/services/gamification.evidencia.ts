@@ -39,9 +39,9 @@ export async function getEvidenciaAprendizaje(usuarioId: string): Promise<Record
     ),
     query<{ total_investigaciones: string; resumenes_completados: string }>(
       `SELECT COUNT(*) FILTER (WHERE metadata->>'evento' = 'investigacion') AS total_investigaciones,
-              COUNT(*) FILTER (WHERE metadata->>'evento' = 'resumen_completado') AS resumenes_completados
+              COUNT(*) FILTER (WHERE metadata->>'evento' IN ('resumen_completado', 'tema_completado')) AS resumenes_completados
        FROM puntos_individuales WHERE usuario_id = $1
-         AND metadata->>'evento' IN ('resumen_completado', 'investigacion')`,
+         AND metadata->>'evento' IN ('resumen_completado', 'tema_completado', 'investigacion')`,
       [usuarioId],
     ),
   ]);

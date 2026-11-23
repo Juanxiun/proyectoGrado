@@ -1,6 +1,7 @@
 import { query } from "../../connects/Database/transaction.ts";
 import type { EncargoLibro, LibroNotas, LineaLibro } from "../../models/academic.ts";
 import {
+  calcularIndice,
   clasificarRiesgo,
   construirResumen,
   obtenerAsignacion,
@@ -54,7 +55,6 @@ export async function obtenerLibro(filtro: FiltroLibro): Promise<LibroNotas> {
     query<RowAsistencia>(
       `SELECT a.estudiante_id, a.estado, COUNT(*) AS total
        FROM asistencia a
-       JOIN encargos e ON e.asignacion_id = a.asignacion_id
        WHERE a.asignacion_id = $1 AND a.fecha BETWEEN $2 AND $3
        GROUP BY a.estudiante_id, a.estado`,
       [asignacion.asignacion_id, desde, hasta],

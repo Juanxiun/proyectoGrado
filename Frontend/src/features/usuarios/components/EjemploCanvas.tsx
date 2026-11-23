@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 import { BentoCard } from '../../../displays/components/BentoCard';
-import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
+import { MarkdownContent, formatearTextoMatematico } from '../../../shared/ui/MarkdownContent';
 
 interface EjemploCanvasProps {
   ejemplos: unknown;
@@ -64,7 +64,11 @@ export function EjemploCanvas({ ejemplos, etiqueta = 'Ejemplo guiado' }: Ejemplo
                       <Text className="text-[11px] font-bold text-sky-800">{pasoIndex + 1}</Text>
                     </View>
                     <View className="flex-1">
-                      {pareceFormula(paso) ? <Text className="text-center text-lg font-black text-gray-900">{paso}</Text> : <MarkdownContent texto={paso} />}
+                      {pareceFormula(paso) && !paso.includes('\n') ? (
+                        <Text className="text-center text-base font-black text-gray-900">{formatearTextoMatematico(paso)}</Text>
+                      ) : (
+                        <MarkdownContent texto={paso} />
+                      )}
                     </View>
                   </View>
                 ))}

@@ -1,645 +1,477 @@
+-- Datos de demostración de Shalom. Ejecutar después de BDmain.sql en ShalomDB.
+-- Credenciales de prueba: la clave común se genera como bcrypt cost 12 mediante pgcrypto.
+-- Recomendado: ejecutar primero Esquems/Clear/ShalomDB.sql en una base de pruebas.
 BEGIN;
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Datos funcionales para pruebas: catálogo curricular completo y estudiantes
--- solo en 1ro de secundaria A/B. Las cuentas usan el generador institucional.
-
--- Roles
-INSERT INTO "roles" ("id", "rol", "descripcion", "activo") VALUES
-  (1,  'director',     'Dirección General',          true),
-  (2,  'profesor',     'Personal docente',           true),
-  (3,  'estudiante',   'Estudiante',                 true),
-  (4,  'control',      'Control / Administración',   true),
-  (9,  'apoderado',    'Apoderado / Tutor',          true),
-  (10, 'gerencia',     'Gerencia',                   true)
-ON CONFLICT ("id") DO UPDATE
-  SET "descripcion" = EXCLUDED."descripcion", "activo" = true;
-
-SELECT setval(pg_get_serial_sequence('roles', 'id'), GREATEST(10, (SELECT MAX(id) FROM "roles")), true);
-
--- Turnos (jornada Bolivia 07:00 a 12:00, receso 09:30 a 10:00)
-INSERT INTO "turnos" ("codigo", "nombre", "hora_inicio", "hora_fin", "receso_inicio", "receso_fin", "duracion_periodo_minutos", "activo")
-VALUES
-  ('manana', 'Turno Mañana', '07:00', '12:00', '09:30', '10:00', 45, true),
-  ('tarde',  'Turno Tarde',  '14:00', '18:30', '16:00', '16:30', 45, true)
-ON CONFLICT ("codigo") DO UPDATE SET
-  "nombre" = EXCLUDED."nombre",
-  "hora_inicio" = EXCLUDED."hora_inicio",
-  "hora_fin" = EXCLUDED."hora_fin",
-  "receso_inicio" = EXCLUDED."receso_inicio",
-  "receso_fin" = EXCLUDED."receso_fin",
-  "duracion_periodo_minutos" = EXCLUDED."duracion_periodo_minutos",
-  "activo" = true;
-
--- Aulas (24 aulas base, una por curso, mas laboratorio, taller y auditorio)
-INSERT INTO "aulas" ("codigo", "nombre", "capacidad", "activa") VALUES
-  ('A-101', 'Aula 101', 30, true), ('A-102', 'Aula 102', 30, true),
-  ('A-103', 'Aula 103', 30, true), ('A-104', 'Aula 104', 30, true),
-  ('A-105', 'Aula 105', 30, true), ('A-106', 'Aula 106', 30, true),
-  ('A-201', 'Aula 201', 30, true), ('A-202', 'Aula 202', 30, true),
-  ('A-203', 'Aula 203', 30, true), ('A-204', 'Aula 204', 30, true),
-  ('A-205', 'Aula 205', 30, true), ('A-206', 'Aula 206', 30, true),
-  ('B-101', 'Aula B-101', 28, true), ('B-102', 'Aula B-102', 28, true),
-  ('B-103', 'Aula B-103', 28, true), ('B-104', 'Aula B-104', 28, true),
-  ('B-105', 'Aula B-105', 28, true), ('B-106', 'Aula B-106', 28, true),
-  ('C-101', 'Aula C-101', 28, true), ('C-102', 'Aula C-102', 28, true),
-  ('C-103', 'Aula C-103', 28, true), ('C-104', 'Aula C-104', 28, true),
-  ('C-105', 'Aula C-105', 28, true), ('C-106', 'Aula C-106', 28, true),
-  ('LAB-1', 'Laboratorio de ciencias', 25, true),
-  ('TALL-1','Taller de tecnología', 20, true),
-  ('AUD-1', 'Auditorio', 120, true)
-ON CONFLICT ("codigo") DO UPDATE SET
-  "nombre" = EXCLUDED."nombre",
-  "capacidad" = EXCLUDED."capacidad",
-  "activa" = true;
-
--- Materias (pensum Bolivia Ley 070)
-INSERT INTO "materias"
-  ("id", "codigo", "nombre", "descripcion", "tipo_materia", "carga_horaria_semanal", "peso_sintactico", "materia_pesada", "activo")
-VALUES
-  (1,  'LEN-101', 'Comunicación y Lenguaje (Castellana)',        'Lengua materna, lectura y escritura.',        'principal',       6, 5, false, true),
-  (2,  'LIG-102', 'Lengua Originaria',                           'Lengua originaria de la comunidad.',           'principal',       3, 2, false, true),
-  (3,  'LEX-103', 'Lengua Extranjera (Inglés)',                   'Inglés como segunda lengua.',                   'principal',       3, 2, false, true),
-  (4,  'CSO-104', 'Ciencias Sociales',                           'Historia, geografía y ciudadanía.',            'principal',       3, 2, false, true),
-  (5,  'EFI-105', 'Educación Física y Deportes',                 'Desarrollo corporal y deporte.',               'principal',       2, 1, false, true),
-  (6,  'MUS-106', 'Educación Musical',                            'Expresión musical y expresión corporal.',     'extracurricular', 2, 1, false, true),
-  (7,  'ART-107', 'Artes Plásticas y Visuales',                  'Dibujo, pintura y artesanía.',                  'extracurricular', 2, 1, false, true),
-  (8,  'VER-201', 'Valores, Espiritualidades y Religiones',       'Formación integral y espiritualidad.',          'principal',       2, 2, false, true),
-  (9,  'FIL-202', 'Cosmovisiones, Filosofía y Psicología',       'Reflexión filosófica y psicológica.',           'principal',       3, 2, false, true),
-  (10, 'CNT-301', 'Ciencias Naturales',                          'Introducción a las ciencias experimentales.',   'principal',       4, 4, true,  true),
-  (11, 'BIO-302', 'Biología - Geografía',                         'Vida, ecosistema y territorio.',                'principal',       5, 4, true,  true),
-  (12, 'FIS-303', 'Física',                                      'Movimiento, energía y fuerzas.',                'principal',       4, 4, true,  true),
-  (13, 'QUI-304', 'Química',                                     'Materia y sus transformaciones.',               'principal',       4, 4, true,  true),
-  (14, 'MAT-401', 'Matemática',                                  'Álgebra, geometría y estadística.',              'principal',       6, 5, true,  true),
-  (15, 'TTG-402', 'Técnica Tecnológica General',                  'Taller de oficios y tecnología aplicada.',      'principal',       3, 3, true,  true),
-  (16, 'TTE-403', 'Técnica Tecnológica Especializada / Robótica', 'Especialización técnica del último ciclo.',     'principal',       4, 3, true,  true)
-ON CONFLICT ("id") DO UPDATE SET
-  "codigo"                = EXCLUDED."codigo",
-  "nombre"                = EXCLUDED."nombre",
-  "descripcion"           = EXCLUDED."descripcion",
-  "tipo_materia"          = EXCLUDED."tipo_materia",
-  "carga_horaria_semanal" = EXCLUDED."carga_horaria_semanal",
-  "peso_sintactico"       = EXCLUDED."peso_sintactico",
-  "materia_pesada"        = EXCLUDED."materia_pesada",
-  "activo"                = true;
-
-SELECT setval(pg_get_serial_sequence('materias', 'id'), GREATEST(16, (SELECT MAX(id) FROM "materias")), true);
-
--- Cursos base (primaria y secundaria, paralelos A y B)
-INSERT INTO "cursos" ("id", "nivel", "grado", "paralelo", "capacidad_maxima", "activo") VALUES
-  (15, 'primaria',   '1°', 'A', 30, true), (16, 'primaria',   '1°', 'B', 25, true),
-  (17, 'primaria',   '2°', 'A', 30, true), (18, 'primaria',   '2°', 'B', 25, true),
-  (19, 'primaria',   '3°', 'A', 30, true), (20, 'primaria',   '3°', 'B', 25, true),
-  (21, 'primaria',   '4°', 'A', 30, true), (22, 'primaria',   '4°', 'B', 25, true),
-  (23, 'primaria',   '5°', 'A', 30, true), (24, 'primaria',   '5°', 'B', 25, true),
-  (25, 'primaria',   '6°', 'A', 30, true), (26, 'primaria',   '6°', 'B', 25, true),
-  (27, 'secundaria', '1°', 'A', 25, true), (28, 'secundaria', '1°', 'B', 25, true),
-  (29, 'secundaria', '2°', 'A', 30, true), (30, 'secundaria', '2°', 'B', 25, true),
-  (31, 'secundaria', '3°', 'A', 30, true), (32, 'secundaria', '3°', 'B', 25, true),
-  (33, 'secundaria', '4°', 'A', 30, true), (34, 'secundaria', '4°', 'B', 25, true),
-  (35, 'secundaria', '5°', 'A', 30, true), (36, 'secundaria', '5°', 'B', 25, true),
-  (37, 'secundaria', '6°', 'A', 30, true), (38, 'secundaria', '6°', 'B', 25, true)
-ON CONFLICT ("id") DO UPDATE SET
-  "capacidad_maxima" = EXCLUDED."capacidad_maxima",
-  "activo" = true;
-
-SELECT setval(pg_get_serial_sequence('cursos', 'id'), GREATEST(38, (SELECT MAX(id) FROM "cursos")), true);
-
--- Materias por grado (primaria uniforme de 11, secundaria por ciclo con EFI)
-WITH grados(nivel, grado) AS (
-  VALUES ('primaria','1°'), ('primaria','2°'), ('primaria','3°'),
-         ('primaria','4°'), ('primaria','5°'), ('primaria','6°'),
-         ('secundaria','1°'), ('secundaria','2°'), ('secundaria','3°'),
-         ('secundaria','4°'), ('secundaria','5°'), ('secundaria','6°')
-),
-plan(nivel, grado, codigo, orden) AS (
-  SELECT 'primaria', g.grado, v.codigo, v.orden
-  FROM grados g
-  CROSS JOIN (VALUES
-    ('LEN-101',1), ('MAT-401',2), ('CNT-301',3), ('CSO-104',4),
-    ('LIG-102',5), ('LEX-103',6), ('VER-201',7), ('EFI-105',8),
-    ('MUS-106',9), ('ART-107',10), ('TTG-402',11)
-  ) AS v(codigo, orden)
-  WHERE g.nivel = 'primaria'
-
-  UNION ALL SELECT nivel, grado, codigo, orden FROM (VALUES
-  ('secundaria','1°','LEN-101',1),
-  ('secundaria','1°','CSO-104',2),
-  ('secundaria','1°','MAT-401',3),
-  ('secundaria','1°','BIO-302',4),
-  ('secundaria','1°','CNT-301',5),
-  ('secundaria','1°','FIS-303',6),
-  ('secundaria','1°','QUI-304',7),
-  ('secundaria','1°','LEX-103',8),
-  ('secundaria','1°','LIG-102',9),
-  ('secundaria','1°','VER-201',10),
-  ('secundaria','1°','ART-107',11),
-  ('secundaria','1°','EFI-105',12),
-
-  ('secundaria','2°','LEN-101',1),
-  ('secundaria','2°','MAT-401',2),
-  ('secundaria','2°','BIO-302',3),
-  ('secundaria','2°','FIS-303',4),
-  ('secundaria','2°','QUI-304',5),
-  ('secundaria','2°','CNT-301',6),
-  ('secundaria','2°','CSO-104',7),
-  ('secundaria','2°','LIG-102',8),
-  ('secundaria','2°','LEX-103',9),
-  ('secundaria','2°','FIL-202',10),
-  ('secundaria','2°','VER-201',11),
-  ('secundaria','2°','MUS-106',12),
-  ('secundaria','2°','ART-107',13),
-  ('secundaria','2°','TTG-402',14),
-  ('secundaria','2°','EFI-105',15),
-
-  ('secundaria','3°','LEN-101',1),
-  ('secundaria','3°','MAT-401',2),
-  ('secundaria','3°','BIO-302',3),
-  ('secundaria','3°','FIS-303',4),
-  ('secundaria','3°','CNT-301',5),
-  ('secundaria','3°','CSO-104',6),
-  ('secundaria','3°','LIG-102',7),
-  ('secundaria','3°','LEX-103',8),
-  ('secundaria','3°','FIL-202',9),
-  ('secundaria','3°','VER-201',10),
-  ('secundaria','3°','MUS-106',11),
-  ('secundaria','3°','ART-107',12),
-  ('secundaria','3°','TTG-402',13),
-  ('secundaria','3°','EFI-105',14),
-
-  ('secundaria','4°','LEN-101',1),
-  ('secundaria','4°','MAT-401',2),
-  ('secundaria','4°','BIO-302',3),
-  ('secundaria','4°','FIS-303',4),
-  ('secundaria','4°','QUI-304',5),
-  ('secundaria','4°','CNT-301',6),
-  ('secundaria','4°','CSO-104',7),
-  ('secundaria','4°','LIG-102',8),
-  ('secundaria','4°','LEX-103',9),
-  ('secundaria','4°','FIL-202',10),
-  ('secundaria','4°','VER-201',11),
-  ('secundaria','4°','ART-107',12),
-  ('secundaria','4°','TTG-402',13),
-  ('secundaria','4°','EFI-105',14),
-
-  ('secundaria','5°','LEN-101',1),
-  ('secundaria','5°','MAT-401',2),
-  ('secundaria','5°','BIO-302',3),
-  ('secundaria','5°','QUI-304',4),
-  ('secundaria','5°','FIS-303',5),
-  ('secundaria','5°','CNT-301',6),
-  ('secundaria','5°','CSO-104',7),
-  ('secundaria','5°','LIG-102',8),
-  ('secundaria','5°','LEX-103',9),
-  ('secundaria','5°','FIL-202',10),
-  ('secundaria','5°','VER-201',11),
-  ('secundaria','5°','MUS-106',12),
-  ('secundaria','5°','TTG-402',13),
-  ('secundaria','5°','EFI-105',14),
-
-  ('secundaria','6°','LEN-101',1),
-  ('secundaria','6°','MAT-401',2),
-  ('secundaria','6°','BIO-302',3),
-  ('secundaria','6°','FIS-303',4),
-  ('secundaria','6°','QUI-304',5),
-  ('secundaria','6°','CSO-104',6),
-  ('secundaria','6°','LIG-102',7),
-  ('secundaria','6°','LEX-103',8),
-  ('secundaria','6°','FIL-202',9),
-  ('secundaria','6°','VER-201',10),
-  ('secundaria','6°','ART-107',11),
-  ('secundaria','6°','TTG-402',12),
-  ('secundaria','6°','TTE-403',13),
-  ('secundaria','6°','EFI-105',14)
-  ) AS s(nivel, grado, codigo, orden)
-)
-INSERT INTO "grado_materias"
-  ("nivel", "grado", "materia_id", "tipo_materia", "carga_horaria_semanal", "orden")
-SELECT g.nivel, g.grado, m.id, m.tipo_materia, m.carga_horaria_semanal, p.orden
-FROM grados g
-JOIN plan p ON p.nivel = g.nivel AND (p.grado = g.grado OR p.grado IS NULL)
-JOIN "materias" m ON m.codigo = p.codigo
-ON CONFLICT ("nivel", "grado", "materia_id") DO UPDATE SET
-  "orden" = EXCLUDED."orden",
-  "carga_horaria_semanal" = EXCLUDED."carga_horaria_semanal";
-
--- Malla curricular por ciclo y materia (U1 y U2 desarrollo, U3 integracion y evaluacion)
-WITH temas(ciclo, codigo, unidad, titulo, contenidos, horas, es_eval) AS (
-  VALUES
-  ('primaria','LEN-101',1,'Lectura comprensiva y escritura','Lectura de cuentos y fábulas; escritura de sílabas, palabras y oraciones.',6,false),
-  ('primaria','LEN-101',2,'Producción de textos cortos','Narración de experiencias y descripción de la familia y la comunidad.',6,false),
-  ('primaria','LEN-101',3,'Integración y evaluación de lenguaje','Dictado, lectura oral y feria de textos del trimestre.',2,true),
-  ('primaria','LIG-102',1,'Saludos y presentación en lengua originaria','Saludos, presentación personal y normas de cortesía en lengua originaria.',4,false),
-  ('primaria','LIG-102',2,'Vocabulario de la familia y la chacra','Palabras de la familia, los animales y los cultivos de la comunidad.',4,false),
-  ('primaria','LIG-102',3,'Diálogos y evaluación oral','Diálogos breves y evaluación oral del trimestre.',2,true),
-  ('primaria','LEX-103',1,'My classroom and colors','Greetings, colors, school objects and classroom commands.',4,false),
-  ('primaria','LEX-103',2,'Family and animals','Family members, pets and farm animals with short descriptions.',4,false),
-  ('primaria','LEX-103',3,'Songs, games and unit review','Songs, vocabulary games and unit review.',2,true),
-  ('primaria','CSO-104',1,'Mi familia y mi comunidad','La familia, los vecinos y las costumbres de la comunidad.',4,false),
-  ('primaria','CSO-104',2,'El barrio, la zona y sus autoridades','Calles, servicios, autoridades locales y cuidado del barrio.',4,false),
-  ('primaria','CSO-104',3,'Símbolos patrios y evaluación','Bandera, escudo e himno nacional con evaluación del trimestre.',2,true),
-  ('primaria','CNT-301',1,'Los seres vivos y su ambiente','Plantas, animales y el entorno natural de la región.',5,false),
-  ('primaria','CNT-301',2,'El cuerpo humano y la alimentación','Partes del cuerpo, higiene y alimentos nutritivos.',5,false),
-  ('primaria','CNT-301',3,'Cuidado del agua y evaluación','Uso racional del agua y evaluación del trimestre.',2,true),
-  ('primaria','MAT-401',1,'Números naturales y operaciones','Conteo, suma, resta y resolución de problemas cotidianos.',8,false),
-  ('primaria','MAT-401',2,'Geometría, medidas y fracciones','Figuras geométricas, longitud, peso y noción de fracción.',8,false),
-  ('primaria','MAT-401',3,'Resolución de problemas y evaluación','Problemas integradores y evaluación del trimestre.',2,true),
-  ('primaria','EFI-105',1,'Esquema corporal y lateralidad','Reconocimiento corporal, equilibrio y lateralidad mediante juegos.',3,false),
-  ('primaria','EFI-105',2,'Juegos predeportivos y coordinación','Carreras, saltos, lanzamientos y juegos de equipo.',3,false),
-  ('primaria','EFI-105',3,'Mini olimpiadas y evaluación','Jornada predeportiva y evaluación de destrezas.',1,true),
-  ('primaria','MUS-106',1,'Ritmo, pulso y cantos escolares','Pulso, ritmo y cantos del repertorio escolar boliviano.',3,false),
-  ('primaria','MUS-106',2,'Instrumentos de la región','Percusión menor e instrumentos tradicionales de la comunidad.',3,false),
-  ('primaria','MUS-106',3,'Presentación musical y evaluación','Muestra de cantos y evaluación del trimestre.',1,true),
-  ('primaria','ART-107',1,'Línea, forma y color','Trazo, formas básicas y mezcla de colores primarios.',3,false),
-  ('primaria','ART-107',2,'Dibujo, pintura y artesanía local','Paisaje, retrato familiar y manualidades con material reciclado.',3,false),
-  ('primaria','ART-107',3,'Exposición de trabajos y evaluación','Galería de aula y evaluación del trimestre.',1,true),
-  ('primaria','VER-201',1,'Valores en la familia y la escuela','Respeto, solidaridad y responsabilidad en la convivencia diaria.',3,false),
-  ('primaria','VER-201',2,'Respeto a la Madre Tierra y reciprocidad','Cuidado de la naturaleza, ayni y trabajo comunitario.',3,false),
-  ('primaria','VER-201',3,'Reflexión y evaluación','Relato de buenas acciones y evaluación del trimestre.',1,true),
-  ('primaria','TTG-402',1,'Herramientas y materiales del taller','Reconocimiento y uso seguro de herramientas básicas.',3,false),
-  ('primaria','TTG-402',2,'Manualidades productivas','Elaboración de objetos útiles con material local.',3,false),
-  ('primaria','TTG-402',3,'Feria productiva y evaluación','Exposición de productos y evaluación del trimestre.',1,true),
-  ('secundaria','LEN-101',1,'Narrativa y lectura crítica','Del relato al ensayo: personajes, trama y postura crítica.',6,false),
-  ('secundaria','LEN-101',2,'Escritura argumentativa y ensayo','Tesis, pruebas, citación de fuentes y redacción del ensayo.',6,false),
-  ('secundaria','LEN-101',3,'Proyecto de escritura y evaluación','Antología de curso y examen del trimestre.',2,true),
-  ('secundaria','LIG-102',1,'Comunicación ancestral y cosmovisión','Prácticas ancestrales de comunicación y relato oral.',4,false),
-  ('secundaria','LIG-102',2,'Gramática y producción oral','Estructura de la lengua originaria y narración oral.',4,false),
-  ('secundaria','LIG-102',3,'Debate en lengua originaria y evaluación','Debate temático y evaluación del trimestre.',2,true),
-  ('secundaria','LEX-103',1,'Everyday English and present tenses','Daily routines, present simple and present continuous.',4,false),
-  ('secundaria','LEX-103',2,'Past and future: telling stories','Past simple, going to and narrative writing.',4,false),
-  ('secundaria','LEX-103',3,'Project and unit evaluation','Class magazine project and unit exam.',2,true),
-  ('secundaria','CSO-104',1,'Historia de Bolivia y pueblos originarios','Periodo precolonial, colonia y fundación de la república.',4,false),
-  ('secundaria','CSO-104',2,'Geografía, territorio y economía','Pisos ecológicos, recursos naturales y economía comunitaria.',4,false),
-  ('secundaria','CSO-104',3,'Ciudadanía y evaluación','Derechos, deberes y evaluación del trimestre.',2,true),
-  ('secundaria','VER-201',1,'Identidad, valores y espiritualidad','Identidad cultural, valores sociocomunitarios y espiritualidad.',3,false),
-  ('secundaria','VER-201',2,'Ética comunitaria y reciprocidad','Ayni, mink_a y resolución comunitaria de conflictos.',3,false),
-  ('secundaria','VER-201',3,'Reflexión escrita y evaluación','Ensayo reflexivo y evaluación del trimestre.',1,true),
-  ('secundaria','FIL-202',1,'Introducción a la cosmovisión andina','Dualidad, Pachamama y pensamiento originario.',4,false),
-  ('secundaria','FIL-202',2,'Filosofía, lógica y psicología del adolescente','Argumentación lógica y desarrollo afectivo del adolescente.',4,false),
-  ('secundaria','FIL-202',3,'Ensayo filosófico y evaluación','Ensayo breve y evaluación del trimestre.',2,true),
-  ('secundaria','CNT-301',1,'Método científico y laboratorio','Observación, hipótesis, experimentación y reporte.',4,false),
-  ('secundaria','CNT-301',2,'Materia, energía y ambiente','Estados de la materia, energía y equilibrio ambiental.',4,false),
-  ('secundaria','CNT-301',3,'Investigación y evaluación','Trabajo de investigación con sustentación.',2,true),
-  ('secundaria','BIO-302',1,'La célula, tejidos y sistemas','Nivel celular, tejidos y sistemas del cuerpo humano.',6,false),
-  ('secundaria','BIO-302',2,'Ecosistemas, genética y salud','Cadenas alimentarias, herencia y salud preventiva.',6,false),
-  ('secundaria','BIO-302',3,'Práctica de laboratorio y evaluación','Informe de laboratorio y examen del trimestre.',2,true),
-  ('secundaria','FIS-303',1,'Magnitudes, medida y notación científica','Unidades, errores de medición y notación científica.',5,false),
-  ('secundaria','FIS-303',2,'Movimiento, fuerza y energía','Velocidad, aceleración, leyes de Newton y energía.',5,false),
-  ('secundaria','FIS-303',3,'Problemas y evaluación','Solución de problemas y examen del trimestre.',2,true),
-  ('secundaria','QUI-304',1,'Átomos, enlaces y tabla periódica','Estructura atómica, enlaces y familias de elementos.',5,false),
-  ('secundaria','QUI-304',2,'Reacciones químicas y estequiometría','Balanceo, tipos de reacción y cálculos básicos.',5,false),
-  ('secundaria','QUI-304',3,'Práctica y evaluación','Práctica de laboratorio y examen del trimestre.',2,true),
-  ('secundaria','MAT-401',1,'Álgebra: ecuaciones y polinomios','Operaciones con polinomios y ecuaciones de primer y segundo grado.',8,false),
-  ('secundaria','MAT-401',2,'Geometría, trigonometría y funciones','Triángulos, razones trigonométricas y función lineal.',8,false),
-  ('secundaria','MAT-401',3,'Estadística aplicada y evaluación','Tablas, gráficos y examen del trimestre.',2,true),
-  ('secundaria','TTG-402',1,'Dibujo técnico y tecnología productiva','Proyecciones, escalas y lectura de planos básicos.',4,false),
-  ('secundaria','TTG-402',2,'Electricidad básica y emprendimiento','Circuitos simples, seguridad y plan de microemprendimiento.',4,false),
-  ('secundaria','TTG-402',3,'Proyecto tecnológico y evaluación','Prototipo funcional y evaluación del trimestre.',2,true),
-  ('secundaria','TTE-403',1,'Robótica: sensores y actuadores','Componentes electrónicos, sensores y placas programables.',5,false),
-  ('secundaria','TTE-403',2,'Programación de prototipos','Lógica de programación y control de mecanismos.',5,false),
-  ('secundaria','TTE-403',3,'Feria de robótica y evaluación','Demostración de prototipos y evaluación del trimestre.',2,true),
-  ('secundaria','EFI-105',1,'Acondicionamiento físico y atletismo','Resistencia, velocidad y pruebas atléticas básicas.',3,false),
-  ('secundaria','EFI-105',2,'Deportes de conjunto: fútbol y voleibol','Fundamentos, reglas y juego de equipo.',3,false),
-  ('secundaria','EFI-105',3,'Campeonato interno y evaluación','Torneo de curso y evaluación de destrezas.',1,true),
-  ('secundaria','MUS-106',1,'Teoría musical y lectura de partituras','Notas, figuras rítmicas y lectura básica.',3,false),
-  ('secundaria','MUS-106',2,'Folklore boliviano e instrumentos','Ritmos nacionales e instrumentos autóctonos y mestizos.',3,false),
-  ('secundaria','MUS-106',3,'Concierto y evaluación','Presentación de conjunto y evaluación del trimestre.',1,true),
-  ('secundaria','ART-107',1,'Dibujo artístico y perspectiva','Sombreado, proporción y perspectiva básica.',3,false),
-  ('secundaria','ART-107',2,'Pintura, muralismo y arte originario','Técnicas pictóricas y iconografía de los pueblos.',3,false),
-  ('secundaria','ART-107',3,'Exposición y evaluación','Mural de curso y evaluación del trimestre.',1,true)
-)
-INSERT INTO "malla_temas"
-  ("nivel", "grado", "materia_id", "unidad", "titulo", "contenidos", "horas_previstas", "es_evaluacion", "orden")
-SELECT gm."nivel", gm."grado", m.id, t.unidad, t.titulo, t.contenidos, t.horas, t.es_eval, t.unidad
-FROM temas t
-JOIN "materias" m ON m.codigo = t.codigo
-JOIN "grado_materias" gm ON gm."materia_id" = m.id AND gm."nivel" = t.ciclo
-ON CONFLICT ("nivel", "grado", "materia_id", "unidad") DO UPDATE SET
-  "titulo" = EXCLUDED."titulo",
-  "contenidos" = EXCLUDED."contenidos",
-  "horas_previstas" = EXCLUDED."horas_previstas",
-  "es_evaluacion" = EXCLUDED."es_evaluacion";
-
--- Gestión académica 2026
-DROP TABLE IF EXISTS tmp_periodo;
-CREATE TEMP TABLE tmp_periodo (
-  id bigint PRIMARY KEY
-) ON COMMIT PRESERVE ROWS;
-
-INSERT INTO tmp_periodo (id)
-SELECT "id" FROM "periodos_academicos"
-WHERE "activo" AND "anio" = 2026
-ORDER BY "id" LIMIT 1;
-
-UPDATE "periodos_academicos" SET "activo" = false
-WHERE "activo" AND ("anio" <> 2026 OR "id" <> COALESCE((SELECT "id" FROM tmp_periodo), -1));
-
-INSERT INTO "periodos_academicos"
-  ("anio", "nombre", "fecha_inicio", "fecha_fin", "inicio_gestion", "fin_gestion",
-   "estado", "estructura_generada", "horarios_generados", "plan_pagos_generado",
-   "activado_at", "activo")
-SELECT 2026, 'Gestión 2026', '2026-02-02', '2026-12-18', '2026-02-02', '2026-12-18',
-       'activo', true, false, false, NOW(), true
-WHERE NOT EXISTS (SELECT 1 FROM tmp_periodo);
-
-INSERT INTO tmp_periodo (id)
-SELECT "id" FROM "periodos_academicos"
-WHERE "activo" AND "anio" = 2026
-  AND NOT EXISTS (SELECT 1 FROM tmp_periodo)
-ORDER BY "id" LIMIT 1;
-
--- Trimestres 2026
-INSERT INTO "trimestres" ("periodo_id", "numero", "inicio", "fin")
-SELECT (SELECT "id" FROM tmp_periodo), v.numero, v.inicio::date, v.fin::date
-FROM (VALUES
-  (1, '2026-02-02', '2026-05-15'),
-  (2, '2026-05-18', '2026-09-04'),
-  (3, '2026-09-07', '2026-12-18')
-) AS v(numero, inicio, fin)
-ON CONFLICT ("periodo_id", "numero") DO UPDATE SET
-  "inicio" = EXCLUDED."inicio", "fin" = EXCLUDED."fin";
-
--- Cursos del período (todos en turno mañana 07:00 a 12:00)
-INSERT INTO "cursos_periodo" ("curso_id", "periodo_id", "capacidad_maxima", "turno_id", "estado")
-SELECT c."id", p."id", c."capacidad_maxima", tm."id", 'activo'
-FROM "cursos" c
-CROSS JOIN tmp_periodo p
-CROSS JOIN (SELECT "id" FROM "turnos" WHERE "codigo" = 'manana') tm
-WHERE c."activo"
-ON CONFLICT ("curso_id", "periodo_id") DO UPDATE SET
-  "capacidad_maxima" = EXCLUDED."capacidad_maxima",
-  "turno_id" = EXCLUDED."turno_id", "estado" = 'activo';
-
--- Malla curricular del período
-INSERT INTO "mallas_curriculares"
-  ("periodo_id", "nivel", "grado", "materia_id", "tipo_materia", "carga_horaria_semanal", "peso_sintactico", "activo")
-SELECT p."id", gm."nivel", gm."grado", gm."materia_id", gm."tipo_materia",
-       gm."carga_horaria_semanal", m."peso_sintactico", true
-FROM "grado_materias" gm
-JOIN "materias" m ON m."id" = gm."materia_id"
-CROSS JOIN tmp_periodo p
-WHERE m."activo"
-ON CONFLICT ("periodo_id", "nivel", "grado", "materia_id") DO UPDATE SET
-  "carga_horaria_semanal" = EXCLUDED."carga_horaria_semanal",
-  "peso_sintactico"       = EXCLUDED."peso_sintactico",
-  "activo"                = true;
-
-
--- Credenciales de prueba: contrasena Shalom2026 (hash bcrypt compatible con ServiceUser).
--- Los usernames se generan con la misma regla de ServiceUser/utils/username.ts:
--- 2 letras apellido paterno + 2 apellido materno + 2 nombre + CI + checksum.
-CREATE TEMP TABLE tmp_personas (
-  rol text NOT NULL,
-  nombre text NOT NULL,
-  apellido_paterno text NOT NULL,
-  apellido_materno text NOT NULL,
-  nacimiento date NOT NULL,
-  genero text NOT NULL,
-  ci text NOT NULL,
-  especialidad text,
-  paralelo text
-);
-
-CREATE OR REPLACE FUNCTION pg_temp.limpiar_nombre_usuario(valor text)
-RETURNS text LANGUAGE sql IMMUTABLE AS $$
-  SELECT lower(regexp_replace(
-    translate(coalesce(valor, ''), 'áéíóúüñÁÉÍÓÚÜÑ', 'aeiouunAEIOUUN'),
-    '[^a-zA-Z]', '', 'g'
-  ))
-$$;
-
-CREATE OR REPLACE FUNCTION pg_temp.digito_control_usuario(total integer)
-RETURNS integer LANGUAGE plpgsql IMMUTABLE AS $$
+DO $$
+#variable_conflict use_column
 DECLARE
-  resultado integer := abs(total);
+  roles_map jsonb;
+  r_id bigint;
+  periodo bigint;
+  turno_manana bigint;
+  turno_tarde bigint;
+  id_aula bigint;
+  m_ids bigint[] := '{}';
+  m_nombres text[] := ARRAY['Matemática','Lenguaje','Ciencias Naturales','Ciencias Sociales','Inglés','Educación Física','Artes Plásticas','Música'];
+  m_codigos text[] := ARRAY['MAT','LEN','CN','CS','ING','EF','ART','MUS'];
+  m_pesada boolean[] := ARRAY[true,true,true,true,false,false,false,false];
+  m_docentes bigint[] := '{}';
+  alumno_ids bigint[] := '{}';
+  alumno_est_ids bigint[] := '{}';
+  doc_ids bigint[] := '{}';
+  i int; j int; k int; g int; p int; n int; q int; a int;
+  usuario_id bigint; est_id bigint; maestro_id bigint; docente_asignado bigint; curso_id bigint; cp_id bigint;
+  v_plan_id bigint; v_plan_primaria_id bigint; pension_id bigint; pago_id bigint; asign_id bigint; encargo_id bigint;
+  cuota_id bigint; username_demo text; ci_demo text; idx_pat int; idx_mat int; checksum int; fecha_base date := DATE '2026-02-02';
+  tema_titulo text; tema_contenido text;
+  curso_horario record; materia_horario record; bloque_horario record;
+  aula_horario bigint; hora_inicio_horario time; hora_fin_horario time; bloque_asignado boolean;
+  clave_hash text := crypt('Shalom2026#', gen_salt('bf', 12));
+  niveles text[] := ARRAY['primaria','secundaria'];
+  grados text[] := ARRAY['1°','2°','3°','4°','5°','6°'];
+  nombres text[] := ARRAY['Ana','Luis','Sofía','Mateo','Valeria','Diego','Camila','Samuel','Lucía','Gabriel','Daniela','Andrés','María','Joaquín','Elena','Nicolás','Paula','Tomás','Isabel','Martín'];
+  apellidos text[] := ARRAY['Flores','Mamani','Rojas','Gutiérrez','Pérez','Choque','Vargas','Quispe','Mendoza','Rivera','Calle','Torrez','López','Salazar','Cruz','Romero','Suárez','Arce','Díaz','Fernández'];
+  nombres_doc text[] := ARRAY['Carla','Miguel','Patricia','Roberto','Elena','Jorge','Mónica','Raúl','Verónica','Pablo','Silvia','Héctor','Natalia','Óscar','Teresa','Marco'];
+  apellidos_doc text[] := ARRAY['Alarcón','Beltrán','Cárdenas','Delgado','Espinoza','Fuentes','Guzmán','Herrera','Iriarte','Jiménez','Lara','Montes','Núñez','Ocampo','Paredes','Quiroga'];
 BEGIN
-  WHILE resultado >= 10 LOOP
-    resultado := (resultado / 10) + (resultado % 10);
-    IF resultado >= 10 THEN
-      resultado := (resultado / 10) + (resultado % 10);
-    END IF;
+  INSERT INTO roles (rol, descripcion) VALUES
+    ('director','Dirección institucional'), ('control','Área administrativa y control'),
+    ('profesor','Docente'), ('estudiante','Estudiante'), ('apoderado','Apoderado'), ('gerencia','Dirección ejecutiva')
+  ON CONFLICT (rol) DO UPDATE SET activo = true;
+
+  SELECT jsonb_object_agg(rol,id) INTO roles_map FROM roles;
+
+  -- Periodo académico vigente (gestión 2026), con tres trimestres.
+  UPDATE periodos_academicos SET activo=false WHERE activo=true;
+  INSERT INTO periodos_academicos
+    (anio,nombre,fecha_inicio,fecha_fin,inicio_gestion,fin_gestion,estado,estructura_generada,horarios_generados,plan_pagos_generado,activo)
+  VALUES (2026,'Gestión 2026',fecha_base,DATE '2026-12-18',fecha_base,DATE '2026-12-18','activo',true,true,true,true)
+  ON CONFLICT (anio,nombre) DO UPDATE SET activo=true, estado='activo'
+  RETURNING id INTO periodo;
+  UPDATE periodos_academicos SET activo=false WHERE id<>periodo;
+
+  INSERT INTO trimestres (periodo_id,numero,inicio,fin) VALUES
+    (periodo,1,fecha_base,DATE '2026-05-08'),
+    (periodo,2,DATE '2026-05-11',DATE '2026-08-28'),
+    (periodo,3,DATE '2026-08-31',DATE '2026-12-18')
+  ON CONFLICT (periodo_id,numero) DO UPDATE SET inicio=excluded.inicio,fin=excluded.fin;
+
+  INSERT INTO turnos (codigo,nombre,hora_inicio,hora_fin,receso_inicio,receso_fin,duracion_periodo_minutos)
+  VALUES ('manana','Mañana','07:00','12:30','09:30','10:00',45)
+  ON CONFLICT (codigo) DO UPDATE SET activo=true
+  RETURNING id INTO turno_manana;
+  INSERT INTO turnos (codigo,nombre,hora_inicio,hora_fin,receso_inicio,receso_fin,duracion_periodo_minutos)
+  VALUES ('tarde','Tarde','14:00','18:30','16:00','16:30',45)
+  ON CONFLICT (codigo) DO UPDATE SET activo=true
+  RETURNING id INTO turno_tarde;
+
+  -- Aulas: un aula por curso, paralelos A y B en primaria y secundaria.
+  FOR i IN 1..2 LOOP
+    FOR g IN 1..6 LOOP
+      FOR p IN 0..1 LOOP
+        INSERT INTO cursos (nivel,grado,paralelo,capacidad_maxima,activo)
+        VALUES (niveles[i],grados[g],CASE WHEN p=0 THEN 'A' ELSE 'B' END,25,true)
+        ON CONFLICT (nivel,grado,paralelo) DO UPDATE SET capacidad_maxima=25,activo=true
+        RETURNING id INTO curso_id;
+        INSERT INTO aulas (codigo,nombre,capacidad,activa)
+        VALUES (upper(substr(niveles[i],1,2))||g||CASE WHEN p=0 THEN 'A' ELSE 'B' END,
+                initcap(niveles[i])||' '||grados[g]||CASE WHEN p=0 THEN ' A' ELSE ' B' END,25,true)
+        ON CONFLICT (codigo) DO UPDATE SET activa=true,capacidad=25
+        RETURNING id INTO id_aula;
+        INSERT INTO cursos_periodo (curso_id,periodo_id,capacidad_maxima,turno_id,estado)
+        VALUES (curso_id,periodo,25,CASE WHEN niveles[i]='primaria' THEN turno_tarde ELSE turno_manana END,'activo')
+        ON CONFLICT (curso_id,periodo_id) DO UPDATE SET estado='activo',turno_id=EXCLUDED.turno_id
+        RETURNING id INTO cp_id;
+      END LOOP;
+    END LOOP;
   END LOOP;
-  RETURN resultado;
-END
-$$;
 
-CREATE OR REPLACE FUNCTION pg_temp.generar_username(
-  nombre text, apellido_paterno text, apellido_materno text, ci text
-) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
-DECLARE
-  nom text := pg_temp.limpiar_nombre_usuario(nombre);
-  pat text := pg_temp.limpiar_nombre_usuario(apellido_paterno);
-  mat text := pg_temp.limpiar_nombre_usuario(apellido_materno);
-  ap_pat text;
-  ap_mat text;
-  nom_dos text;
-  digitos text := regexp_replace(coalesce(ci, ''), '[^0-9]', '', 'g');
-  ci_inicio text := '10';
-  ci_final text := '25';
-  checksum integer := 7;
-  hash_num integer;
-BEGIN
-  IF nom = '' AND pat = '' THEN RETURN ''; END IF;
-  ap_pat := CASE WHEN length(pat) >= 2 THEN left(pat, 2)
-                 WHEN length(pat) = 1 THEN pat || coalesce(left(nom, 1), 'a')
-                 ELSE coalesce(left(nom, 2), 'sh') END;
-  ap_mat := CASE WHEN length(mat) >= 2 THEN left(mat, 2)
-                 WHEN length(pat) > 2 THEN substr(pat, 3, 2)
-                 ELSE 'sh' END;
-  nom_dos := CASE WHEN length(nom) >= 2 THEN left(nom, 2)
-                  WHEN length(nom) = 1 THEN nom || coalesce(left(pat, 1), 'a')
-                  ELSE coalesce(left(pat, 2), 'sh') END;
-  IF length(digitos) >= 4 THEN
-    ci_inicio := left(digitos, 2);
-    ci_final := right(digitos, 2);
-    checksum := pg_temp.digito_control_usuario(
-      substr(ci_inicio, 1, 1)::integer + substr(ci_inicio, 2, 1)::integer +
-      substr(ci_final, 1, 1)::integer + substr(ci_final, 2, 1)::integer
+  -- Catálogo de materias y mallas para ambos niveles y todos los grados.
+  FOR j IN 1..array_length(m_nombres,1) LOOP
+    INSERT INTO materias (codigo,nombre,descripcion,tipo_materia,carga_horaria_semanal,peso_sintactico,materia_pesada,activo)
+    VALUES (m_codigos[j],m_nombres[j],'Materia de demostración', 'principal',
+      CASE WHEN m_pesada[j] THEN 2 ELSE 3 END, CASE WHEN m_pesada[j] THEN 3 ELSE 1 END,m_pesada[j],true)
+    ON CONFLICT (codigo) DO UPDATE SET nombre=excluded.nombre,activo=true,materia_pesada=excluded.materia_pesada
+    RETURNING id INTO id_aula;
+    m_ids := array_append(m_ids,id_aula);
+    FOR i IN 1..2 LOOP
+      FOR g IN 1..6 LOOP
+        INSERT INTO grado_materias (nivel,grado,materia_id,tipo_materia,carga_horaria_semanal,orden)
+        VALUES(niveles[i],grados[g],id_aula,'principal',CASE WHEN niveles[i]='primaria' OR j<=4 THEN 2 ELSE 3 END,j)
+        ON CONFLICT (nivel,grado,materia_id) DO UPDATE SET carga_horaria_semanal=excluded.carga_horaria_semanal;
+        INSERT INTO mallas_curriculares (periodo_id,nivel,grado,materia_id,tipo_materia,carga_horaria_semanal,peso_sintactico)
+        VALUES(periodo,niveles[i],grados[g],id_aula,'principal',CASE WHEN niveles[i]='primaria' OR j<=4 THEN 2 ELSE 3 END,CASE WHEN m_pesada[j] THEN 3 ELSE 1 END)
+        ON CONFLICT (periodo_id,nivel,grado,materia_id) DO NOTHING;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+
+  -- Temas y horas previstas de la malla (una unidad por trimestre, para cada materia y grado).
+  FOR i IN 1..2 LOOP
+    FOR g IN 1..6 LOOP
+      FOR j IN 1..8 LOOP
+        FOR k IN 1..3 LOOP
+          tema_titulo := CASE j
+            WHEN 1 THEN CASE k WHEN 1 THEN 'Sistema de numeración y operaciones' WHEN 2 THEN 'Fracciones, medidas y proporcionalidad' ELSE 'Geometría y resolución de problemas' END
+            WHEN 2 THEN CASE k WHEN 1 THEN 'Comprensión lectora y vocabulario' WHEN 2 THEN 'Producción de textos y gramática' ELSE 'Literatura, exposición y argumentación' END
+            WHEN 3 THEN CASE k WHEN 1 THEN 'Seres vivos y sus ecosistemas' WHEN 2 THEN 'Materia, energía y cambios' ELSE 'Cuerpo humano, salud y ambiente' END
+            WHEN 4 THEN CASE k WHEN 1 THEN 'Historia y memoria de la comunidad' WHEN 2 THEN 'Territorio, mapas y recursos' ELSE 'Convivencia y organización social' END
+            WHEN 5 THEN CASE k WHEN 1 THEN 'Everyday vocabulary and expressions' WHEN 2 THEN 'Reading and writing short texts' ELSE 'Basic grammar and communication' END
+            WHEN 6 THEN CASE k WHEN 1 THEN 'Coordinación y habilidades motrices' WHEN 2 THEN 'Deportes, reglas y trabajo en equipo' ELSE 'Hábitos saludables y condición física' END
+            WHEN 7 THEN CASE k WHEN 1 THEN 'Línea, forma y color' WHEN 2 THEN 'Técnicas y composición visual' ELSE 'Proyecto artístico y expresión cultural' END
+            ELSE CASE k WHEN 1 THEN 'Ritmo, pulso y sonidos' WHEN 2 THEN 'Lectura musical y melodía' ELSE 'Interpretación y creación colectiva' END
+          END;
+          tema_contenido := 'Unidad '||k||' de '||m_nombres[j]||' para '||grados[g]||' de '||niveles[i]||'. Incluye conceptos, práctica guiada, actividad de aplicación y revisión de aprendizajes.';
+          INSERT INTO malla_temas(nivel,grado,materia_id,unidad,titulo,contenidos,horas_previstas,es_evaluacion,orden)
+          VALUES(niveles[i],grados[g],m_ids[j],k,tema_titulo,tema_contenido,8,k=3,k)
+          ON CONFLICT (nivel,grado,materia_id,unidad) DO UPDATE SET
+            titulo=EXCLUDED.titulo,contenidos=EXCLUDED.contenidos,
+            horas_previstas=EXCLUDED.horas_previstas,es_evaluacion=EXCLUDED.es_evaluacion,orden=EXCLUDED.orden;
+        END LOOP;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+
+  -- Equipo directivo (2), administrativo (6) y docentes: dos habilitados por materia.
+  FOR i IN 1..2 LOOP
+    INSERT INTO usuarios (rol_id,nombre,apellido_paterno,apellido_materno,nacimiento,genero)
+    VALUES ((roles_map->>'director')::bigint, nombres_doc[i],apellidos_doc[i],'Shalom',DATE '1980-01-01','femenino') RETURNING id INTO usuario_id;
+    INSERT INTO usuario_cuenta (usuario_id,username,email,password_hash) VALUES
+      (usuario_id,'director'||i||'2026','director'||i||'2026@shalom.edu.bo',clave_hash);
+  END LOOP;
+  FOR i IN 1..6 LOOP
+    INSERT INTO usuarios (rol_id,nombre,apellido_paterno,apellido_materno,nacimiento,genero)
+    VALUES ((roles_map->>'control')::bigint,nombres_doc[i+2],apellidos_doc[i+2],'Shalom',DATE '1985-01-01','masculino') RETURNING id INTO usuario_id;
+    INSERT INTO usuario_cuenta (usuario_id,username,email,password_hash) VALUES
+      (usuario_id,'admin'||i||'2026','admin'||i||'2026@shalom.edu.bo',clave_hash);
+  END LOOP;
+
+  FOR j IN 1..array_length(m_ids,1) LOOP
+    FOR k IN 1..2 LOOP
+      i := (j-1)*2+k;
+      INSERT INTO usuarios (rol_id,nombre,apellido_paterno,apellido_materno,nacimiento,genero)
+      VALUES ((roles_map->>'profesor')::bigint,nombres_doc[i],apellidos_doc[i],'Docente',DATE '1982-01-01',CASE WHEN i%2=0 THEN 'femenino' ELSE 'masculino' END)
+      RETURNING id INTO usuario_id;
+      INSERT INTO usuario_cuenta (usuario_id,username,email,password_hash) VALUES
+        (usuario_id,'docente'||lpad(i::text,2,'0')||'2026','docente'||lpad(i::text,2,'0')||'2026@shalom.edu.bo',clave_hash);
+      INSERT INTO maestros (usuario_id,especialidad,fecha_contratacion,materias_configuradas)
+      VALUES(usuario_id,m_nombres[j],DATE '2020-02-01',true) RETURNING id INTO maestro_id;
+      INSERT INTO maestro_materias (maestro_id,materia_id) VALUES(maestro_id,m_ids[j]) ON CONFLICT DO NOTHING;
+      m_docentes := array_append(m_docentes,maestro_id);
+    END LOOP;
+  END LOOP;
+
+  -- Apoderados y 400 estudiantes: 200 por nivel, repartidos en 12 grados/paralelos.
+  FOR i IN 1..400 LOOP
+    j := CASE WHEN i<=200 THEN 1 ELSE 2 END;
+    g := ((i-1)%200)/34+1;
+    IF g>6 THEN g:=6; END IF;
+    p := CASE WHEN ((i-1)%34)>=17 THEN 1 ELSE 0 END;
+    idx_pat := ((i*7-1)+(i-1)/20)%20+1;
+    idx_mat := ((i*11-1)+3*((i-1)/20))%20+1;
+    ci_demo := (5000000+i)::text;
+    checksum := substr(ci_demo,1,1)::int + substr(ci_demo,2,1)::int +
+      substr(ci_demo,length(ci_demo)-1,1)::int + substr(ci_demo,length(ci_demo),1)::int;
+    WHILE checksum >= 10 LOOP
+      checksum := (checksum/10)::int + checksum%10;
+    END LOOP;
+    username_demo := lower(
+      substr(translate(apellidos[idx_pat],'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN'),1,2) ||
+      substr(translate(apellidos[idx_mat],'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN'),1,2) ||
+      substr(translate(nombres[((i-1)%20)+1],'áéíóúüñÁÉÍÓÚÜÑ','aeiouunAEIOUUN'),1,2) ||
+      substr(ci_demo,1,2) || substr(ci_demo,length(ci_demo)-1,2) || checksum::text
     );
-  ELSIF length(digitos) > 0 THEN
-    ci_inicio := rpad(digitos, 2, '1');
-    ci_final := lpad(digitos, 2, '2');
-    checksum := pg_temp.digito_control_usuario(
-      substr(ci_inicio, 1, 1)::integer + substr(ci_final, 1, 1)::integer
-    );
-  ELSE
-    hash_num := (length(nom) * 13 + length(pat) * 7 + greatest(length(mat), 3)) % 90 + 10;
-    ci_inicio := hash_num::text;
-    ci_final := (99 - hash_num)::text;
-    checksum := pg_temp.digito_control_usuario(hash_num);
+    -- Mismo patrón generateUsername() del servicio: iniciales de apellidos/nombre + CI + checksum.
+    INSERT INTO usuarios (rol_id,nombre,apellido_paterno,apellido_materno,nacimiento,genero)
+    VALUES((roles_map->>'estudiante')::bigint,nombres[((i-1)%20)+1],apellidos[idx_pat],apellidos[idx_mat],DATE '2010-01-01'+(i%1500),CASE WHEN i%2=0 THEN 'femenino' ELSE 'masculino' END)
+    RETURNING id INTO usuario_id;
+    INSERT INTO usuario_cuenta(usuario_id,username,email,password_hash)
+    VALUES(usuario_id,username_demo,username_demo||'@shalom.edu.bo',clave_hash);
+    INSERT INTO estudiantes(usuario_id,fecha_ingreso,estado) VALUES(usuario_id,fecha_base,'activo') RETURNING id INTO est_id;
+    alumno_ids := array_append(alumno_ids,usuario_id);
+    alumno_est_ids := array_append(alumno_est_ids,est_id);
+    INSERT INTO usuario_documentos(usuario_id,tipo_doc,numero_doc)
+    VALUES(usuario_id,'CI',ci_demo);
+
+    INSERT INTO usuarios (rol_id,nombre,apellido_paterno,apellido_materno,nacimiento,genero)
+    VALUES((roles_map->>'apoderado')::bigint,nombres[((i+8)%20)+1],apellidos[((i+4)%20)+1],'Tutor',DATE '1975-01-01','otro') RETURNING id INTO r_id;
+    INSERT INTO usuario_cuenta(usuario_id,username,email,password_hash)
+    VALUES(r_id,'tut'||lpad(i::text,4,'0')||'2026','tut'||lpad(i::text,4,'0')||'2026@shalom.edu.bo',clave_hash);
+    INSERT INTO apoderados(usuario_id,ocupacion) VALUES(r_id,'Trabajador/a') RETURNING id INTO cuota_id;
+    INSERT INTO estudiante_apoderado(estudiante_id,apoderado_id,parentesco,es_principal,autorizado_recoger)
+    VALUES(est_id,cuota_id,'madre/padre',true,true);
+
+    SELECT cp.id INTO cp_id FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+    WHERE cp.periodo_id=periodo AND c.nivel=niveles[j] AND c.grado=grados[g]
+      AND c.paralelo=CASE WHEN p=0 THEN 'A' ELSE 'B' END;
+    INSERT INTO inscripciones(estudiante_id,curso_periodo_id,periodo_id,estado,origen)
+    VALUES(est_id,cp_id,periodo,'activo','nueva');
+  END LOOP;
+
+  -- Dos docentes calificados por materia; se asigna un docente por grupo para no duplicar sesiones.
+  FOR i IN 1..16 LOOP
+    j := ((i-1)/2)+1;
+    INSERT INTO asignaciones_docentes(maestro_id,materia_id,curso_periodo_id,estado)
+    SELECT m_docentes[(j-1)*2+CASE WHEN c.paralelo='A' THEN 1 ELSE 2 END],m_ids[j],cp.id,'activo'
+    FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+    WHERE cp.periodo_id=periodo AND c.nivel='secundaria'
+    ON CONFLICT (maestro_id,materia_id,curso_periodo_id) DO NOTHING;
+    INSERT INTO asignaciones_docentes(maestro_id,materia_id,curso_periodo_id,estado)
+    SELECT m_docentes[(j-1)*2+2],m_ids[j],cp.id,'activo'
+    FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+    WHERE cp.periodo_id=periodo AND c.nivel='primaria' AND c.paralelo='B'
+    ON CONFLICT (maestro_id,materia_id,curso_periodo_id) DO NOTHING;
+    INSERT INTO asignaciones_docentes(maestro_id,materia_id,curso_periodo_id,estado)
+    SELECT m_docentes[(j-1)*2+1],m_ids[j],cp.id,'activo'
+    FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+    WHERE cp.periodo_id=periodo AND c.nivel='primaria' AND c.paralelo='A'
+    ON CONFLICT (maestro_id,materia_id,curso_periodo_id) DO NOTHING;
+  END LOOP;
+
+  -- Cada curso-periodo recibe un asesor activo antes de construir sus horarios.
+  INSERT INTO curso_asesor (curso_periodo_id,maestro_id,fecha_inicio,fecha_fin)
+  SELECT cp.id,ad.maestro_id,p.inicio_gestion,p.fin_gestion
+  FROM cursos_periodo cp
+  JOIN periodos_academicos p ON p.id=cp.periodo_id
+  JOIN LATERAL (
+    SELECT asignacion.maestro_id
+    FROM asignaciones_docentes asignacion
+    JOIN materias materia ON materia.id=asignacion.materia_id
+    WHERE asignacion.curso_periodo_id=cp.id AND asignacion.estado='activo'
+    ORDER BY materia.materia_pesada DESC,materia.id
+    LIMIT 1
+  ) ad ON true
+  WHERE cp.periodo_id=periodo AND cp.estado='activo'
+  ON CONFLICT (curso_periodo_id) DO UPDATE SET
+    maestro_id=EXCLUDED.maestro_id,fecha_inicio=EXCLUDED.fecha_inicio,fecha_fin=EXCLUDED.fecha_fin;
+
+  -- Programación de primaria y secundaria, respetando la disponibilidad de curso, docente y aula.
+  -- Los horarios se colocan en los turnos configurados; solo hay bloques completos y hasta dos materias pesadas por día.
+  DELETE FROM horarios h USING cursos_periodo cp
+  WHERE h.curso_periodo_id=cp.id AND cp.periodo_id=periodo;
+  CREATE TEMP TABLE tmp_horarios_generados (
+    curso_periodo_id bigint, materia_id bigint, asignacion_id bigint, maestro_id bigint,
+    aula_id bigint, turno_id bigint, dia_semana smallint, hora_inicio time, hora_fin time
+  ) ON COMMIT DROP;
+  TRUNCATE tmp_horarios_generados;
+
+  FOR curso_horario IN
+    SELECT cp.id AS curso_periodo_id,cp.turno_id,cp.capacidad_maxima,c.nivel,c.grado,c.paralelo
+    FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+    WHERE cp.periodo_id=periodo AND cp.estado='activo'
+    ORDER BY c.nivel,c.grado,c.paralelo
+  LOOP
+    SELECT a.id INTO aula_horario FROM aulas a
+    WHERE a.codigo=upper(substr(curso_horario.nivel,1,2))||substring(curso_horario.grado from 1 for 1)||curso_horario.paralelo
+      AND a.activa=true AND a.capacidad>=curso_horario.capacidad_maxima;
+    IF aula_horario IS NULL THEN
+      RAISE EXCEPTION 'No existe aula con capacidad para % % %',curso_horario.nivel,curso_horario.grado,curso_horario.paralelo;
+    END IF;
+
+    FOR materia_horario IN
+      SELECT m.id AS materia_id,m.materia_pesada,m.peso_sintactico,mc.carga_horaria_semanal,
+        ad.id AS asignacion_id,ad.maestro_id
+      FROM mallas_curriculares mc JOIN materias m ON m.id=mc.materia_id
+      JOIN asignaciones_docentes ad ON ad.materia_id=m.id AND ad.estado='activo'
+      JOIN cursos_periodo cp ON cp.id=ad.curso_periodo_id AND cp.periodo_id=mc.periodo_id
+      JOIN cursos c ON c.id=cp.curso_id AND c.nivel=mc.nivel AND c.grado=mc.grado
+      WHERE mc.periodo_id=periodo AND mc.nivel=curso_horario.nivel
+        AND mc.grado=curso_horario.grado AND cp.id=curso_horario.curso_periodo_id
+      ORDER BY m.materia_pesada DESC,m.peso_sintactico DESC,m.id
+    LOOP
+      FOR q IN 1..materia_horario.carga_horaria_semanal LOOP
+        bloque_asignado := false;
+        FOR bloque_horario IN
+          SELECT d.dia,s.bloque,
+            (SELECT count(*) FROM tmp_horarios_generados th
+             WHERE th.curso_periodo_id=curso_horario.curso_periodo_id AND th.dia_semana=d.dia) AS carga_dia
+          FROM generate_series(1,5) AS d(dia)
+          CROSS JOIN generate_series(1,CASE WHEN curso_horario.nivel='primaria' THEN 4 ELSE 6 END) AS s(bloque)
+          ORDER BY carga_dia,d.dia,s.bloque
+        LOOP
+          IF curso_horario.nivel='primaria' THEN
+            hora_inicio_horario := CASE bloque_horario.bloque
+              WHEN 1 THEN TIME '14:00' WHEN 2 THEN TIME '14:45'
+              WHEN 3 THEN TIME '16:30' ELSE TIME '17:15' END;
+            hora_fin_horario := CASE bloque_horario.bloque
+              WHEN 1 THEN TIME '14:45' WHEN 2 THEN TIME '15:30'
+              WHEN 3 THEN TIME '17:15' ELSE TIME '18:00' END;
+          ELSE
+            hora_inicio_horario := CASE bloque_horario.bloque
+              WHEN 1 THEN TIME '07:00' WHEN 2 THEN TIME '07:45' WHEN 3 THEN TIME '08:30'
+              WHEN 4 THEN TIME '10:00' WHEN 5 THEN TIME '10:45' ELSE TIME '11:30' END;
+            hora_fin_horario := CASE bloque_horario.bloque
+              WHEN 1 THEN TIME '07:45' WHEN 2 THEN TIME '08:30' WHEN 3 THEN TIME '09:15'
+              WHEN 4 THEN TIME '10:45' WHEN 5 THEN TIME '11:30' ELSE TIME '12:15' END;
+          END IF;
+
+          IF materia_horario.materia_pesada AND
+             (SELECT count(*) FROM tmp_horarios_generados th
+              JOIN materias tm ON tm.id=th.materia_id
+              WHERE th.curso_periodo_id=curso_horario.curso_periodo_id
+                AND th.dia_semana=bloque_horario.dia AND tm.materia_pesada)>=2 THEN
+            CONTINUE;
+          END IF;
+          IF EXISTS (SELECT 1 FROM tmp_horarios_generados th
+                     WHERE th.curso_periodo_id=curso_horario.curso_periodo_id
+                       AND th.dia_semana=bloque_horario.dia AND th.hora_inicio=hora_inicio_horario) THEN
+            CONTINUE;
+          END IF;
+          IF EXISTS (SELECT 1 FROM tmp_horarios_generados th
+                     WHERE th.maestro_id=materia_horario.maestro_id
+                       AND th.dia_semana=bloque_horario.dia AND th.hora_inicio=hora_inicio_horario) THEN
+            CONTINUE;
+          END IF;
+          IF EXISTS (SELECT 1 FROM tmp_horarios_generados th
+                     WHERE th.aula_id=aula_horario AND th.dia_semana=bloque_horario.dia
+                       AND th.hora_inicio=hora_inicio_horario) THEN
+            CONTINUE;
+          END IF;
+
+          INSERT INTO tmp_horarios_generados
+            (curso_periodo_id,materia_id,asignacion_id,maestro_id,aula_id,turno_id,dia_semana,hora_inicio,hora_fin)
+          VALUES(curso_horario.curso_periodo_id,materia_horario.materia_id,materia_horario.asignacion_id,
+            materia_horario.maestro_id,aula_horario,curso_horario.turno_id,bloque_horario.dia,
+            hora_inicio_horario,hora_fin_horario);
+          bloque_asignado := true;
+          EXIT;
+        END LOOP;
+        IF NOT bloque_asignado THEN
+          RAISE EXCEPTION 'No se pudo ubicar materia % para % % % sin conflictos',
+            materia_horario.materia_id,curso_horario.nivel,curso_horario.grado,curso_horario.paralelo;
+        END IF;
+      END LOOP;
+    END LOOP;
+  END LOOP;
+
+  INSERT INTO horarios
+    (curso_periodo_id,materia_id,asignacion_id,maestro_id,aula_id,turno_id,dia_semana,hora_inicio,hora_fin)
+  SELECT curso_periodo_id,materia_id,asignacion_id,maestro_id,aula_id,turno_id,dia_semana,hora_inicio,hora_fin
+  FROM tmp_horarios_generados;
+
+  -- Falla toda la carga si quedó algún solapamiento de curso, docente o aula.
+  IF EXISTS (
+    SELECT 1 FROM horarios h1 JOIN horarios h2 ON h1.id<h2.id
+      AND h1.dia_semana=h2.dia_semana
+      AND h1.hora_inicio<h2.hora_fin AND h2.hora_inicio<h1.hora_fin
+    WHERE h1.curso_periodo_id IN (SELECT id FROM cursos_periodo WHERE periodo_id=periodo)
+      AND h2.curso_periodo_id IN (SELECT id FROM cursos_periodo WHERE periodo_id=periodo)
+      AND (h1.curso_periodo_id=h2.curso_periodo_id OR h1.maestro_id=h2.maestro_id OR h1.aula_id=h2.aula_id)
+  ) THEN
+    RAISE EXCEPTION 'La gestión de prueba contiene horarios solapados para curso, docente o aula';
   END IF;
-  RETURN ap_pat || ap_mat || nom_dos || ci_inicio || ci_final || checksum::text;
-END
-$$;
+  IF EXISTS (
+    SELECT 1 FROM horarios h JOIN materias m ON m.id=h.materia_id
+    WHERE h.curso_periodo_id IN (SELECT cp.id FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+                                 WHERE cp.periodo_id=periodo)
+      AND m.materia_pesada
+    GROUP BY h.curso_periodo_id,h.dia_semana HAVING count(*) FILTER (WHERE m.materia_pesada)>2
+  ) THEN
+    RAISE EXCEPTION 'La gestión de prueba excede dos materias pesadas en un día';
+  END IF;
 
-INSERT INTO tmp_personas
-  (rol, nombre, apellido_paterno, apellido_materno, nacimiento, genero, ci, especialidad, paralelo)
-VALUES
-  ('director', 'Ramiro', 'Vargas', 'Flores', DATE '1978-04-20', 'masculino', '71030001', NULL, NULL),
-  ('control', 'Elena', 'Ribera', 'Ortiz', DATE '1988-03-14', 'femenino', '71030002', NULL, NULL),
-  ('profesor', 'Claudia', 'Apaza', 'Lozano', DATE '1988-06-12', 'femenino', '73020001', 'LEN-101', NULL),
-  ('profesor', 'Nina', 'Callisaya', 'Huanca', DATE '1990-02-27', 'femenino', '73020002', 'LIG-102', NULL),
-  ('profesor', 'Veronica', 'Aliaga', 'Zeballos', DATE '1991-07-08', 'femenino', '73020003', 'LEX-103', NULL),
-  ('profesor', 'Marisol', 'Ccahuana', 'Bustamante', DATE '1989-12-01', 'femenino', '73020004', 'CSO-104', NULL),
-  ('profesor', 'Danilo', 'Chavez', 'Ordonez', DATE '1992-03-30', 'masculino', '73020005', 'EFI-105', NULL),
-  ('profesor', 'Renzo', 'Caceres', 'Daza', DATE '1991-04-09', 'masculino', '73020006', 'ART-107', NULL),
-  ('profesor', 'Guido', 'Tola', 'Mamani', DATE '1986-11-11', 'masculino', '73020007', 'VER-201', NULL),
-  ('profesor', 'Bruno', 'Colque', 'Mamani', DATE '1985-07-07', 'masculino', '73020008', 'CNT-301', NULL),
-  ('profesor', 'Gabriel', 'Quisbert', 'Antezana', DATE '1988-12-29', 'masculino', '73020009', 'BIO-302', NULL),
-  ('profesor', 'Erick', 'Choque', 'Zambrano', DATE '1990-10-24', 'masculino', '73020010', 'FIS-303', NULL),
-  ('profesor', 'Homero', 'Chuquimarca', 'Mamani', DATE '1987-06-11', 'masculino', '73020011', 'QUI-304', NULL),
-  ('profesor', 'Zenon', 'Apaza', 'Kallisaya', DATE '1984-01-28', 'masculino', '73020012', 'MAT-401', NULL),
-  ('estudiante', 'Ana', 'Luna', 'Flores', DATE '2012-03-12', 'femenino', '74010001', NULL, 'A'),
-  ('estudiante', 'Bruno', 'Rojas', 'Paredes', DATE '2012-05-03', 'masculino', '74010002', NULL, 'A'),
-  ('estudiante', 'Carla', 'Salas', 'Terceros', DATE '2012-08-21', 'femenino', '74010003', NULL, 'A'),
-  ('estudiante', 'Diego', 'Poma', 'Vargas', DATE '2012-01-16', 'masculino', '74010004', NULL, 'A'),
-  ('estudiante', 'Elisa', 'Quispe', 'Rocha', DATE '2012-11-09', 'femenino', '74010005', NULL, 'A'),
-  ('estudiante', 'Fabio', 'Condori', 'Nina', DATE '2012-07-30', 'masculino', '74010006', NULL, 'A'),
-  ('estudiante', 'Gabriela', 'Vega', 'Rojas', DATE '2012-02-04', 'femenino', '74010007', NULL, 'B'),
-  ('estudiante', 'Hugo', 'Calle', 'Flores', DATE '2012-09-18', 'masculino', '74010008', NULL, 'B'),
-  ('estudiante', 'Ines', 'Mamani', 'Paredes', DATE '2012-04-26', 'femenino', '74010009', NULL, 'B'),
-  ('estudiante', 'Javier', 'Apaza', 'Roca', DATE '2012-06-15', 'masculino', '74010010', NULL, 'B'),
-  ('estudiante', 'Karen', 'Choque', 'Soria', DATE '2012-10-02', 'femenino', '74010011', NULL, 'B'),
-  ('estudiante', 'Luis', 'Tola', 'Mercado', DATE '2012-12-07', 'masculino', '74010012', NULL, 'B');
+  -- Ambos niveles requieren plan generado para dejar lista la activación de la gestión.
+  INSERT INTO planes_pago(periodo_id,nivel,nombre,cantidad_cuotas,monto_total,monto_cuota,dia_vencimiento,estado)
+  VALUES(periodo,'primaria','Mensualidad primaria 2026',10,5000,500,10,'generado')
+  ON CONFLICT (periodo_id,nivel) DO UPDATE SET estado='generado' RETURNING id INTO v_plan_primaria_id;
+  FOR j IN 1..10 LOOP
+    INSERT INTO cuotas_plan_pago(plan_id,numero,anio,mes,fecha_vencimiento,monto,estado)
+    VALUES(v_plan_primaria_id,j,2026,j+1,make_date(2026,j+1,10),500,'pendiente')
+    ON CONFLICT (plan_id,numero) DO UPDATE SET monto=EXCLUDED.monto;
+  END LOOP;
 
-CREATE TEMP TABLE tmp_cuentas ON COMMIT PRESERVE ROWS AS
-SELECT pg_temp.generar_username(nombre, apellido_paterno, apellido_materno, ci) AS username,
-       p.*
-FROM tmp_personas p;
-ALTER TABLE tmp_cuentas ADD PRIMARY KEY (username);
+  -- Planes de pago y cuotas mensuales para secundaria; escenarios de pago al día, mora de 1 mes y mora mayor.
+  INSERT INTO planes_pago(periodo_id,nivel,nombre,cantidad_cuotas,monto_total,monto_cuota,dia_vencimiento,estado)
+  VALUES(periodo,'secundaria','Mensualidad secundaria 2026',10,5000,500,10,'generado')
+  ON CONFLICT (periodo_id,nivel) DO UPDATE SET estado='generado' RETURNING id INTO v_plan_id;
+  FOR i IN 1..10 LOOP
+    INSERT INTO cuotas_plan_pago(plan_id,numero,anio,mes,fecha_vencimiento,monto,estado)
+    VALUES(v_plan_id,i,2026,i+1,make_date(2026,i+1,10),500,'pendiente')
+    ON CONFLICT(plan_id,numero) DO UPDATE SET monto=500 RETURNING id INTO cuota_id;
+  END LOOP;
+  FOR i IN 201..400 LOOP
+    SELECT e.id INTO est_id FROM estudiantes e WHERE e.usuario_id=alumno_ids[i];
+    FOR j IN 1..10 LOOP
+      INSERT INTO pensiones(estudiante_id,periodo_id,plan_pago_id,numero_cuota,concepto,mes,monto,fecha_vencimiento,estado)
+      VALUES(est_id,periodo,v_plan_id,j,'Mensualidad',j,500,make_date(2026,j+1,10),'pendiente') RETURNING id INTO pension_id;
+      IF i%3=0 OR (i%3=1 AND j<=9) OR (i%3=2 AND j<=7) THEN
+        INSERT INTO pagos(estudiante_id,monto,metodo,numero_transaccion,fecha_pago,registrado_por,estado,observacion)
+        VALUES(est_id,500,'transferencia','DEMO-'||i||'-'||j,make_date(2026,j+1,9),(SELECT u.id FROM usuarios u JOIN roles r ON r.id=u.rol_id WHERE r.rol='control' ORDER BY u.id LIMIT 1),'confirmado','Pago de prueba') RETURNING id INTO pago_id;
+        INSERT INTO pago_pensiones(pago_id,pension_id,monto) VALUES(pago_id,pension_id,500);
+        UPDATE pensiones SET estado='pagado' WHERE id=pension_id;
+      END IF;
+    END LOOP;
+  END LOOP;
 
-INSERT INTO "usuarios"
-  ("rol_id", "nombre", "apellido_paterno", "apellido_materno", "nacimiento", "genero", "estado")
-SELECT r."id", c.nombre, c.apellido_paterno, c.apellido_materno, c.nacimiento, c.genero, 'activo'
-FROM tmp_cuentas c
-JOIN "roles" r ON r."rol" = c.rol
-ORDER BY c.username;
+  -- 15 actividades por curso: cinco en cada trimestre; notas solo para estudiantes inscritos en 1° A/B.
+  FOR cp_id IN SELECT cp.id FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+               WHERE cp.periodo_id=periodo AND c.nivel='secundaria' AND c.grado='1°' AND c.paralelo IN ('A','B') LOOP
+    FOR q IN 1..15 LOOP
+        j := ((q-1)%8)+1;
+        SELECT id INTO asign_id FROM asignaciones_docentes WHERE curso_periodo_id=cp_id AND materia_id=m_ids[j] ORDER BY id LIMIT 1;
+        k := ((q-1)/5)+1;
+        INSERT INTO encargos(asignacion_id,tipo,titulo,descripcion,ponderacion,fecha_publicacion,fecha_limite,estado)
+        VALUES(asign_id,CASE WHEN q%5=0 THEN 'evaluación' ELSE 'actividad' END,
+          'Actividad '||q||' - '||m_nombres[j], 'Actividad de seguimiento del trimestre '||k,
+          100.0/5,CASE k WHEN 1 THEN DATE '2026-03-01' WHEN 2 THEN DATE '2026-06-01' ELSE DATE '2026-09-01' END,
+          CASE k WHEN 1 THEN DATE '2026-04-01' WHEN 2 THEN DATE '2026-07-01' ELSE DATE '2026-11-30' END,'publicado') RETURNING id INTO encargo_id;
+        -- Calificaciones diversas: mayoría alto, grupo moderado y pocos promedios bajos.
+        FOR i IN 201..400 LOOP
+          IF alumno_est_ids[i] IN (SELECT ins.estudiante_id FROM inscripciones ins WHERE ins.curso_periodo_id=cp_id) THEN
+          SELECT e.id INTO est_id FROM estudiantes e WHERE e.usuario_id=alumno_ids[i];
+          IF i%20=0 THEN n:=55+(q%10); ELSIF i%5=0 THEN n:=68+(q%10); ELSE n:=82+(q%18); END IF;
+          INSERT INTO encargo_entregas(encargo_id,estudiante_id,archivo_url,nombre_archivo,tipo_mime,tamanio_bytes,fecha_entrega,estado_entrega)
+          VALUES(encargo_id,est_id,'demo://entregas/'||i||'/'||q,'entrega-'||q||'.pdf','application/pdf',1024,
+            CASE k WHEN 1 THEN DATE '2026-04-01' WHEN 2 THEN DATE '2026-07-01' ELSE DATE '2026-10-01' END,'a_tiempo');
+          INSERT INTO calificaciones(encargo_id,estudiante_id,nota,observacion,fecha_calificacion,fecha_actualizacion)
+          VALUES(encargo_id,est_id,n,'Calificación de demostración',
+            CASE k WHEN 1 THEN TIMESTAMPTZ '2026-03-25 12:00:00-04' WHEN 2 THEN TIMESTAMPTZ '2026-06-24 12:00:00-04' ELSE TIMESTAMPTZ '2026-10-15 12:00:00-04' END,
+            CASE k WHEN 1 THEN TIMESTAMPTZ '2026-03-25 12:00:00-04' WHEN 2 THEN TIMESTAMPTZ '2026-06-24 12:00:00-04' ELSE TIMESTAMPTZ '2026-10-15 12:00:00-04' END);
+          END IF;
+        END LOOP;
+    END LOOP;
+  END LOOP;
 
-CREATE TEMP TABLE tmp_usuario_ids ON COMMIT PRESERVE ROWS AS
-SELECT c.username, u.id AS usuario_id
-FROM tmp_cuentas c
-JOIN "roles" r ON r.rol = c.rol
-JOIN "usuarios" u ON u.rol_id = r.id
-  AND u.nombre = c.nombre
-  AND u.apellido_paterno = c.apellido_paterno
-  AND u.apellido_materno = c.apellido_materno;
+  -- Asistencia únicamente para estudiantes de 1° secundaria A y B.
+  FOR cp_id IN SELECT cp.id FROM cursos_periodo cp JOIN cursos c ON c.id=cp.curso_id
+               WHERE cp.periodo_id=periodo AND c.nivel='secundaria' AND c.grado='1°' AND c.paralelo IN ('A','B') LOOP
+    FOR i IN 201..400 LOOP
+      IF alumno_est_ids[i] IN (SELECT e.id FROM estudiantes e JOIN inscripciones ins ON ins.estudiante_id=e.id WHERE ins.curso_periodo_id=cp_id) THEN
+        FOR j IN 1..8 LOOP
+          SELECT id INTO asign_id FROM asignaciones_docentes WHERE curso_periodo_id=cp_id AND materia_id=m_ids[j] ORDER BY id LIMIT 1;
+          FOR k IN 1..3 LOOP
+            FOR q IN 1..10 LOOP
+              INSERT INTO asistencia(estudiante_id,asignacion_id,fecha,estado)
+              VALUES(alumno_est_ids[i],asign_id,
+                CASE k WHEN 1 THEN DATE '2026-03-02'+(q-1) WHEN 2 THEN DATE '2026-06-01'+(q-1) ELSE DATE '2026-10-01'+q END,
+                CASE WHEN (i+q+k)%25=0 THEN 'ausente' WHEN (i+q+k)%17=0 THEN 'atraso' ELSE 'presente' END)
+              ON CONFLICT (estudiante_id,asignacion_id,fecha) DO NOTHING;
+            END LOOP;
+          END LOOP;
+        END LOOP;
+      END IF;
+    END LOOP;
+  END LOOP;
 
-INSERT INTO "usuario_cuenta"
-  ("usuario_id", "username", "email", "password_hash", "email_verificado",
-   "primer_login", "datos_personales_actualizados", "contacto_tutor_actualizado", "password_actualizado")
-SELECT ui.usuario_id, c.username, c.username || '@shalom.edu.bo',
-       '$2a$12$C9nSW/5Mi5KlhQYiFnK59OWnacZJlA5.h.bfoNAlYKTv28yIwDtAe',
-       true, false, true, true, true
-FROM tmp_cuentas c
-JOIN tmp_usuario_ids ui USING (username);
+  IF (SELECT count(*) FROM cursos_periodo WHERE periodo_id=periodo AND estado='activo') < 24 THEN
+    RAISE EXCEPTION 'No se generaron los 24 cursos-periodo esperados';
+  END IF;
+  IF EXISTS (SELECT 1 FROM cursos_periodo cp WHERE cp.periodo_id=periodo AND cp.estado='activo'
+             AND NOT EXISTS (SELECT 1 FROM curso_asesor ca WHERE ca.curso_periodo_id=cp.id)) THEN
+    RAISE EXCEPTION 'Hay cursos-periodo sin asesor asignado';
+  END IF;
+  IF (SELECT count(DISTINCT nivel) FROM planes_pago WHERE periodo_id=periodo AND estado='generado') < 2 THEN
+    RAISE EXCEPTION 'Faltan planes de pago para primaria o secundaria';
+  END IF;
 
-INSERT INTO "usuario_documentos" ("usuario_id", "tipo_doc", "numero_doc")
-SELECT ui.usuario_id, 'CI', c.ci FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
-INSERT INTO "usuario_direcciones" ("usuario_id", "zona", "distrito", "calle", "numero", "referencia")
-SELECT ui.usuario_id, 'Villa Adela', 'Distrito 3', 'Calle de prueba', c.ci, 'Domicilio de datos de prueba'
-FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
-INSERT INTO "usuario_contactos" ("usuario_id", "tipo", "contenido", "principal")
-SELECT ui.usuario_id, 'telefono', '+5917' || right(c.ci, 8), true
-FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username);
-
-INSERT INTO "maestros" ("usuario_id", "especialidad", "fecha_contratacion", "materias_configuradas", "estado")
-SELECT ui.usuario_id, m.nombre, DATE '2020-02-01', true, 'activo'
-FROM tmp_cuentas c
-JOIN tmp_usuario_ids ui USING (username)
-JOIN "materias" m ON m.codigo = c.especialidad
-WHERE c.rol = 'profesor';
-
-CREATE TEMP TABLE tmp_maestros ON COMMIT PRESERVE ROWS AS
-SELECT c.username, ms.id AS maestro_id, m.id AS materia_id, m.codigo
-FROM tmp_cuentas c
-JOIN tmp_usuario_ids ui USING (username)
-JOIN "maestros" ms ON ms.usuario_id = ui.usuario_id
-JOIN "materias" m ON m.codigo = c.especialidad
-WHERE c.rol = 'profesor';
-
-INSERT INTO "maestro_materias" ("maestro_id", "materia_id")
-SELECT maestro_id, materia_id FROM tmp_maestros;
-
-INSERT INTO "estudiantes"
-  ("usuario_id", "fecha_ingreso", "tutor_nombre", "tutor_telefono", "tutor_parentesco", "estado")
-SELECT ui.usuario_id, DATE '2026-02-02', 'Familia de ' || c.nombre, '+59170000000', 'Madre', 'activo'
-FROM tmp_cuentas c JOIN tmp_usuario_ids ui USING (username)
-WHERE c.rol = 'estudiante';
-
-CREATE TEMP TABLE tmp_estudiantes ON COMMIT PRESERVE ROWS AS
-SELECT c.username, c.paralelo, ui.usuario_id, e.id AS estudiante_id,
-       c.nombre, c.apellido_paterno, c.apellido_materno
-FROM tmp_cuentas c
-JOIN tmp_usuario_ids ui USING (username)
-JOIN "estudiantes" e ON e.usuario_id = ui.usuario_id
-WHERE c.rol = 'estudiante';
-
-INSERT INTO "inscripciones"
-  ("estudiante_id", "curso_periodo_id", "periodo_id", "origen", "fecha_inscripcion", "estado", "observacion")
-SELECT e.estudiante_id, cp.id, cp.periodo_id, 'nueva', DATE '2026-02-02', 'activo', 'Inscripcion de prueba - 1ro de secundaria'
-FROM tmp_estudiantes e
-JOIN "cursos" c ON c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo = e.paralelo
-JOIN "cursos_periodo" cp ON cp.curso_id = c.id AND cp.periodo_id = (SELECT id FROM tmp_periodo);
-
-INSERT INTO "asignaciones_docentes" ("maestro_id", "materia_id", "curso_periodo_id", "estado", "fecha_asignacion")
-SELECT tm.maestro_id, tm.materia_id, cp.id, 'activo', DATE '2026-02-02'
-FROM tmp_maestros tm
-JOIN "grado_materias" gm ON gm.materia_id = tm.materia_id AND gm.nivel = 'secundaria' AND gm.grado = '1°'
-JOIN "cursos_periodo" cp ON cp.periodo_id = (SELECT id FROM tmp_periodo)
-JOIN "cursos" c ON c.id = cp.curso_id AND c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo IN ('A', 'B');
-
--- Una evaluacion cerrada por trimestre y materia/curso; genera notas visibles en los tres trimestres.
-INSERT INTO "encargos"
-  ("asignacion_id", "tipo", "titulo", "descripcion", "ponderacion", "fecha_publicacion", "fecha_limite", "estado")
-SELECT ad.id, 'Examen', 'Evaluacion de prueba T' || t.numero,
-       'Evaluacion de prueba para datos academicos.', 100,
-       (t.inicio + 10)::timestamptz, (t.inicio + 14)::timestamptz, 'cerrado'
-FROM "asignaciones_docentes" ad
-JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
-JOIN "trimestres" t ON t.periodo_id = cp.periodo_id;
-
-INSERT INTO "calificaciones" ("encargo_id", "estudiante_id", "nota", "fecha_calificacion")
-SELECT en.id, i.estudiante_id,
-       (60 + ((i.estudiante_id * 7 + ad.id * 3 + t.numero * 11) % 36))::numeric(5,2),
-       en.fecha_publicacion + interval '14 days'
-FROM "encargos" en
-JOIN "asignaciones_docentes" ad ON ad.id = en.asignacion_id
-JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
-JOIN "trimestres" t ON t.periodo_id = cp.periodo_id
-  AND en.titulo = 'Evaluacion de prueba T' || t.numero
-JOIN "inscripciones" i ON i.curso_periodo_id = cp.id AND i.estado = 'activo';
-
-INSERT INTO "asistencia" ("estudiante_id", "asignacion_id", "fecha", "estado", "justificacion")
-SELECT i.estudiante_id, ad.id, t.inicio + dias.dia,
-       CASE WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 11 = 0 THEN 'ausente'
-            WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 7 = 0 THEN 'atraso'
-            ELSE 'presente' END,
-       CASE WHEN (i.estudiante_id + ad.id + t.numero + dias.dia) % 11 = 0 THEN 'Ausencia de prueba' ELSE NULL END
-FROM "asignaciones_docentes" ad
-JOIN "cursos_periodo" cp ON cp.id = ad.curso_periodo_id
-JOIN "trimestres" t ON t.periodo_id = cp.periodo_id
-JOIN "inscripciones" i ON i.curso_periodo_id = cp.id AND i.estado = 'activo'
-CROSS JOIN (VALUES (5), (12), (19)) AS dias(dia);
+  -- Indicadores completos de gestión para que la gestión se muestre habilitada.
+  UPDATE periodos_academicos SET estructura_generada=true,horarios_generados=true,plan_pagos_generado=true,
+    estado='activo',activo=true,activado_at=COALESCE(activado_at,NOW()) WHERE id=periodo;
+END $$;
 
 COMMIT;
 
-SELECT r.rol, uc.username, uc.email
-FROM "usuario_cuenta" uc
-JOIN "usuarios" u ON u.id = uc.usuario_id
-JOIN "roles" r ON r.id = u.rol_id
-ORDER BY CASE r.rol WHEN 'director' THEN 1 WHEN 'control' THEN 2 WHEN 'profesor' THEN 3 ELSE 4 END,
-         uc.username;
-
-
--- Copia las filas de esta consulta a Esquems/datos_gamificacion.sql,
--- en el bloque INSERT INTO tmp_gm_seed indicado allí.
-SELECT string_agg(
-         format('(%s, %s, %s, %L, %L, %L)', u.id, e.id, cp.id,
-                c.paralelo, u.nombre, u.apellido_paterno),
-         E',\n' ORDER BY c.paralelo, u.apellido_paterno, u.nombre
-       ) AS filas_para_gamificacion
-FROM "estudiantes" e
-JOIN "usuarios" u ON u.id = e.usuario_id
-JOIN "inscripciones" i ON i.estudiante_id = e.id AND i.estado = 'activo'
-JOIN "cursos_periodo" cp ON cp.id = i.curso_periodo_id
-JOIN "cursos" c ON c.id = cp.curso_id
-WHERE c.nivel = 'secundaria' AND c.grado = '1°' AND c.paralelo IN ('A', 'B');
+-- Resumen: 400 estudiantes (200 por nivel); área directiva 2; administrativa 6;
+-- 16 docentes (2 habilitados por cada materia); asistencia solo 1° secundaria A/B.

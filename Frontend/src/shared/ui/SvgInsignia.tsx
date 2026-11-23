@@ -1,118 +1,145 @@
-// SvgInsignia -> medalla con cinta, dorada o gris
-import { Svg, Circle, Path, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
+// SvgInsignia -> medalla con cinta e ícono, dorada o bloqueada
 import { useState } from 'react';
 import { Modal, TouchableOpacity, View, Text as RNText } from 'react-native';
+import { Svg, Circle, Path, Rect, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
 interface SvgInsigniaProps {
   nombre: string;
   obtenida: boolean;
   tamano?: number;
-  icono?: string;
+  icono?: keyof typeof Ionicons.glyphMap;
+  color?: string;
   criterio?: string;
+}
+
+function sanitizarId(valor: string): string {
+  return valor.replace(/[^a-zA-Z0-9]/g, '') || 'insignia';
 }
 
 export function SvgInsignia({
   nombre,
   obtenida,
-  tamano = 80,
-  icono = 'award',
+  tamano = 64,
+  icono = 'ribbon',
+  color = '#F59E0B',
   criterio,
 }: SvgInsigniaProps) {
   const [detalleVisible, setDetalleVisible] = useState(false);
-  const cx = tamano / 2;
-  const cy = tamano / 2 + 6;
-  const radioMedalla = tamano * 0.26;
-  const oroOscuro = obtenida ? '#B45309' : '#94A3B8';
-  const brillo = obtenida ? '#FCD34D' : '#E5E7EB';
-  const iconColor = obtenida ? '#78350F' : '#6B7280';
+  const slug = sanitizarId(nombre);
+  const gradCintaId = `gradCinta_${slug}_${obtenida ? 'on' : 'off'}`;
+  const gradMedallaId = `gradMedalla_${slug}_${obtenida ? 'on' : 'off'}`;
+
+  const acentoOscuro = obtenida ? '#B45309' : '#94A3B8';
+  const acentoClaro = obtenida ? '#FDE68A' : '#E2E8F0';
+  const colorPrincipal = obtenida ? color : '#CBD5E1';
+  const iconColor = obtenida ? '#FFFFFF' : '#64748B';
 
   return (
-    <TouchableOpacity activeOpacity={0.8} onPress={() => setDetalleVisible(true)} style={{ width: tamano, height: tamano + 52, alignItems: 'center' }}>
-      <Svg width={tamano} height={tamano + 16}>
-        <Defs>
-          <LinearGradient id={`gradCinta${nombre}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={obtenida ? '#F59E0B' : '#9CA3AF'} />
-            <Stop offset="100%" stopColor={oroOscuro} />
-          </LinearGradient>
-          <LinearGradient id={`gradMedalla${nombre}`} x1="0%" y1="0%" x2="0%" y2="100%">
-            <Stop offset="0%" stopColor={obtenida ? '#FBBF24' : '#E5E7EB'} />
-            <Stop offset="100%" stopColor={oroOscuro} />
-          </LinearGradient>
-        </Defs>
+    <TouchableOpacity
+      activeOpacity={0.82}
+      onPress={() => setDetalleVisible(true)}
+      className={`flex-1 items-center rounded-2xl border p-3 ${
+        obtenida ? 'border-amber-200 bg-amber-50/70' : 'border-gray-200 bg-gray-50/80'
+      }`}
+    >
+      <View style={{ width: tamano, height: tamano + 10, alignItems: 'center', justifyContent: 'center' }}>
+        <Svg width={tamano} height={tamano + 10} viewBox="0 0 80 90">
+          <Defs>
+            <LinearGradient id={gradCintaId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <Stop offset="0%" stopColor={obtenida ? '#801F3F' : '#94A3B8'} />
+              <Stop offset="100%" stopColor={obtenida ? '#4C1025' : '#64748B'} />
+            </LinearGradient>
+            <LinearGradient id={gradMedallaId} x1="0%" y1="0%" x2="100%" y2="100%">
+              <Stop offset="0%" stopColor={acentoClaro} />
+              <Stop offset="50%" stopColor={colorPrincipal} />
+              <Stop offset="100%" stopColor={acentoOscuro} />
+            </LinearGradient>
+          </Defs>
 
-        <Path
-          d={`M ${cx - tamano * 0.14} ${tamano * 0.04}
-               L ${cx - tamano * 0.14} ${tamano * 0.16}
-               L ${cx - tamano * 0.06} ${tamano * 0.16}
-               L ${cx - tamano * 0.06} ${tamano * 0.04}
-               Z`}
-          fill={oroOscuro}
-        />
-        <Path
-          d={`M ${cx + tamano * 0.14} ${tamano * 0.04}
-               L ${cx + tamano * 0.14} ${tamano * 0.16}
-               L ${cx + tamano * 0.06} ${tamano * 0.16}
-               L ${cx + tamano * 0.06} ${tamano * 0.04}
-               Z`}
-          fill={oroOscuro}
-        />
+          {/* Cinta superior */}
+          <Path d="M24 6 L37 6 L37 32 L24 26 Z" fill={`url(#${gradCintaId})`} />
+          <Path d="M43 6 L56 6 L56 26 L43 32 Z" fill={`url(#${gradCintaId})`} />
+          <Rect x="20" y="3" width="40" height="8" rx="3" fill={obtenida ? '#B45309' : '#94A3B8'} />
 
-        <Rect
-          x={cx - tamano * 0.30}
-          y={tamano * 0.06}
-          width={tamano * 0.60}
-          height={tamano * 0.14}
-          rx={tamano * 0.02}
-          fill={`url(#gradCinta${nombre})`}
-          stroke={oroOscuro}
-          strokeWidth={2}
-        />
+          {/* Medalla */}
+          <Circle cx="40" cy="54" r="28" fill={`url(#${gradMedallaId})`} stroke={acentoOscuro} strokeWidth="2.5" />
+          <Circle cx="40" cy="54" r="22" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="1.5" strokeDasharray="4,3" />
+        </Svg>
 
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={radioMedalla}
-          fill={`url(#gradMedalla${nombre})`}
-          stroke={oroOscuro}
-          strokeWidth={3}
-        />
-        <Circle
-          cx={cx}
-          cy={cy}
-          r={radioMedalla - 4}
-          fill="none"
-          stroke={brillo}
-          strokeWidth={1}
-          strokeDasharray="4,4"
-          opacity={obtenida ? 0.6 : 0.3}
-        />
-      </Svg>
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: (tamano + 10) * 0.6 - tamano * 0.19,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icono} size={Math.round(tamano * 0.34)} color={iconColor} />
+        </View>
+      </View>
 
-      <Ionicons
-        name={icono as any}
-        size={radioMedalla * 0.8}
-        color={iconColor}
-        style={{
-          position: 'absolute',
-          top: cy - radioMedalla * 0.4,
-          left: cx - radioMedalla * 0.4,
-        }}
-      />
-
-      <RNText style={{ marginTop: 8, textAlign: 'center' }}
-        className={obtenida ? 'text-[#0F172A] text-[11px] font-bold' : 'text-[#6B7280] text-[11px] font-bold'}>
+      <RNText
+        numberOfLines={2}
+        className={`mt-1.5 text-center text-[11px] font-extrabold leading-tight ${
+          obtenida ? 'text-gray-900' : 'text-gray-500'
+        }`}
+      >
         {nombre}
       </RNText>
 
+      <View
+        className={`mt-1.5 flex-row items-center gap-1 rounded-full px-2 py-0.5 ${
+          obtenida ? 'bg-amber-100' : 'bg-gray-200/80'
+        }`}
+      >
+        <Ionicons
+          name={obtenida ? 'checkmark-circle' : 'lock-closed-outline'}
+          size={10}
+          color={obtenida ? '#B45309' : '#64748B'}
+        />
+        <RNText className={`text-[9px] font-bold ${obtenida ? 'text-amber-800' : 'text-gray-500'}`}>
+          {obtenida ? 'Obtenida' : 'Bloqueada'}
+        </RNText>
+      </View>
+
       <Modal visible={detalleVisible} transparent animationType="fade" onRequestClose={() => setDetalleVisible(false)}>
-        <View className="flex-1 bg-black/60 justify-center p-6"><View className="rounded-3xl bg-white p-5 items-center gap-3">
-          <Ionicons name={icono as any} size={36} color={obtenida ? '#B45309' : '#94A3B8'} />
-          <RNText className="text-lg font-black text-gray-900">{nombre}</RNText>
-          <RNText className="text-center text-sm leading-6 text-gray-700">{criterio || 'Completa actividades de estudio para conseguir este logro.'}</RNText>
-          <RNText className="text-xs font-bold text-[#801F3F]">{obtenida ? 'Logro conseguido' : 'Aún por conseguir'}</RNText>
-          <TouchableOpacity onPress={() => setDetalleVisible(false)} className="w-full rounded-xl bg-[#801F3F] p-3"><RNText className="text-center font-bold text-white">Cerrar</RNText></TouchableOpacity>
-        </View></View>
+        <View className="flex-1 bg-black/60 justify-center p-6">
+          <View className="rounded-3xl bg-white p-6 items-center gap-3 shadow-xl">
+            <View
+              className={`h-16 w-16 rounded-2xl items-center justify-center ${
+                obtenida ? 'bg-amber-100' : 'bg-gray-100'
+              }`}
+            >
+              <Ionicons name={icono} size={34} color={obtenida ? color : '#94A3B8'} />
+            </View>
+            <RNText className="text-lg font-black text-gray-900 text-center">{nombre}</RNText>
+            <RNText className="text-center text-sm leading-6 text-gray-600">
+              {criterio || 'Completa actividades de estudio para desbloquear este logro.'}
+            </RNText>
+            <View
+              className={`flex-row items-center gap-1.5 rounded-full px-3 py-1 ${
+                obtenida ? 'bg-emerald-100' : 'bg-gray-100'
+              }`}
+            >
+              <Ionicons
+                name={obtenida ? 'checkmark-circle' : 'lock-closed-outline'}
+                size={14}
+                color={obtenida ? '#047857' : '#6B7280'}
+              />
+              <RNText className={`text-xs font-bold ${obtenida ? 'text-emerald-800' : 'text-gray-600'}`}>
+                {obtenida ? 'Logro conseguido' : 'Aún por conseguir'}
+              </RNText>
+            </View>
+            <TouchableOpacity
+              onPress={() => setDetalleVisible(false)}
+              className="mt-1 w-full rounded-xl bg-[#801F3F] p-3"
+            >
+              <RNText className="text-center font-bold text-white">Cerrar</RNText>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </TouchableOpacity>
   );

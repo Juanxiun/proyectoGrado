@@ -407,8 +407,8 @@ services:
       - Services__GamificationService=http://service-gamification:8887
       - Services__ControlAcademicoService=http://service-control-academico:8888
     ports:
-      - "5141:5141"
-      - "7064:7064"
+      - "0.0.0.0:5141:5141"
+      - "0.0.0.0:7064:7064"
     networks:
       - shalom_net
 

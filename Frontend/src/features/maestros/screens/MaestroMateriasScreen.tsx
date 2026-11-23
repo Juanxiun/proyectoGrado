@@ -596,8 +596,8 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                   </View>
                 </View>
                 <View className="flex-row gap-3">
-                  <DateTimePicker label="📅 Fecha Inicio *" value={tareaFechaInicio} onChange={setTareaFechaInicio} className="flex-1" />
-                  <DateTimePicker label="⏰ Fecha Cierre *" value={tareaFechaCierre} onChange={setTareaFechaCierre} className="flex-1" />
+                  <DateTimePicker label="Fecha Inicio *" value={tareaFechaInicio} onChange={setTareaFechaInicio} className="flex-1" />
+                  <DateTimePicker label="Fecha Cierre *" value={tareaFechaCierre} onChange={setTareaFechaCierre} className="flex-1" />
                 </View>
                 <TouchableOpacity onPress={handleSaveTarea} disabled={savingTarea} className="bg-maroon rounded-xl py-3 items-center mt-1 shadow">
                   {savingTarea ? <ActivityIndicator size="small" color="#fff" /> : <Text className="text-white font-black text-sm">{editingEncargo ? 'Guardar cambios' : 'Publicar evaluación'}</Text>}
@@ -787,7 +787,7 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                     </View>
                     <View className="flex-1">
                       <Text className="text-xs font-bold text-maroon" numberOfLines={1}>
-                        {matFile ? matFile.name : editingMaterial?.nombreArchivo ? `📎 ${editingMaterial.nombreArchivo}` : 'Seleccionar PDF, DOCX o XLSX'}
+                        {matFile ? matFile.name : editingMaterial?.nombreArchivo ? editingMaterial.nombreArchivo : 'Seleccionar PDF, DOCX o XLSX'}
                       </Text>
                       <Text className="text-[10px] text-gray-400 mt-0.5">
                         {matFile ? `${Math.round((matFile.size ?? 0) / 1024)} KB · Nuevo archivo seleccionado` : editingMaterial ? 'Toca para reemplazar' : `Hasta ${MAX_FILE_SIZE_MB} MB`}
@@ -859,7 +859,12 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                       <Text className="font-black text-gray-900 text-sm mb-1" numberOfLines={2}>{mat.titulo}</Text>
                       {mat.detalle ? <Text className="text-xs text-gray-500 mb-2" numberOfLines={2}>{mat.detalle}</Text> : null}
                       <View className="gap-0.5 mt-1">
-                        {mat.nombreArchivo && <Text className="text-xs text-gray-600 font-medium" numberOfLines={1}>📎 {mat.nombreArchivo}</Text>}
+                        {mat.nombreArchivo && (
+                          <View className="flex-row items-center gap-1">
+                            <Ionicons name="attach-outline" size={13} color="#4B5563" />
+                            <Text className="flex-1 text-xs text-gray-600 font-medium" numberOfLines={1}>{mat.nombreArchivo}</Text>
+                          </View>
+                        )}
                         <View className="flex-row items-center gap-2">
                           {mat.tamanioBytes != null && <Text className="text-[10px] text-gray-400 font-mono">{fmtBytes(mat.tamanioBytes)}</Text>}
                           {mat.fechaSubida && <Text className="text-[10px] text-gray-400">· {mat.fechaSubida.slice(0, 10)}</Text>}
@@ -933,7 +938,10 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                               </Text>
                             </View>
                             {tema.horasPrevistas != null && (
-                              <Text className="text-[10px] text-gray-400 font-mono">⏱ {tema.horasPrevistas}h</Text>
+                              <View className="flex-row items-center gap-0.5">
+                                <Ionicons name="time-outline" size={11} color="#9CA3AF" />
+                                <Text className="text-[10px] text-gray-400 font-mono">{tema.horasPrevistas}h</Text>
+                              </View>
                             )}
                             <View className="flex-row items-center gap-1 ml-1">
                               {estudios.length > 0 && (
@@ -1043,7 +1051,12 @@ export function MaestroMateriasScreen({ initialTab = 'tareas' }: { initialTab?: 
                         <View className="flex-1 pr-3">
                           <Text className="text-sm font-bold text-gray-800">{ent.estudiante?.apellidoPaterno} {ent.estudiante?.apellidoMaterno} {ent.estudiante?.nombre || 'Estudiante'}</Text>
                           <Text className="text-xs text-gray-500 mt-0.5">Entregado: {ent.fechaEntrega?.replace('T',' ').slice(0,16)}</Text>
-                          {ent.nombreArchivo ? <Text className="text-xs text-maroon font-semibold mt-1">📎 {ent.nombreArchivo}</Text> : null}
+                          {ent.nombreArchivo ? (
+                            <View className="flex-row items-center gap-1 mt-1">
+                              <Ionicons name="attach-outline" size={13} color="#801529" />
+                              <Text className="text-xs text-maroon font-semibold">{ent.nombreArchivo}</Text>
+                            </View>
+                          ) : null}
                           {ent.comentario ? <Text className="text-[11px] text-gray-500 italic mt-0.5">"{ent.comentario}"</Text> : null}
                           {ent.archivoUrl ? (
                             <TouchableOpacity
