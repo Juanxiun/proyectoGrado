@@ -356,14 +356,14 @@ export function MaestroEvaluacionesScreen() {
 
             <View className={`gap-3 ${isMobile ? '' : 'flex-row'}`}>
               <DateTimePicker
-                label="📅 Fecha y Hora de Inicio *"
+                label="Fecha y Hora de Inicio *"
                 value={fechaInicio}
                 onChange={setFechaInicio}
                 className="flex-1"
               />
 
               <DateTimePicker
-                label="⏰ Fecha y Hora de Cierre *"
+                label="Fecha y Hora de Cierre *"
                 value={fechaFin}
                 onChange={setFechaFin}
                 className="flex-1"

@@ -352,9 +352,12 @@ export function DateTimePicker({
 
               <View className="mt-2 pt-3 border-t border-gray-100">
                 <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider">
-                    ⏰ Hora y Minutos
-                  </Text>
+                  <View className="flex-row items-center gap-1.5">
+                    <Ionicons name="time-outline" size={14} color="#374151" />
+                    <Text className="text-xs font-bold text-gray-800 uppercase tracking-wider">
+                      Hora y Minutos
+                    </Text>
+                  </View>
                   <TouchableOpacity onPress={handleSetNow}>
                     <Text className="text-xs font-bold text-maroon">Fijar Hora Actual</Text>
                   </TouchableOpacity>

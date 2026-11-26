@@ -324,7 +324,7 @@ export function SeguimientoScreen({ initialPeriodoId, teacherMode = false }: { i
                   }`}
                 >
                   {item.nombre}
-                  {item.activo ? ' ★' : ''}
+                  {item.activo ? ' (Activo)' : ''}
                 </Text>
                 <Text
                   className={`text-[10px] ${

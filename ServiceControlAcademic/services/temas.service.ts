@@ -5,8 +5,8 @@ import { publicarEventoControl, publicarEventoConfig } from "../utils/events.ts"
 import {
   TemaMallaControl,
   TemaProgreso,
-  controlAcademicoConfig,
 } from "../models/control-academico.ts";
+import { controlAcademicoConfig } from "../config/control-academico.config.ts";
 
 interface TemaRowDB {
   id: bigint;
@@ -34,7 +34,7 @@ async function mapTema(row: TemaRowDB): Promise<TemaMallaControl> {
     orden: Number(row.orden),
     activo: Boolean(row.activo),
     materia: row.materiaNombre
-      ? { id: toId(row.materiaId), nombre: row.materiaNombre, codigo: row.materiaCodigo }
+      ? { id: toId(row.materiaId), nombre: row.materiaNombre, codigo: row.materiaCodigo ?? "" }
       : null,
   });
 }

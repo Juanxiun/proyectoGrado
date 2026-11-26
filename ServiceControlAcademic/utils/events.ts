@@ -41,7 +41,16 @@ export function publicarEventoAsync<T extends Record<string, unknown>>(
   });
 }
 
-// eventos -> publicar en canal de control academico
+// eventos -> canales websocket derivados del payload
+function canalesWebSocket(payload: Record<string, unknown>): string[] {
+  const canales = new Set<string>(["control:global"]);
+  if (payload.materiaId != null) canales.add(`control:materia:${payload.materiaId}`);
+  if (payload.cursoPeriodoId != null) canales.add(`control:curso:${payload.cursoPeriodoId}`);
+  if (payload.usuarioId != null) canales.add(`control:personal:${payload.usuarioId}`);
+  return [...canales];
+}
+
+// eventos -> publicar en canal de control academico + fan-out websocket
 export async function publicarEventoControl<T extends Record<string, unknown>>(
   eventType: string,
   payload: T,
@@ -50,15 +59,21 @@ export async function publicarEventoControl<T extends Record<string, unknown>>(
     const redis = getRedis();
     if (!redis) return false;
 
-    await redis.publish(
-      "control:eventos",
-      JSON.stringify({
-        eventType,
-        origen: "ServiceControlAcademico",
-        payload,
-        emittedAt: new Date().toISOString(),
-      }),
-    );
+    const mensaje = JSON.stringify({
+      eventType,
+      origen: "ServiceControlAcademico",
+      payload,
+      emittedAt: new Date().toISOString(),
+    });
+    const mensajeWs = JSON.stringify({
+      evento: eventType,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    await Promise.allSettled([
+      redis.publish("control:eventos", mensaje),
+      ...canalesWebSocket(payload).map((canal) => redis.publish(canal, mensajeWs)),
+    ]);
     return true;
   } catch (err) {
     console.warn(`[Eventos] No se pudo publicar en canal control "${eventType}":`, err);

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Modal, Text, TouchableOpacity, View } from 'react-native';
 import type { FormatoResumen } from '../../../api/aprendizaje.api';
 import { BentoCard } from '../../../displays/components/BentoCard';
-import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
+import { MarkdownContent, formatearTextoMatematico } from '../../../shared/ui/MarkdownContent';
 import { EjemploCanvas } from './EjemploCanvas';
 import { EsquemaSkia, aTexto } from './EsquemaSkia';
 
@@ -97,12 +97,11 @@ export function ResumenInteractivo({ formato, data: dataEntrada, explicacion, ex
       <Text className="text-xs font-bold text-amber-800">MICROLEARNING · CARTA {indiceCarta + 1} DE {cartas.length}</Text>
       <BentoCard className="min-h-52 justify-center p-6 bg-amber-50">
         <Text className="text-xs font-bold text-amber-700">¿QUÉ ES?</Text>
-        <Text className="text-xl font-black text-gray-900 mt-2">{carta.concept}</Text>
-        <Text className="text-sm leading-6 text-gray-700 mt-4">{carta.definition}</Text>
+        <Text className="text-xl font-black text-gray-900 mt-2">{formatearTextoMatematico(carta.concept)}</Text>
         <View className="mt-3">
           <MarkdownContent texto={carta.definition} />
         </View>
-        {carta.key_points.map((point, index) => <Text key={`${index}-${point}`} className="text-sm text-gray-600 mt-2">• {point}</Text>)}
+        {carta.key_points.map((point, index) => <Text key={`${index}-${point}`} className="text-sm text-gray-600 mt-2">• {formatearTextoMatematico(point)}</Text>)}
       </BentoCard>
       <View className="flex-row gap-2">
         <TouchableOpacity disabled={Boolean(explicacionLoading)} onPress={() => onExplain({ title: carta.concept, explanation: carta.definition })} className="flex-1 rounded-xl border border-violet-200 bg-violet-50 p-3">
@@ -124,10 +123,9 @@ export function ResumenInteractivo({ formato, data: dataEntrada, explicacion, ex
       </View>
       {explicacionCarta ? (
         <BentoCard className="gap-3 p-4 bg-violet-50">
-          <Text className="font-bold text-violet-950">{aTexto(explicacionCarta.title, carta.concept)}</Text>
-          <Text className="text-sm leading-6 text-violet-900">{aTexto(explicacionCarta.explanation, carta.definition)}</Text>
+          <Text className="font-bold text-violet-950">{formatearTextoMatematico(aTexto(explicacionCarta.title, carta.concept))}</Text>
           <View>
-            <MarkdownContent texto={aTexto(explicacionCarta.explanation, carta.definition)} />
+            <MarkdownContent texto={aTexto(explicacionCarta.explanation, carta.definition)} textColor="#4C1D95" />
           </View>
           <EjemploCanvas ejemplos={aTextos(explicacionCarta.examples)} />
         </BentoCard>

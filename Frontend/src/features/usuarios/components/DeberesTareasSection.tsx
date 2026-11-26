@@ -233,9 +233,12 @@ export function DeberesTareasSection({
                 {isDelivered ? (
                   <View className="mt-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200 flex-row items-center justify-between">
                     <View className="flex-1 pr-2">
-                      <Text className="text-xs font-bold text-emerald-900">
-                        ✓ Tarea entregada el {formatFechaHoraSegundos(entrega.fechaEntrega)}
-                      </Text>
+                      <View className="flex-row items-center gap-1.5">
+                        <Ionicons name="checkmark-circle" size={14} color="#047857" />
+                        <Text className="text-xs font-bold text-emerald-900">
+                          Tarea entregada el {formatFechaHoraSegundos(entrega.fechaEntrega)}
+                        </Text>
+                      </View>
                       {entrega.nombreArchivo ? (
                         <Text className="text-[11px] text-emerald-700 mt-0.5">
                           Archivo: {entrega.nombreArchivo}

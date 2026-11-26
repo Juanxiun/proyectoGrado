@@ -1,180 +1,274 @@
-import { WebSocket } from "ws";
+// websocket -> servidor nativo Deno + fan-out por Redis pub/sub
 import { getClaimsFromToken, extractBearerToken } from "../security/auth.ts";
+import type { AuthClaims } from "../security/auth.ts";
 import { getRedis } from "../connects/Redis/redis.ts";
-import { redisConfig } from "../config/redis.conf.ts";
 import { gamificationConfig } from "../config/gamification.config.ts";
 
-interface WSClient {
-  ws: WebSocket;
+const ROL_PERMITIDO = "estudiante";
+const CANAL_GLOBAL = "gamificacion:global";
+const CANALES_REDIS = [CANAL_GLOBAL, "gamificacion:paralelo:*", "gamificacion:personal:*"] as const;
+const CANAL_VALIDO = /^gamificacion:(global|personal:\d+|paralelo:\d+:[AB])$/;
+
+type Paralelo = "A" | "B";
+
+interface WsClient {
+  id: string;
   usuarioId: string;
-  estudianteId: string;
-  cursoPeriodoId: string;
-  paralelo: "A" | "B";
+  socket: WebSocket;
   subscriptions: Set<string>;
 }
 
-const clients = new Map<string, WSClient>();
-const redis = getRedis();
+const clients = new Map<string, WsClient>();
+const subscribersByChannel = new Map<string, Set<string>>();
 
-export function initWebSocketServer(server: any): void {
-  server.on("upgrade", async (request: any, socket: any, head: any) => {
-    try {
-      const url = new URL(request.url, `http://${request.headers.host}`);
-      const token = extractBearerToken(url.searchParams.get("token") ?? request.headers["sec-websocket-protocol"]);
+function sendJson(socket: WebSocket, payload: Record<string, unknown>): void {
+  if (socket.readyState !== WebSocket.OPEN) return;
+  try {
+    socket.send(JSON.stringify(payload));
+  } catch (err) {
+    console.warn("[WS] No se pudo enviar mensaje:", err);
+  }
+}
 
-      if (!token) {
-        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
-        socket.destroy();
-        return;
-      }
+function subscribe(client: WsClient, canal: string): void {
+  client.subscriptions.add(canal);
+  const ids = subscribersByChannel.get(canal) ?? new Set<string>();
+  ids.add(client.id);
+  subscribersByChannel.set(canal, ids);
+}
 
-      const claims = await getClaimsFromToken(token);
-      if (!claims || claims.role !== "estudiante") {
-        socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
-        socket.destroy();
-        return;
-      }
+function unsubscribe(client: WsClient, canal: string): void {
+  client.subscriptions.delete(canal);
+  const ids = subscribersByChannel.get(canal);
+  if (!ids) return;
+  ids.delete(client.id);
+  if (ids.size === 0) subscribersByChannel.delete(canal);
+}
 
-      // obtener info estudiante
-      // todo: query a BD para obtener estudianteId, cursoPeriodoId, paralelo
-      const ws = new WebSocket(null);
-      (ws as any)._socket = socket;
-      (ws as any)._receiver = head;
+function unregister(clientId: string): void {
+  const client = clients.get(clientId);
+  if (!client) return;
+  for (const canal of client.subscriptions) {
+    const ids = subscribersByChannel.get(canal);
+    ids?.delete(clientId);
+    if (ids && ids.size === 0) subscribersByChannel.delete(canal);
+  }
+  clients.delete(clientId);
+}
 
-      // todo: completar handshake
-      const clientId = claims.sub;
-      clients.set(clientId, {
-        ws,
-        usuarioId: claims.sub,
-        estudianteId: "", // todo: query
-        cursoPeriodoId: "", // todo: query
-        paralelo: "A",
-        subscriptions: new Set(["global", "paralelo", "personal"]),
-      });
+function canalPermitido(canal: string, claims: AuthClaims): boolean {
+  if (!CANAL_VALIDO.test(canal)) return false;
+  if (!canal.startsWith("gamificacion:personal:")) return true;
+  return canal === `gamificacion:personal:${claims.sub}`;
+}
 
-      console.log(`[WS] Cliente conectado: ${clientId}`);
-    } catch (err) {
-      console.warn("[WS] Error en upgrade:", err);
-      socket.destroy();
-    }
+function handleClientMessage(client: WsClient, raw: unknown, claims: AuthClaims): void {
+  if (typeof raw !== "string") return;
+  let message: { accion?: unknown; canal?: unknown };
+  try {
+    message = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  const accion = String(message.accion ?? "");
+  if (accion === "ping") {
+    sendJson(client.socket, { evento: "pong", timestamp: new Date().toISOString() });
+    return;
+  }
+  const canal = String(message.canal ?? "");
+  if (accion !== "suscribir" && accion !== "desuscribir") return;
+  if (!canalPermitido(canal, claims)) {
+    sendJson(client.socket, {
+      evento: "suscripcion",
+      payload: { ok: false, canal, error: "Canal no permitido" },
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+  if (accion === "suscribir") subscribe(client, canal);
+  else unsubscribe(client, canal);
+  sendJson(client.socket, {
+    evento: "suscripcion",
+    payload: { ok: true, canal, accion },
+    timestamp: new Date().toISOString(),
   });
 }
 
-export function broadcastToCanal(canal: string, evento: string, payload: Record<string, unknown>): void {
+function unauthorized(status: number, error: string): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+/** Valida el token antes del upgrade y registra la conexion autenticada. */
+export async function handleWebSocketUpgrade(request: Request): Promise<Response> {
+  if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+    return unauthorized(426, "Se requiere Upgrade: websocket");
+  }
+  const url = new URL(request.url);
+  const rawToken = url.searchParams.get("token") ??
+    request.headers.get("sec-websocket-protocol");
+  const token = extractBearerToken(rawToken);
+  if (!token) return unauthorized(401, "Token requerido");
+
+  const claims = await getClaimsFromToken(token);
+  if (!claims) return unauthorized(401, "Token invalido o sesion inactiva");
+  if (claims.role !== ROL_PERMITIDO) return unauthorized(403, "Rol no autorizado");
+
+  const { socket, response } = Deno.upgradeWebSocket(request);
+  const client: WsClient = {
+    id: crypto.randomUUID(),
+    usuarioId: claims.sub,
+    socket,
+    subscriptions: new Set(),
+  };
+  clients.set(client.id, client);
+  subscribe(client, CANAL_GLOBAL);
+  subscribe(client, `gamificacion:personal:${claims.sub}`);
+
+  socket.onopen = () => {
+    sendJson(socket, {
+      evento: "conectado",
+      payload: { clienteId: client.id, usuarioId: claims.sub },
+      timestamp: new Date().toISOString(),
+    });
+  };
+  socket.onmessage = (event) => handleClientMessage(client, event.data, claims);
+  socket.onclose = () => unregister(client.id);
+  socket.onerror = () => unregister(client.id);
+
+  console.log(`[WS] Cliente conectado: ${claims.sub} -> ${client.id}`);
+  return response;
+}
+
+function publicar(canal: string, evento: string, payload: Record<string, unknown>): void {
+  const redis = getRedis();
+  if (!redis) return;
   const mensaje = JSON.stringify({ evento, payload, timestamp: new Date().toISOString() });
-  redis.publish(canal, mensaje).catch((err: Error) => {
-    console.warn("[WS] Error publicando en canal:", err.message);
+  redis.publish(canal, mensaje).catch((err: unknown) => {
+    console.warn("[WS] Error publicando en canal:", err);
   });
 }
 
-export function broadcastToParalelo(cursoPeriodoId: string, paralelo: "A" | "B", evento: string, payload: Record<string, unknown>): void {
-  const canal = `gamificacion:paralelo:${cursoPeriodoId}:${paralelo}`;
-  broadcastToCanal(canal, evento, payload);
+export function publicarEnCanalWs(
+  canal: string,
+  evento: string,
+  payload: Record<string, unknown>,
+): void {
+  publicar(canal, evento, payload);
+}
+
+export function broadcastToParalelo(
+  cursoPeriodoId: string,
+  paralelo: Paralelo,
+  evento: string,
+  payload: Record<string, unknown>,
+): void {
+  publicar(`gamificacion:paralelo:${cursoPeriodoId}:${paralelo}`, evento, payload);
 }
 
 export function broadcastGlobal(evento: string, payload: Record<string, unknown>): void {
-  broadcastToCanal("gamificacion:global", evento, payload);
+  publicar(CANAL_GLOBAL, evento, payload);
+}
+
+function notificarPersonal(usuarioId: string, evento: string, payload: Record<string, unknown>): void {
+  publicar(`gamificacion:personal:${usuarioId}`, evento, {
+    usuarioId,
+    ...payload,
+    timestamp: new Date().toISOString(),
+  });
 }
 
 export function notifyPuntosActualizados(usuarioId: string, puntos: number, tipo: string): void {
-  const canal = `gamificacion:personal:${usuarioId}`;
-  broadcastToCanal(canal, gamificationConfig.wsEventos.actualizacionPuntos, {
-    usuarioId,
-    puntos,
-    tipo,
-    timestamp: new Date().toISOString(),
-  });
+  notificarPersonal(usuarioId, gamificationConfig.wsEventos.actualizacionPuntos, { puntos, tipo });
 }
 
 export function notifyRachaActualizada(usuarioId: string, rachaActual: number, mejorRacha: number): void {
-  const canal = `gamificacion:personal:${usuarioId}`;
-  broadcastToCanal(canal, gamificationConfig.wsEventos.actualizacionRacha, {
-    usuarioId,
-    rachaActual,
-    mejorRacha,
-    timestamp: new Date().toISOString(),
-  });
+  notificarPersonal(usuarioId, gamificationConfig.wsEventos.actualizacionRacha, { rachaActual, mejorRacha });
 }
 
 export function notifyInsigniaGanada(usuarioId: string, insigniaId: string, nombre: string): void {
-  const canal = `gamificacion:personal:${usuarioId}`;
-  broadcastToCanal(canal, gamificationConfig.wsEventos.insigniaGanada, {
-    usuarioId,
-    insigniaId,
-    nombre,
-    timestamp: new Date().toISOString(),
-  });
-  // notificar a todo el paralelo
-  // broadcastToParalelo(...)
+  notificarPersonal(usuarioId, gamificationConfig.wsEventos.insigniaGanada, { insigniaId, nombre });
 }
 
 export function notifyTrofeoGanado(usuarioId: string, trofeoId: string, nombre: string, puntos: number): void {
-  const canal = `gamificacion:personal:${usuarioId}`;
-  broadcastToCanal(canal, gamificationConfig.wsEventos.trofeoGanado, {
-    usuarioId,
-    trofeoId,
-    nombre,
-    puntos,
-    timestamp: new Date().toISOString(),
-  });
-  broadcastGlobal(gamificationConfig.wsEventos.trofeoGanado, {
-    usuarioId,
-    trofeoId,
-    nombre,
-    puntos,
-    timestamp: new Date().toISOString(),
-  });
+  const payload = { usuarioId, trofeoId, nombre, puntos };
+  notificarPersonal(usuarioId, gamificationConfig.wsEventos.trofeoGanado, payload);
+  broadcastGlobal(gamificationConfig.wsEventos.trofeoGanado, payload);
 }
 
-export function notifyAlertaRanking(usuarioId: string, mensaje: string, posicionActual: number, posicionAmenaza: number): void {
-  const canal = `gamificacion:personal:${usuarioId}`;
-  broadcastToCanal(canal, gamificationConfig.wsEventos.alertaRanking, {
-    usuarioId,
+export function notifyAlertaRanking(
+  usuarioId: string,
+  mensaje: string,
+  posicionActual: number,
+  posicionAmenaza: number,
+): void {
+  notificarPersonal(usuarioId, gamificationConfig.wsEventos.alertaRanking, {
     mensaje,
     posicionActual,
     posicionAmenaza,
-    timestamp: new Date().toISOString(),
   });
 }
 
-export function notifyRecompensaGlobal(cursoPeriodoId: string, paralelo: "A" | "B", recompensa: string, descripcion: string): void {
+export function notifyRecompensaGlobal(
+  cursoPeriodoId: string,
+  paralelo: Paralelo,
+  recompensa: string,
+  descripcion: string,
+): void {
   broadcastToParalelo(cursoPeriodoId, paralelo, gamificationConfig.wsEventos.recompensaGlobal, {
     cursoPeriodoId,
     paralelo,
     recompensa,
     descripcion,
-    timestamp: new Date().toISOString(),
   });
 }
 
-// listener -> suscribirse a canales redis y reenviar a websockets
-export async function initRedisListener(): Promise<void> {
-  const subscriber = redis.duplicate();
-  await subscriber.subscribe("gamificacion:global", "gamificacion:paralelo:*", "gamificacion:personal:*");
+let subscriber: ReturnType<typeof getRedis> | null = null;
 
-  subscriber.on("message", (canal: string, mensaje: string) => {
-    try {
-      const { evento, payload } = JSON.parse(mensaje);
-      // reenviar a clientes conectados en ese canal
-      for (const [clientId, client] of clients) {
-        if (client.subscriptions.has(canal) || client.subscriptions.has("global")) {
-          if (client.ws.readyState === WebSocket.OPEN) {
-            client.ws.send(JSON.stringify({ evento, payload, timestamp: new Date().toISOString() }));
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("[WS] Error procesando mensaje redis:", err);
+/** Escucha los canales de Redis y reenvia cada evento a sus suscriptores locales. */
+export async function initRedisListener(): Promise<void> {
+  if (subscriber) return;
+  const redis = getRedis();
+  if (!redis) {
+    console.warn("[WS] Redis no disponible; listener no iniciado");
+    return;
+  }
+  subscriber = redis.duplicate();
+  subscriber.on("error", (err: Error) => console.warn("[WS] Redis subscriber:", err.message));
+  subscriber.on("pmessage", (_pattern: string, canal: string, mensaje: string) => {
+    const ids = subscribersByChannel.get(canal);
+    if (!ids?.size) return;
+    for (const clientId of ids) {
+      const client = clients.get(clientId);
+      if (client) sendJson(client.socket, JSON.parse(mensaje) as Record<string, unknown>);
     }
   });
-
+  await subscriber.psubscribe(...CANALES_REDIS);
   console.log("[WS] Redis listener iniciado");
-}
-
-export function removeClient(usuarioId: string): void {
-  clients.delete(usuarioId);
 }
 
 export function getConnectedCount(): number {
   return clients.size;
+}
+
+export async function closeWebSockets(): Promise<void> {
+  for (const client of clients.values()) {
+    try {
+      client.socket.close(1001, "Servicio reiniciando");
+    } catch {
+      // socket ya cerrado
+    }
+  }
+  clients.clear();
+  subscribersByChannel.clear();
+  if (subscriber) {
+    try {
+      await subscriber.quit();
+    } catch {
+      // redis ya cerrado
+    }
+    subscriber = null;
+  }
 }

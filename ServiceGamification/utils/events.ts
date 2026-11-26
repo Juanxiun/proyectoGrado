@@ -3,7 +3,17 @@ import { redisConfig } from "../config/redis.conf.ts";
 
 const SERVICIO = "ServiceGamification";
 
-// eventos -> publicar avisos redis
+// eventos -> canales websocket derivados del payload
+function canalesWebSocket(payload: Record<string, unknown>): string[] {
+  const canales = new Set<string>(["gamificacion:global"]);
+  if (payload.usuarioId != null) canales.add(`gamificacion:personal:${payload.usuarioId}`);
+  if (payload.cursoPeriodoId != null && (payload.paralelo === "A" || payload.paralelo === "B")) {
+    canales.add(`gamificacion:paralelo:${payload.cursoPeriodoId}:${payload.paralelo}`);
+  }
+  return [...canales];
+}
+
+// eventos -> publicar avisos redis + fan-out websocket
 export async function publicarEvento<T extends Record<string, unknown>>(
   eventType: string,
   payload: T,
@@ -11,15 +21,21 @@ export async function publicarEvento<T extends Record<string, unknown>>(
 ): Promise<boolean> {
   try {
     const redis = getRedis();
-    await redis.publish(
-      redisConfig.eventosCanal,
-      JSON.stringify({
-        eventType,
-        origen,
-        payload,
-        emittedAt: new Date().toISOString(),
-      }),
-    );
+    const mensaje = JSON.stringify({
+      eventType,
+      origen,
+      payload,
+      emittedAt: new Date().toISOString(),
+    });
+    const mensajeWs = JSON.stringify({
+      evento: eventType,
+      payload,
+      timestamp: new Date().toISOString(),
+    });
+    await Promise.allSettled([
+      redis.publish(redisConfig.eventosCanal, mensaje),
+      ...canalesWebSocket(payload).map((canal) => redis.publish(canal, mensajeWs)),
+    ]);
     return true;
   } catch (err) {
     console.warn(`[Eventos] No se pudo publicar "${eventType}":`, err);
@@ -38,24 +54,3 @@ export function publicarEventoAsync<T extends Record<string, unknown>>(
   });
 }
 
-// eventos -> publicar en canal especifico
-export async function publicarEnCanal<T extends Record<string, unknown>>(
-  canal: string,
-  eventType: string,
-  payload: T,
-  origen: string = SERVICIO,
-): Promise<boolean> {
-  try {
-    const redis = getRedis();
-    await redis.publish(canal, JSON.stringify({
-      eventType,
-      origen,
-      payload,
-      emittedAt: new Date().toISOString(),
-    }));
-    return true;
-  } catch (err) {
-    console.warn(`[Eventos] No se pudo publicar en "${canal}" "${eventType}":`, err);
-    return false;
-  }
-}

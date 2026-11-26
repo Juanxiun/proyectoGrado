@@ -732,9 +732,12 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                   : 'bg-white border-gray-200'
               }`}
             >
-              <Text className={`text-xs font-bold ${periodoSeleccionadoFiltro === 'activo' ? 'text-white' : 'text-gray-700'}`}>
-                ★ Período Activo
-              </Text>
+              <View className="flex-row items-center gap-1">
+                <Ionicons name="star" size={12} color={periodoSeleccionadoFiltro === 'activo' ? '#FFFFFF' : '#801529'} />
+                <Text className={`text-xs font-bold ${periodoSeleccionadoFiltro === 'activo' ? 'text-white' : 'text-gray-700'}`}>
+                  Período Activo
+                </Text>
+              </View>
             </TouchableOpacity>
 
             {periodosList
@@ -969,13 +972,16 @@ export function AcademicServicesScreen({ area = 'academic', onNavigate }: { area
                 <Ionicons name="attach-outline" size={20} color="#801529" />
                 <View className="flex-1">
                   <Text className="text-maroon font-semibold" numberOfLines={1}>
-                    {file ? file.name : editing?.nombreArchivo ? `📎 ${editing.nombreArchivo}` : 'Adjuntar PDF, DOCX o Excel (máx. 25 MB)'}
+                    {file ? file.name : editing?.nombreArchivo ? editing.nombreArchivo : 'Adjuntar PDF, DOCX o Excel (máx. 25 MB)'}
                   </Text>
                   {editing && !file && (
                     <Text className="text-xs text-gray-400 mt-0.5">Toca para reemplazar el archivo actual</Text>
                   )}
                   {file && (
-                    <Text className="text-xs text-green-600 mt-0.5">✓ Nuevo archivo seleccionado</Text>
+                    <View className="flex-row items-center gap-1 mt-0.5">
+                      <Ionicons name="checkmark-circle" size={13} color="#16A34A" />
+                      <Text className="text-xs text-green-600">Nuevo archivo seleccionado</Text>
+                    </View>
                   )}
                 </View>
                 {file && (

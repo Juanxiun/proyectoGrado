@@ -215,9 +215,16 @@ export function NotificationsModal({
                       </View>
 
                       <View className="flex-row items-center justify-between mt-3 pt-2 border-t border-gray-100/60">
-                        <Text className="text-[11px] text-maroon font-semibold">
-                          {n.leido ? '✓ Vista confirmada' : '● Nueva notificación'}
-                        </Text>
+                        <View className="flex-row items-center gap-1">
+                          <Ionicons
+                            name={n.leido ? 'checkmark-done' : 'ellipse'}
+                            size={n.leido ? 13 : 8}
+                            color="#801529"
+                          />
+                          <Text className="text-[11px] text-maroon font-semibold">
+                            {n.leido ? 'Vista confirmada' : 'Nueva notificación'}
+                          </Text>
+                        </View>
                         <View className="flex-row items-center gap-1">
                           <Text className="text-xs font-bold text-maroon">Ir a la actividad</Text>
                           <Ionicons name="arrow-forward" size={14} color="#801529" />

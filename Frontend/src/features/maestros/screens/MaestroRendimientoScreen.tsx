@@ -311,7 +311,7 @@ export function MaestroRendimientoScreen() {
                   }`}
                 >
                   {item.nombre}
-                  {item.activo ? ' ★' : ''}
+                  {item.activo ? ' (Activo)' : ''}
                 </Text>
                 <Text
                   className={`text-[10px] ${

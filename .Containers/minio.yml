@@ -21,8 +21,8 @@ services:
       MINIO_BROWSER_REDIRECT_URL: http://0.0.0.0:9001
       MINIO_ROOT_USER: admin
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "0.0.0.0:9000:9000"
+      - "0.0.0.0:9001:9001"
     volumes:
       - minio-minio-data:/data
 

@@ -1,0 +1,48 @@
+name: shalom-storage
+
+x-podman:
+  in_pod: false
+
+services:
+  shalomantivirus:
+    image: docker.io/clamav/clamav:latest
+    container_name: shalom_antivirus
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      - podman-clamav-data:/var/lib/clamav
+    networks:
+      - shalom_backend
+
+  miniostorage:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: miniostorage
+    restart: unless-stopped
+    userns_mode: "keep-id:uid=65532,gid=65532"
+    command:
+      - server
+      - /data
+      - --console-address
+      - :9001
+    environment:
+      MINIO_ROOT_PASSWORD: adminpassword
+      MINIO_SERVER_URL: http://0.0.0.0:9000
+      MINIO_BROWSER_REDIRECT_URL: http://0.0.0.0:9001
+      MINIO_ROOT_USER: admin
+    ports:
+      - "0.0.0.0:9000:9000"
+      - "0.0.0.0:9001:9001"
+    volumes:
+      - podman-minio-data:/data
+    networks:
+      - shalom_backend
+
+volumes:
+  podman-clamav-data:
+  podman-minio-data:
+
+networks:
+  shalom_backend:
+    name: shalom_backend
+    driver: bridge

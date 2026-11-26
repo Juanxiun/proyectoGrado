@@ -199,13 +199,13 @@ export async function listCalificaciones(
       materiaId: toId(row.materiaId),
       temaId: row.temaId ? toId(row.temaId) : undefined,
       tipoEvaluacion: row.tipoEvaluacion,
-      trimestre: Number(row.trimestre),
+      trimestre: Number(row.trimestre) as TrimestreNumero,
       nota: Number(row.nota),
       observacion: row.observacion,
       peso: Number(row.peso),
-      fechaEvaluacion: asDateString(row.fechaEvaluacion),
-      fechaRegistro: asDateTimeString(row.fechaRegistro),
-      fechaActualizacion: asDateTimeString(row.fechaActualizacion),
+      fechaEvaluacion: asDateString(row.fechaEvaluacion) ?? "",
+      fechaRegistro: asDateTimeString(row.fechaRegistro) ?? "",
+      fechaActualizacion: asDateTimeString(row.fechaActualizacion) ?? "",
       estudiante: {
         id: toId(row.estudianteId),
         usuarioId: toId(row.usuarioId),
@@ -219,7 +219,9 @@ export async function listCalificaciones(
         cursoPeriodoId: row.cursoPeriodoId ? toId(row.cursoPeriodoId) : undefined,
         cursoNombre: row.cursoNombre,
       },
-      tema: row.temaTitulo ? { id: toId(row.temaId ?? 0), titulo: row.temaTitulo, unidad: row.temaUnidad } : null,
+      tema: row.temaTitulo
+        ? { id: toId(row.temaId ?? 0), titulo: row.temaTitulo, unidad: row.temaUnidad == null ? undefined : Number(row.temaUnidad) }
+        : null,
     }));
 
     return { data, total, page: pagination.page, limit: pagination.limit, totalPages: Math.ceil(total / pagination.limit) || 0 };
@@ -502,12 +504,12 @@ export async function getReporteCalificacionesMateria(materiaId: string, cursoPe
   }
 
   const estudiantes = Array.from(estudiantesMap.values()).map(est => {
-    const totalPeso = est.notas.reduce((sum, n) => sum + n.peso, 0);
+    const totalPeso = est.notas.reduce((sum: number, n: { peso: number }) => sum + n.peso, 0);
     const promedioPonderado = totalPeso > 0
-      ? est.notas.reduce((sum, n) => sum + n.nota * n.peso, 0) / totalPeso
+      ? est.notas.reduce((sum: number, n: { nota: number; peso: number }) => sum + n.nota * n.peso, 0) / totalPeso
       : 0;
     const promedioTrimestre = est.notas.length > 0
-      ? est.notas.reduce((sum, n) => sum + n.nota, 0) / est.notas.length
+      ? est.notas.reduce((sum: number, n: { nota: number }) => sum + n.nota, 0) / est.notas.length
       : 0;
     let estado = "aprobado";
     if (promedioPonderado < 51) estado = "reprobado";

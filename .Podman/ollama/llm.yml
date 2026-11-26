@@ -1,0 +1,66 @@
+name: shalom-ollama
+
+x-podman:
+  in_pod: false
+
+services:
+  ollama:
+    image: docker.io/ollama/ollama:latest
+    container_name: shalom_ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Trabajo asíncrono hasta 4 sesiones concurrentes
+      OLLAMA_NUM_PARALLEL: 4
+      # Permite mantener Gemma, Mistral y el modelo de embeddings RAG cargados
+      OLLAMA_MAX_LOADED_MODELS: 3
+      # Ventana de contexto extendida a 16k
+      OLLAMA_CONTEXT_LENGTH: 16384
+      # Optimizaciones de VRAM para GPU NVIDIA en laptop con 16k + concurrencia
+      OLLAMA_FLASH_ATTENTION: 1
+      OLLAMA_KV_CACHE_TYPE: q8_0
+      OLLAMA_KEEP_ALIVE: 30m
+      # Soporte GPU NVIDIA con CDI en Podman (/etc/cdi/nvidia.yaml)
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    devices:
+      - nvidia.com/gpu=all
+    security_opt:
+      - label=disable
+    volumes:
+      - podman-ollama-data:/root/.ollama
+      - ./skills:/skills:ro,z
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - shalom_ollama_net
+
+  ollama-init:
+    image: docker.io/ollama/ollama:latest
+    container_name: shalom_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    volumes:
+      - ./skills:/skills:ro,z
+      - ./init-models.sh:/init-models.sh:ro,z
+    entrypoint: ["/bin/sh", "/init-models.sh"]
+    restart: "no"
+    networks:
+      - shalom_ollama_net
+
+volumes:
+  podman-ollama-data:
+
+networks:
+  shalom_ollama_net:
+    name: shalom_ollama_net
+    driver: bridge

@@ -149,7 +149,7 @@ export interface ResumenGamificacion {
   insignias: InsigniaEstudiante[];
   trofeos: TrofeoEstudiante[];
   ranking: RankingEstudiante | null;
-  aprendizajeHoy: Array<{ titulo: string; materiaNombre: string; porcentajeAcierto: number; aciertos: number; total: number; fechaFin: string | null; feedback: string | null }>;
+  aprendizajeHoy: Array<{ titulo: string; materiaNombre: string; tipo: string; porcentajeAcierto: number; aciertos: number; total: number; fechaFin: string | null; feedback: string | null }>;
   investigarSiguiente: string | null;
   desafiosDiarios: DesafioDiarioGamificacion[];
   bonoDesafiosOtorgado: boolean;

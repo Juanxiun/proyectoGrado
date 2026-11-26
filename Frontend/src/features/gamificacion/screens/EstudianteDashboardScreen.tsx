@@ -21,12 +21,12 @@ import {
 import { aprendizajeApi, type PerfilAprendizajeEstudiante } from '../../../api/aprendizaje.api';
 import {
   BentoCard,
-  ModalRespuestaPregunta,
   SvgInsignia,
   SvgRangoMedalla,
   StatusBadge,
   UserAvatar,
 } from '../../../shared/ui';
+import { MarkdownContent } from '../../../shared/ui/MarkdownContent';
 import { useResponsive } from '../../../utils/responsive';
 import { ApiClientError } from '../../../api/client';
 
@@ -61,12 +61,44 @@ const INSIGNIAS_CATALOGO = [
   },
 ];
 
+const RANGOS_LISTA = [
+  { id: 'D' as const, nombre: 'Explorador', desde: 0, color: '#64748B' },
+  { id: 'C' as const, nombre: 'Aprendiz', desde: 1000, color: '#B87333' },
+  { id: 'B' as const, nombre: 'Avanzado', desde: 2000, color: '#2563EB' },
+  { id: 'A' as const, nombre: 'Experto', desde: 4500, color: '#D97706' },
+  { id: 'S' as const, nombre: 'Maestro', desde: 6000, color: '#DC2626' },
+];
+
 const coloresRango: Record<'D' | 'C' | 'B' | 'A' | 'S', string> = {
-  D: '#9CA3AF',
-  C: '#8B5E3C',
+  D: '#64748B',
+  C: '#B87333',
   B: '#2563EB',
-  A: '#D4A017',
+  A: '#D97706',
   S: '#DC2626',
+};
+
+const nombresRango: Record<'D' | 'C' | 'B' | 'A' | 'S', string> = {
+  D: 'Explorador',
+  C: 'Aprendiz',
+  B: 'Avanzado',
+  A: 'Experto',
+  S: 'Maestro',
+};
+
+const ETIQUETAS_FORMATO: Record<string, string> = {
+  graficos_esquemas: 'Gráficos y esquemas',
+  cartas: 'Cartas de microlearning',
+  resumenes_directos: 'Resúmenes directos',
+  ejercicios_practicos: 'Ejercicios prácticos',
+};
+
+const NOMBRE_DESAFIO: Record<string, string> = {
+  resumen: 'Completar tema o resumen',
+  actividad: 'Resolver una actividad',
+  puntos: 'Sumar puntos',
+  cartas: 'Repasar con cartas',
+  esquema: 'Estudiar esquema',
+  indagacion: 'Ver pregunta de indagación',
 };
 
 function InformeAprendizajeModal({
@@ -84,38 +116,195 @@ function InformeAprendizajeModal({
   onClose: () => void;
   onRetry: () => void;
 }) {
-  const etiquetasFormato: Record<string, string> = {
-    graficos_esquemas: 'Gráficos y esquemas',
-    cartas: 'Cartas de microlearning',
-    resumenes_directos: 'Resúmenes directos',
-    ejercicios_practicos: 'Ejercicios prácticos',
-  };
+  return (
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+      <View className="flex-1 bg-black/60 justify-center items-center p-4">
+        <View className="w-full max-w-lg max-h-[90%] rounded-3xl bg-white overflow-hidden shadow-2xl">
+          <View className="bg-[#801F3F] px-5 py-4 flex-row items-center justify-between">
+            <View className="flex-row items-center gap-3 flex-1 pr-2">
+              <View className="h-10 w-10 rounded-2xl bg-white/15 items-center justify-center">
+                <Ionicons name="analytics-outline" size={22} color="#FFFFFF" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-white text-base font-black">Cómo vas en tu aprendizaje</Text>
+                <Text className="text-white/80 text-[11px] mt-0.5">Análisis de tus resultados, tiempos y repasos</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              onPress={onClose}
+              className="w-9 h-9 rounded-full bg-white/15 items-center justify-center"
+            >
+              <Ionicons name="close" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
 
-  return <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-    <View className="flex-1 bg-black/60 justify-center p-4">
-      <View className="max-h-[90%] rounded-3xl bg-white overflow-hidden">
-        <View className="bg-[#801F3F] p-5 flex-row items-center justify-between">
-          <View className="flex-1"><Text className="text-white text-lg font-black">Cómo vas en tu aprendizaje</Text><Text className="text-white/80 text-xs mt-1">Resumen de tus resultados, tiempos y repasos</Text></View>
-          <TouchableOpacity onPress={onClose} className="w-9 h-9 rounded-full bg-white/15 items-center justify-center"><Ionicons name="close" size={20} color="white"/></TouchableOpacity>
+          <ScrollView contentContainerClassName="p-4 gap-3.5" showsVerticalScrollIndicator={false}>
+            {loading ? (
+              <View className="items-center py-12 gap-3">
+                <ActivityIndicator size="large" color="#801F3F" />
+                <Text className="text-sm font-semibold text-gray-700 text-center">
+                  Analizando tus resultados, tiempos y repasos...
+                </Text>
+              </View>
+            ) : null}
+
+            {!loading && error ? (
+              <View className="rounded-2xl border border-rose-200 bg-rose-50 p-4 gap-3">
+                <View className="flex-row items-center gap-2">
+                  <Ionicons name="alert-circle" size={18} color="#BE123C" />
+                  <Text className="text-sm font-bold text-rose-900 flex-1">{error}</Text>
+                </View>
+                <TouchableOpacity onPress={onRetry} className="self-start rounded-xl bg-[#801F3F] px-4 py-2">
+                  <Text className="text-xs font-bold text-white">Volver a intentar</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!loading && !error && perfil ? (
+              <>
+                {/* Indicadores rápidos */}
+                <View className="flex-row gap-2">
+                  <View className="flex-1 rounded-2xl bg-slate-50 border border-slate-200 p-3 items-center">
+                    <Text className="text-lg font-black text-[#801F3F]">{perfil.completed_topics ?? 0}</Text>
+                    <Text className="text-[10px] font-bold text-slate-500 uppercase">Temas</Text>
+                  </View>
+                  <View className="flex-1 rounded-2xl bg-slate-50 border border-slate-200 p-3 items-center">
+                    <Text className="text-lg font-black text-indigo-700">{perfil.evidence_activity_count}</Text>
+                    <Text className="text-[10px] font-bold text-slate-500 uppercase">Retos</Text>
+                  </View>
+                  <View className="flex-1 rounded-2xl bg-slate-50 border border-slate-200 p-3 items-center">
+                    <Text className="text-lg font-black text-emerald-700">{perfil.completed_summaries}</Text>
+                    <Text className="text-[10px] font-bold text-slate-500 uppercase">Resúmenes</Text>
+                  </View>
+                </View>
+
+                {/* Ritmo de aprendizaje */}
+                <View className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4 gap-1.5">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="speedometer-outline" size={16} color="#6D28D9" />
+                    <Text className="text-[11px] font-black uppercase tracking-wider text-violet-900">
+                      Ritmo de aprendizaje
+                    </Text>
+                  </View>
+                  <MarkdownContent texto={perfil.learning_rhythm} baseFontSize={13} textColor="#1F2937" />
+                </View>
+
+                {/* Fortalezas */}
+                <View className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="ribbon-outline" size={16} color="#047857" />
+                    <Text className="text-[11px] font-black uppercase tracking-wider text-emerald-900">
+                      Tus fortalezas
+                    </Text>
+                  </View>
+                  {perfil.strengths.length ? (
+                    <View className="gap-1.5">
+                      {perfil.strengths.map((item, i) => (
+                        <View key={`${item}-${i}`} className="flex-row items-start gap-2 rounded-xl bg-white/80 px-3 py-2 border border-emerald-100">
+                          <Ionicons name="checkmark-circle" size={15} color="#059669" style={{ marginTop: 1 }} />
+                          <Text className="flex-1 text-xs leading-5 text-gray-800">{item}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text className="text-xs leading-5 text-gray-600">
+                      Sigue practicando; tus próximos intentos ayudarán a reconocer tus avances.
+                    </Text>
+                  )}
+                </View>
+
+                {/* Cómo aprendes mejor */}
+                <View className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="bulb-outline" size={16} color="#B45309" />
+                    <Text className="text-[11px] font-black uppercase tracking-wider text-amber-900">
+                      Cómo aprendes mejor
+                    </Text>
+                  </View>
+                  <Text className="text-xs text-gray-800">
+                    <Text className="font-bold">Enfoque: </Text>
+                    {perfil.learning_orientation.replaceAll('_', ' ')}
+                  </Text>
+                  <View className="flex-row flex-wrap gap-1.5 pt-0.5">
+                    {perfil.preferred_formats.length ? (
+                      perfil.preferred_formats.map((fmt) => (
+                        <View key={fmt} className="rounded-full bg-white border border-amber-200 px-2.5 py-1">
+                          <Text className="text-[11px] font-bold text-amber-900">
+                            {ETIQUETAS_FORMATO[fmt] || fmt.replaceAll('_', ' ')}
+                          </Text>
+                        </View>
+                      ))
+                    ) : (
+                      <Text className="text-xs text-gray-600">Aún no hay una preferencia clara</Text>
+                    )}
+                  </View>
+                </View>
+
+                {/* Investigación e indagación */}
+                <View className="rounded-2xl border border-sky-200 bg-sky-50/70 p-4 gap-1.5">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="compass-outline" size={16} color="#0369A1" />
+                    <Text className="text-[11px] font-black uppercase tracking-wider text-sky-900">
+                      Investigación e indagación
+                    </Text>
+                  </View>
+                  <Text className="text-xs font-semibold text-sky-950">
+                    {perfil.investigations_count ?? 0} consultas · {perfil.investigated_topics_count} temas explorados
+                  </Text>
+                  {perfil.deep_inquiry_topics.length ? (
+                    <View className="flex-row flex-wrap gap-1.5 pt-1">
+                      {perfil.deep_inquiry_topics.map((item, i) => (
+                        <View key={`${item}-${i}`} className="rounded-lg bg-white border border-sky-200 px-2.5 py-1">
+                          <Text className="text-[11px] text-sky-900">{item}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null}
+                </View>
+
+                {/* Posibles áreas de interés */}
+                {perfil.possible_ambitions.length > 0 ? (
+                  <View className="rounded-2xl border border-gray-200 bg-gray-50 p-4 gap-1.5">
+                    <View className="flex-row items-center gap-2">
+                      <Ionicons name="sparkles-outline" size={16} color="#4B5563" />
+                      <Text className="text-[11px] font-black uppercase tracking-wider text-gray-800">
+                        Posibles áreas de interés
+                      </Text>
+                    </View>
+                    <Text className="text-[10px] text-gray-500">Ideas exploratorias basadas en tus consultas.</Text>
+                    <View className="flex-row flex-wrap gap-1.5 pt-1">
+                      {perfil.possible_ambitions.map((item, i) => (
+                        <View key={`${item}-${i}`} className="rounded-full bg-white border border-gray-200 px-2.5 py-1">
+                          <Text className="text-[11px] font-semibold text-gray-800">{item}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {/* Recomendación personalizada */}
+                <View className="rounded-2xl border-2 border-[#E3C8D1] bg-rose-50/40 p-4 gap-1.5">
+                  <View className="flex-row items-center gap-2">
+                    <Ionicons name="trail-sign-outline" size={16} color="#801F3F" />
+                    <Text className="text-[11px] font-black uppercase tracking-wider text-[#801F3F]">
+                      Así personalizaremos tu contenido
+                    </Text>
+                  </View>
+                  <MarkdownContent texto={perfil.personalization_recommendation} baseFontSize={13} textColor="#1F2937" />
+                  <Text className="text-[10px] text-gray-500 pt-1">
+                    Nivel de confianza del análisis: {perfil.confidence}
+                  </Text>
+                </View>
+              </>
+            ) : null}
+          </ScrollView>
         </View>
-        <ScrollView contentContainerClassName="p-4 gap-3">
-          {loading ? <View className="items-center py-10"><ActivityIndicator size="large" color="#801F3F"/><Text className="text-sm text-gray-600 mt-3">Estamos comparando tus resultados, tiempos y repasos...</Text></View> : null}
-          {!loading && error ? <View className="rounded-2xl bg-rose-50 p-4 gap-3"><Text className="text-sm text-rose-900">{error}</Text><TouchableOpacity onPress={onRetry} className="self-start rounded-xl bg-[#801F3F] px-4 py-2"><Text className="text-xs font-bold text-white">Volver a intentar</Text></TouchableOpacity></View> : null}
-          {!loading && !error && perfil ? <>
-            <View className="rounded-2xl bg-violet-50 p-4"><Text className="text-xs font-bold text-violet-900">RITMO DE APRENDIZAJE</Text><Text className="text-sm leading-6 text-gray-800 mt-1">{perfil.learning_rhythm}</Text></View>
-            <View className="rounded-2xl bg-emerald-50 p-4"><Text className="text-xs font-bold text-emerald-900">FORTALEZAS</Text>{perfil.strengths.length ? perfil.strengths.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-800 mt-1">• {item}</Text>) : <Text className="text-sm text-gray-600 mt-1">Sigue practicando; tus próximos intentos ayudarán a reconocer tus avances.</Text>}</View>
-            <View className="rounded-2xl bg-amber-50 p-4"><Text className="text-xs font-bold text-amber-900">CÓMO APRENDES MEJOR</Text><Text className="text-sm text-gray-800 mt-1">Enfoque: {perfil.learning_orientation.replaceAll('_', ' ')}</Text><Text className="text-sm text-gray-800 mt-1">Formatos: {perfil.preferred_formats.map((item) => etiquetasFormato[item] || item).join(', ') || 'Aún no hay una preferencia clara'}</Text></View>
-            <View className="rounded-2xl bg-sky-50 p-4"><Text className="text-xs font-bold text-sky-900">INVESTIGACIÓN E INDAGACIÓN</Text><Text className="text-sm text-gray-800 mt-1">Indagaciones realizadas: {perfil.investigations_count ?? 0} · Temas explorados: {perfil.investigated_topics_count}</Text>{perfil.deep_inquiry_topics.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-700 mt-1">• {item}</Text>)}</View>
-            <View className="rounded-2xl bg-gray-50 p-4"><Text className="text-xs font-bold text-gray-800">POSIBLES ÁREAS DE INTERÉS</Text><Text className="text-[10px] text-gray-500 mt-1">Son ideas exploratorias, no una decisión vocacional.</Text>{perfil.possible_ambitions.map((item, i) => <Text key={`${item}-${i}`} className="text-sm text-gray-800 mt-1">• {item}</Text>)}</View>
-            <View className="rounded-2xl border border-[#E3C8D1] p-4"><Text className="text-xs font-bold text-[#801F3F]">ASÍ PERSONALIZAREMOS TU CONTENIDO</Text><Text className="text-sm leading-6 text-gray-800 mt-1">{perfil.personalization_recommendation}</Text><Text className="text-[10px] text-gray-500 mt-2">Evidencia: {perfil.completed_topics ?? 0} temas, {perfil.evidence_activity_count} actividades y {perfil.completed_summaries} resúmenes · Confianza {perfil.confidence}</Text></View>
-          </> : null}
-        </ScrollView>
       </View>
-    </View>
-  </Modal>;
+    </Modal>
+  );
 }
 
-export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
+export function EstudianteDashboardScreen(_props: { onNavigate?: (route: string) => void }) {
   const { user } = useAuth();
   const { isMobile } = useResponsive();
 
@@ -123,12 +312,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [resumen, setResumen] = useState<ResumenGamificacion | null>(null);
 
-  const puntosAnimado = useRef(new Animated.Value(0)).current;
   const rachaScale = useRef(new Animated.Value(1)).current;
   const rachaRotate = useRef(new Animated.Value(0)).current;
-  const rachaBrillo = useRef(new Animated.Value(0)).current;
-
-  // esPrimeraCarga -> evita animar la racha al primer render
   const esPrimeraCarga = useRef(true);
   const rachaCompletadaAntes = useRef(false);
 
@@ -138,18 +323,38 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const [comprando, setComprando] = useState(false);
   const [perfilOpen, setPerfilOpen] = useState(false);
   const [perfilLoading, setPerfilLoading] = useState(false);
+  const [perfilAutoLoading, setPerfilAutoLoading] = useState(false);
   const [perfil, setPerfil] = useState<PerfilAprendizajeEstudiante | null>(null);
   const [perfilError, setPerfilError] = useState<string | null>(null);
-
-  const [respuestaModalOpen, setRespuestaModalOpen] = useState(false);
-  const [respuestaPregunta] = useState<{
-    pregunta: string;
-    respuestaEstudiante: string;
-    respuestaCorrecta: string;
-    explicacion?: string;
-  } | null>(null);
+  const perfilAutoCargaRef = useRef<Promise<void> | null>(null);
 
   const cursoPeriodoId = user?.cursoPeriodoId || '1';
+
+  const actualizarPreviaAprendizaje = async () => {
+    if (perfilAutoCargaRef.current) return perfilAutoCargaRef.current;
+    const carga = (async () => {
+      setPerfilAutoLoading(true);
+      try {
+        const evidencia = await gamificacionApi.getEvidenciaAprendizaje();
+        if (evidencia.resumenesCompletados < 1 || evidencia.totalActividades < 1) {
+          setPerfil(null);
+          return;
+        }
+        const resultado = await aprendizajeApi.evaluarPerfilAprendizaje(evidencia);
+        setPerfil(resultado.ready === false ? null : resultado);
+      } catch (error) {
+        console.warn('No se pudo preparar la vista previa de aprendizaje:', error);
+      } finally {
+        setPerfilAutoLoading(false);
+      }
+    })();
+    perfilAutoCargaRef.current = carga;
+    try {
+      await carga;
+    } finally {
+      perfilAutoCargaRef.current = null;
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -162,7 +367,8 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
           } catch (error) {
             if (!(error instanceof ApiClientError && error.status === 404)) throw error;
           }
-          if (!perfilExistente) await gamificacionApi.registrarPerfil({
+          if (!perfilExistente) {
+            await gamificacionApi.registrarPerfil({
               estudianteId: user.estudianteId || user.id,
               cursoPeriodoId: user.cursoPeriodoId,
               paralelo: user.paralelo === 'B' ? 'B' : 'A',
@@ -170,6 +376,7 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
               apellidoPaterno: user.apellidoPaterno,
               avatarUrl: user.fotoUrl,
             });
+          }
         } catch (error) {
           console.warn('No se pudo sincronizar el perfil de gamificacion:', error);
         }
@@ -179,11 +386,15 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
       if (resumenData.status === 'fulfilled') {
         setResumen(resumenData.value);
         setDashboardError(null);
+        void actualizarPreviaAprendizaje();
       } else {
         setResumen(null);
-        setDashboardError(resumenData.reason instanceof Error ? resumenData.reason.message : 'No se pudo cargar el resumen de gamificación.');
+        setDashboardError(
+          resumenData.reason instanceof Error
+            ? resumenData.reason.message
+            : 'No se pudo cargar el resumen de gamificación.',
+        );
       }
-
     } catch (e) {
       setDashboardError(e instanceof Error ? e.message : 'No se pudo conectar con gamificación.');
       console.error('Error cargando gamificacion:', e);
@@ -192,9 +403,11 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     }
   };
 
-  useFocusEffect(useCallback(() => {
-    void fetchData();
-  }, [cursoPeriodoId]));
+  useFocusEffect(
+    useCallback(() => {
+      void fetchData();
+    }, [cursoPeriodoId]),
+  );
 
   useEffect(() => {
     let temporizador: ReturnType<typeof setTimeout>;
@@ -216,42 +429,30 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
     return () => clearTimeout(temporizador);
   }, [cursoPeriodoId]);
 
-  // animaciones -> puntos y racha
   useEffect(() => {
     if (!resumen) return;
-
     const esPrimero = esPrimeraCarga.current;
     esPrimeraCarga.current = false;
-
-    Animated.timing(puntosAnimado, {
-      toValue: resumen.puntosIndividuales,
-      duration: 900,
-      useNativeDriver: true,
-    }).start();
 
     if (!esPrimero) {
       const acabadaDeActivar = resumen.racha?.completada && !rachaCompletadaAntes.current;
       rachaCompletadaAntes.current = resumen.racha?.completada ?? false;
-
       if (acabadaDeActivar) {
         Animated.sequence([
           Animated.parallel([
-            Animated.timing(rachaScale, { toValue: 1.25, duration: 300, useNativeDriver: true }),
-            Animated.timing(rachaRotate, { toValue: 15, duration: 300, useNativeDriver: true }),
-            Animated.timing(rachaBrillo, { toValue: 1, duration: 300, useNativeDriver: true }),
+            Animated.timing(rachaScale, { toValue: 1.2, duration: 280, useNativeDriver: true }),
+            Animated.timing(rachaRotate, { toValue: 1, duration: 280, useNativeDriver: true }),
           ]),
           Animated.parallel([
-            Animated.timing(rachaScale, { toValue: 1, duration: 400, useNativeDriver: true }),
-            Animated.timing(rachaRotate, { toValue: 0, duration: 400, useNativeDriver: true }),
-            Animated.timing(rachaBrillo, { toValue: 0, duration: 600, useNativeDriver: true }),
+            Animated.timing(rachaScale, { toValue: 1, duration: 360, useNativeDriver: true }),
+            Animated.timing(rachaRotate, { toValue: 0, duration: 360, useNativeDriver: true }),
           ]),
         ]).start();
       }
     } else {
       rachaCompletadaAntes.current = resumen.racha?.completada ?? false;
     }
-
-  }, [resumen, puntosAnimado, rachaScale, rachaRotate, rachaBrillo]);
+  }, [resumen, rachaScale, rachaRotate]);
 
   const handleOpenTienda = async () => {
     setTiendaModalOpen(true);
@@ -267,11 +468,13 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const handleOpenPerfil = async () => {
     setPerfilLoading(true);
     setPerfilError(null);
-    setPerfil(null);
     try {
       const evidencia = await gamificacionApi.getEvidenciaAprendizaje();
       if (evidencia.resumenesCompletados < 1 || evidencia.totalActividades < 1) {
-        Alert.alert('Aún no hay análisis', 'Completa al menos un resumen y una actividad. Después verás cómo vas y qué puedes mejorar.');
+        Alert.alert(
+          'Aún no hay análisis',
+          `Se registraron ${evidencia.resumenesCompletados} resúmenes o temas completados y ${evidencia.totalActividades} evaluaciones. Completa ambos y vuelve a abrir esta pantalla para preparar tu informe.`,
+        );
         return;
       }
       setPerfilOpen(true);
@@ -313,302 +516,239 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
   const rango = resumen?.rango ?? 'D';
   const nivel = resumen?.nivel ?? 0;
   const colorRango = coloresRango[rango];
+  const nombreRango = nombresRango[rango];
+  const puntosFaltantes = resumen?.puntosSiguienteNivel ?? 100;
+  const progresoNivel = Math.min(100, Math.max(8, Math.round(((100 - Math.min(100, puntosFaltantes)) / 100) * 100)));
   const hoyLaPaz = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/La_Paz' }).format(new Date());
 
   const aprendizajeHoy = resumen?.aprendizajeHoy ?? [];
   const materiasHoy = [...new Set(aprendizajeHoy.map((a) => a.materiaNombre))];
+  const temasHoy = [...new Set(aprendizajeHoy.map((a) => a.titulo).filter(Boolean))];
+  const evaluacionesHoy = aprendizajeHoy.filter((actividad) => actividad.tipo === 'actividad');
   const promedioAciertoHoy =
-    aprendizajeHoy.length > 0
-      ? aprendizajeHoy.reduce((acc, a) => acc + (a.porcentajeAcierto ?? 0), 0) / aprendizajeHoy.length
+    evaluacionesHoy.length > 0
+      ? evaluacionesHoy.reduce((acc, a) => acc + (a.porcentajeAcierto ?? 0), 0) / evaluacionesHoy.length
       : 0;
   const totalTemasHoy = aprendizajeHoy.length;
+
   const resumenNarrativo = () => {
     if (totalTemasHoy === 0) {
-      return 'Aún no has estudiado nada hoy. ¡Anímate a completar una actividad y descubre qué aprendiste!';
+      return 'Aún no hay actividad de estudio registrada para hoy. Cuando completes un resumen o una evaluación, aparecerá aquí.';
     }
-    let adjetivo = 'buen';
-    if (promedioAciertoHoy >= 0.8) adjetivo = 'muy buen';
-    else if (promedioAciertoHoy >= 0.6) adjetivo = 'buen';
-    else adjetivo = 'básico';
-    const temaList = materiasHoy.slice(0, 3).join(', ');
-    const masTemas = materiasHoy.length > 3 ? ` y ${materiasHoy.length - 3} más` : '';
-    return `Repasaste ${totalTemasHoy} tema${totalTemasHoy > 1 ? 's' : ''} de ${temaList}${masTemas} y demostraste un rendimiento ${adjetivo}.`;
+    const adjetivo = promedioAciertoHoy >= 0.8 ? 'muy buen' : promedioAciertoHoy >= 0.6 ? 'buen' : 'básico';
+    const temaList = temasHoy.slice(0, 3).join(', ');
+    const masTemas = temasHoy.length > 3 ? ` y ${temasHoy.length - 3} más` : '';
+    const materiaList = materiasHoy.slice(0, 3).join(', ');
+    const rendimiento = evaluacionesHoy.length ? ` Tu evaluación reflejó un rendimiento ${adjetivo}.` : '';
+    return `Hoy estudiaste ${temaList}${masTemas}${materiaList ? ` en ${materiaList}` : ''}.${rendimiento}`;
   };
 
   const insigniasObtenidas = resumen?.insignias ?? [];
-  const insigniaPorCodigo = (codigo: string) =>
-    insigniasObtenidas.some((ins) => ins.codigo === codigo);
-
+  const insigniaPorCodigo = (codigo: string) => insigniasObtenidas.some((ins) => ins.codigo === codigo);
   const desafiosDiarios = resumen?.desafiosDiarios?.slice(0, 3) ?? [];
 
-  const NOMBRE_DESAFIO: Record<string, string> = {
-    resumen: 'Completar tema o resumen',
-    actividad: 'Resolver una actividad',
-    puntos: 'Sumar puntos',
-    cartas: 'Repasar con cartas',
-    esquema: 'Estudiar esquema',
-    indagacion: 'Ver pregunta de indagación',
-  };
-
-  if (isMobile) return (
-    <ScrollView className="flex-1" contentContainerClassName="gap-3 pb-6">
-      {dashboardError ? <TouchableOpacity onPress={() => void fetchData()} className="rounded-xl border border-rose-200 bg-rose-50 p-3"><Text className="text-xs font-bold text-rose-900">No se pudo cargar gamificación</Text><Text className="text-[10px] text-rose-800 mt-1">{dashboardError}</Text><Text className="text-[10px] font-bold text-rose-900 mt-2">Toca para volver a intentar</Text></TouchableOpacity> : null}
-
-      <View className="rounded-3xl overflow-hidden bg-[#801F3F] shadow-sm">
-        <View className="px-5 pt-5 pb-4 flex-row items-center justify-between">
-          <View className="flex-1">
-            <Text className="text-white/80 text-[10px] font-bold uppercase tracking-wider">Tu perfil estudiantil</Text>
-            <Text className="text-white text-2xl font-black mt-0.5">¡Hola, {user?.nombre || 'Estudiante'}!</Text>
-            <Text className="text-white/70 text-[10px] mt-1">Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
-          </View>
-          <UserAvatar
-            nombre={user?.nombre}
-            apellidoPaterno={user?.apellidoPaterno}
-            fotoUrl={user?.fotoUrl ?? undefined}
-            className="w-16 h-16 rounded-2xl bg-white/20 border border-white/30"
-            textoClassName="text-white font-bold text-xl"
-            bordered
-          />
-        </View>
-        <View className="px-5 pb-5 flex-row items-center gap-4">
-          <TouchableOpacity onPress={() => setRangosModalOpen(true)}>
-          <SvgRangoMedalla
-            rango={rango}
-            nivel={nivel}
-            colorRango={colorRango}
-            tamano={130}
-          />
-          </TouchableOpacity>
-          <View className="flex-1">
-            <Text className="text-[#F3D9B7] text-[11px] font-bold uppercase tracking-wider">Rango actual</Text>
-            <Text className="text-white text-lg font-black mt-0.5">Nivel {nivel} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
-            <Text className="text-white/70 text-[10px] mt-1">{resumen?.tag ?? '—'} · {resumen?.puntosSiguienteNivel ?? 100} XP para el siguiente nivel</Text>
-          </View>
-        </View>
-      </View>
-
-      <View className="flex-row gap-3">
-        <View className="flex-1 rounded-3xl bg-[#F3D9B7] p-4 items-center justify-center min-h-44">
-          <Animated.View
-            style={{
-              transform: [
-                { scale: rachaScale },
-                { rotate: rachaRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '15deg'] }) },
-              ],
-            }}
-            className="w-14 h-14 rounded-full bg-white/40 flex items-center justify-center mb-2"
-          >
-            <Ionicons name="flame" size={30} color={racha?.fecha === hoyLaPaz && racha?.completada ? '#EA580C' : '#9C5367'} />
-          </Animated.View>
-          <Text className="text-[#801F3F] text-3xl font-black mt-1">{loading ? '…' : racha?.rachaActual ?? 0}</Text>
-          <Text className="text-[#9C5367] text-[9px] font-bold">DÍAS DE RACHA</Text>
-          <Text className="text-[#9C5367] text-[11px] font-bold mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
-        </View>
-        <View className="flex-1 rounded-3xl bg-white p-4 items-center justify-center min-h-44 border border-gray-200">
-          <View className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-            <Ionicons name="diamond-outline" size={26} color="#D97706" />
-          </View>
-          <Text className="text-[#801F3F] text-3xl font-black mt-1"><Animated.Text>{puntosAnimado}</Animated.Text></Text>
-          <Text className="text-gray-500 text-[9px] font-bold">PUNTOS ACADÉMICOS</Text>
-          <Text className="text-gray-500 text-[9px] mt-0.5">Hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 20} pts</Text>
-          <View className="mt-2 h-1.5 w-full rounded-full bg-amber-100 overflow-hidden"><View className="h-full bg-amber-500" style={{ width: `${Math.min(100, ((resumen?.puntosHoy ?? 0) / (resumen?.limiteDiario ?? 20)) * 100)}%` }}/></View>
-        </View>
-      </View>
-
-      <View className="gap-2">
-        <View className="flex-row items-center justify-between px-1">
-          <Text className="text-[#801F3F] font-bold text-sm">Tus insignias</Text>
-          <Text className="text-[10px] text-gray-500 font-medium">{insigniasObtenidas.length} obtenidas</Text>
-        </View>
-        <View className="flex-row gap-2 px-1">
-          {INSIGNIAS_CATALOGO.map((insignia) => (
-            <SvgInsignia
-              key={insignia.codigo}
-              nombre={insignia.nombre}
-              icono={insignia.icono}
-              criterio={insignia.descripcion}
-              obtenida={insigniaPorCodigo(insignia.codigo)}
-              tamano={56}
-            />
-          ))}
-        </View>
-      </View>
-
-      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
-        <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
-          <Text className="text-[10px] text-gray-500 font-medium">Gana hasta 20 pts hoy</Text>
-        </View>
-        <View className="flex-row gap-2 px-1">
-          {desafiosDiarios.map((reto) => (
-            <TouchableOpacity
-              key={reto.codigo}
-              className={`flex-1 p-3 rounded-2xl border flex-col items-center gap-1 ${
-                reto.completado
-                  ? 'bg-emerald-50 border-emerald-200'
-                  : 'bg-white border-gray-200'
-              }`}
-            >
-              <Ionicons
-                name={reto.completado ? 'checkmark-circle' : 'ellipse-outline'}
-                size={22}
-                color={reto.completado ? '#16A34A' : '#9CA3AF'}
-              />
-              <Text className="text-[9px] font-bold text-center leading-tight text-gray-700">
-                {NOMBRE_DESAFIO[reto.codigo] ?? reto.nombre}
-              </Text>
-              {reto.completado && (
-                <Text className="text-[10px] font-bold text-emerald-600">✓ Completado</Text>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-        {resumen?.bonoDesafiosOtorgado && (
-          <Text className="text-[10px] font-bold text-emerald-700 text-center">
-            ¡Bono semanal de hasta 20 puntos obtenido!
-          </Text>
-        )}
-      </View>
-
-      <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <View className="w-9 h-9 rounded-xl bg-purple-100 items-center justify-center">
-              <Ionicons name="sparkles" size={18} color="#7C3AED" />
-            </View>
-            <Text className="text-base font-bold text-purple-950">¿Qué aprendí hoy?</Text>
-          </View>
-          <StatusBadge label="Resumen IA" variant="brand" />
-        </View>
-        <View className="rounded-2xl bg-white p-4 border border-purple-100 shadow-sm">
-          <Text className="text-sm text-gray-800 leading-relaxed">{resumenNarrativo()}</Text>
-          <Text className="text-[10px] text-gray-500 mt-3">
-            {totalTemasHoy > 0 ? `Promedio de acierto hoy: ${Math.round(promedioAciertoHoy * 100)}% · ${totalTemasHoy} actividad${totalTemasHoy > 1 ? 'es' : ''} completada${totalTemasHoy > 1 ? 's' : ''}.` : 'Completa tu primera actividad para generar tu resumen.'}
-          </Text>
-        </View>
-        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
-      </BentoCard>
-
-      <View className="flex-row gap-3">
-        <TouchableOpacity onPress={handleOpenTienda} className="flex-1 rounded-3xl bg-[#801F3F] items-center justify-center p-4">
-          <Ionicons name="bag-handle-outline" size={30} color="#F3D9B7" /><Text className="text-[#F3D9B7] text-xs font-bold mt-2">Tienda de Recompensas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleOpenPerfil} className="flex-1 rounded-3xl bg-white border border-gray-200 p-4 justify-center">
-          <View className="flex-row items-center justify-between"><Text className="text-gray-500 text-[10px] font-bold">Resumen de aprendizaje</Text><Ionicons name="locate-outline" size={17} color="#801F3F" /></View>
-          <Text className="text-[#801F3F] text-xs font-bold mt-3">Revisa tu rendimiento</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>
-        <View className="flex-1 bg-black/60 justify-center p-4"><View className="max-h-[85%] rounded-3xl bg-white overflow-hidden">
-          <View className="bg-amber-600 p-5 flex-row items-center justify-between"><View><Text className="font-black text-white">Tienda de recompensas</Text><Text className="text-xs text-white/80">Tus puntos: {puntosInd}</Text></View><TouchableOpacity onPress={() => setTiendaModalOpen(false)}><Ionicons name="close" size={22} color="white"/></TouchableOpacity></View>
-          <ScrollView contentContainerClassName="gap-3 p-4">{recompensas.length === 0 ? <Text className="py-8 text-center text-sm text-gray-500">No hay artículos disponibles.</Text> : recompensas.map((rec) => <View key={rec.id} className="flex-row items-center justify-between rounded-2xl border border-gray-100 bg-gray-50 p-4"><View className="flex-1 pr-3"><Text className="font-bold text-gray-900">{rec.nombre}</Text><Text className="text-xs text-gray-600">{rec.descripcion}</Text><Text className="mt-1 font-black text-amber-700">{rec.costoPuntosIndividuales} pts</Text></View><TouchableOpacity onPress={() => void handleComprarRecompensa(rec)} disabled={comprando || puntosInd < rec.costoPuntosIndividuales} className="rounded-xl bg-amber-600 px-3 py-2 disabled:bg-gray-300"><Text className="font-bold text-white">Canjear</Text></TouchableOpacity></View>)}</ScrollView>
-        </View></View>
-      </Modal>
-      <Modal visible={rangosModalOpen} transparent animationType="fade" onRequestClose={() => setRangosModalOpen(false)}>
-        <View className="flex-1 bg-black/60 justify-center p-4"><View className="rounded-3xl bg-white p-5"><Text className="mb-3 text-lg font-black text-gray-900">Rangos y XP</Text>{[{ id: 'D', nombre: 'Explorador', desde: 0 }, { id: 'C', nombre: 'Aprendiz', desde: 1000 }, { id: 'B', nombre: 'Avanzado', desde: 2000 }, { id: 'A', nombre: 'Experto', desde: 4500 }, { id: 'S', nombre: 'Maestro', desde: 6000 }].map((item) => <View key={item.id} className={`mb-2 rounded-xl border p-3 ${rango === item.id ? 'border-[#801F3F] bg-rose-50' : 'border-gray-200'}`}><Text className="font-bold">{item.id} · {item.nombre}{rango === item.id ? ' (actual)' : ''}</Text><Text className="text-xs text-gray-600">Alcanza {item.desde} XP para subir de rango.</Text></View>)}<TouchableOpacity onPress={() => setRangosModalOpen(false)} className="mt-2 rounded-xl bg-[#801F3F] p-3"><Text className="text-center font-bold text-white">Cerrar</Text></TouchableOpacity></View></View>
-      </Modal>
-      <InformeAprendizajeModal visible={perfilOpen} loading={perfilLoading} error={perfilError} perfil={perfil} onClose={() => setPerfilOpen(false)} onRetry={handleOpenPerfil} />
-      <ModalRespuestaPregunta visible={respuestaModalOpen} {...(respuestaPregunta ?? { pregunta: '', respuestaEstudiante: '', respuestaCorrecta: '' })} onClose={() => setRespuestaModalOpen(false)} />
-    </ScrollView>
-  );
-
   return (
-    <ScrollView className="flex-1" contentContainerClassName={isMobile ? 'gap-3 px-3 pt-2 pb-8' : 'gap-4 pb-12'}>
-      {dashboardError ? <TouchableOpacity onPress={() => void fetchData()} className="rounded-xl border border-rose-200 bg-rose-50 p-3"><Text className="text-xs font-bold text-rose-900">No se pudo cargar gamificación</Text><Text className="text-[10px] text-rose-800 mt-1">{dashboardError}</Text><Text className="text-[10px] font-bold text-rose-900 mt-2">Toca para volver a intentar</Text></TouchableOpacity> : null}
-      <View className="rounded-3xl overflow-hidden bg-[#801F3F] shadow-sm">
-        <View className="px-5 pt-5 pb-4 flex-row items-center justify-between">
+    <ScrollView className="flex-1" contentContainerClassName={isMobile ? 'gap-3.5 pb-8' : 'gap-4 pb-12'}>
+      {dashboardError ? (
+        <TouchableOpacity onPress={() => void fetchData()} className="rounded-2xl border border-rose-200 bg-rose-50 p-3.5">
+          <View className="flex-row items-center gap-2">
+            <Ionicons name="alert-circle" size={16} color="#9F1239" />
+            <Text className="text-xs font-bold text-rose-900">No se pudo cargar gamificación</Text>
+          </View>
+          <Text className="text-[11px] text-rose-800 mt-1">{dashboardError}</Text>
+          <Text className="text-[11px] font-bold text-rose-900 mt-1.5">Toca para volver a intentar</Text>
+        </TouchableOpacity>
+      ) : null}
+
+      {/* Tarjeta principal de perfil y rango */}
+      <View className="rounded-3xl overflow-hidden bg-[#801F3F] shadow-md">
+        <View className="px-5 pt-5 pb-3 flex-row items-center justify-between gap-3">
           <View className="flex-1">
-            <Text className="text-white/80 text-[10px] font-bold uppercase tracking-wider">Tu perfil estudiantil</Text>
-            <Text className="text-white text-2xl font-black mt-0.5">¡Hola, {user?.nombre || 'Estudiante'}!</Text>
-            <Text className="text-white/70 text-[10px] mt-1">Rango {rango} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
+            <Text className="text-white/75 text-[10px] font-bold uppercase tracking-widest">
+              Tu perfil estudiantil
+            </Text>
+            <Text className="text-white text-2xl font-black mt-0.5" numberOfLines={1}>
+              ¡Hola, {user?.nombre || 'Estudiante'}!
+            </Text>
           </View>
           <UserAvatar
             nombre={user?.nombre}
             apellidoPaterno={user?.apellidoPaterno}
             fotoUrl={user?.fotoUrl ?? undefined}
-            className="w-16 h-16 rounded-2xl bg-white/20 border border-white/30"
-            textoClassName="text-white font-bold text-xl"
+            className="w-14 h-14 rounded-2xl bg-white/20 border border-white/30"
+            textoClassName="text-white font-bold text-lg"
             bordered
           />
         </View>
-        <View className="px-5 pb-5 flex-row items-center gap-4">
-          <TouchableOpacity onPress={() => setRangosModalOpen(true)}>
-          <SvgRangoMedalla
-            rango={rango}
-            nivel={nivel}
-            colorRango={colorRango}
-            tamano={160}
-          />
+
+        <View className="mx-4 mb-4 rounded-2xl bg-black/15 border border-white/15 p-4 flex-row items-center gap-4">
+          <TouchableOpacity activeOpacity={0.85} onPress={() => setRangosModalOpen(true)}>
+            <SvgRangoMedalla
+              rango={rango}
+              nivel={nivel}
+              colorRango={colorRango}
+              tamano={isMobile ? 104 : 118}
+            />
           </TouchableOpacity>
-          <View className="flex-1">
-            <Text className="text-[#F3D9B7] text-[11px] font-bold uppercase tracking-wider">Rango actual</Text>
-            <Text className="text-white text-xl font-black mt-0.5">Nivel {nivel} · {puntosCurso.toLocaleString('es-BO')} XP</Text>
-            <Text className="text-white/70 text-[10px] mt-1">{resumen?.tag ?? '—'} · {resumen?.puntosSiguienteNivel ?? 100} XP para el siguiente nivel</Text>
+
+          <View className="flex-1 gap-1.5">
+            <View className="flex-row items-center gap-2 flex-wrap">
+              <View className="rounded-full bg-white/15 px-2.5 py-0.5">
+                <Text className="text-[#F3D9B7] text-[10px] font-black uppercase tracking-wider">
+                  Rango {rango} · {nombreRango}
+                </Text>
+              </View>
+            </View>
+            <Text className="text-white text-xl font-black">
+              Nivel {nivel} · {puntosCurso.toLocaleString('es-BO')} XP
+            </Text>
+            <View className="h-2 w-full rounded-full bg-white/20 overflow-hidden">
+              <View className="h-full rounded-full bg-[#F3D9B7]" style={{ width: `${progresoNivel}%` }} />
+            </View>
+            <View className="flex-row items-center justify-between pt-0.5">
+              <Text className="text-white/80 text-[11px] flex-1" numberOfLines={1}>
+                Faltan {puntosFaltantes} XP para subir de nivel
+              </Text>
+              <TouchableOpacity
+                onPress={() => setRangosModalOpen(true)}
+                className="flex-row items-center gap-1 rounded-lg bg-white/15 px-2 py-1"
+              >
+                <Text className="text-[10px] font-bold text-white">Rangos</Text>
+                <Ionicons name="chevron-forward" size={11} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </View>
 
+      {/* Racha y Puntos */}
       <View className="flex-row gap-3">
-        <View className="flex-1 rounded-3xl bg-[#F3D9B7] p-4 items-center justify-center min-h-44">
+        <View className="flex-1 rounded-3xl bg-[#F3D9B7] p-4 items-center justify-center min-h-40 border border-amber-200/60">
           <Animated.View
             style={{
               transform: [
                 { scale: rachaScale },
-                { rotate: rachaRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '15deg'] }) },
+                { rotate: rachaRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '12deg'] }) },
               ],
             }}
-            className="w-14 h-14 rounded-full bg-white/40 flex items-center justify-center mb-2"
+            className="w-13 h-13 rounded-2xl bg-white/50 items-center justify-center mb-2 p-2.5"
           >
-            <Ionicons name="flame" size={30} color={racha?.fecha === hoyLaPaz && racha?.completada ? '#EA580C' : '#9C5367'} />
-          </Animated.View>
-          <Text className="text-[#801F3F] text-3xl font-black mt-1">{loading ? '…' : racha?.rachaActual ?? 0}</Text>
-          <Text className="text-[#9C5367] text-[9px] font-bold">DÍAS DE RACHA</Text>
-          <Text className="text-[#9C5367] text-[11px] font-bold mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
-        </View>
-        <View className="flex-1 rounded-3xl bg-white p-4 items-center justify-center min-h-44 border border-gray-200">
-          <View className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center mb-2">
-            <Ionicons name="diamond-outline" size={26} color="#D97706" />
-          </View>
-          <Text className="text-[#801F3F] text-3xl font-black mt-1"><Animated.Text>{puntosAnimado}</Animated.Text></Text>
-          <Text className="text-gray-500 text-[9px] font-bold">PUNTOS ACADÉMICOS</Text>
-          <Text className="text-gray-500 text-[9px] mt-0.5">Hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 20} pts</Text>
-          <View className="mt-2 h-1.5 w-full rounded-full bg-amber-100 overflow-hidden"><View className="h-full bg-amber-500" style={{ width: `${Math.min(100, ((resumen?.puntosHoy ?? 0) / (resumen?.limiteDiario ?? 20)) * 100)}%` }}/></View>
-        </View>
-      </View>
-
-      <View className="gap-2">
-        <View className="flex-row items-center justify-between px-1">
-          <Text className="text-[#801F3F] font-bold text-sm">Tus insignias</Text>
-          <Text className="text-[10px] text-gray-500 font-medium">{insigniasObtenidas.length} obtenidas</Text>
-        </View>
-        <View className="flex-row gap-2 px-1">
-          {INSIGNIAS_CATALOGO.map((insignia) => (
-            <SvgInsignia
-              key={insignia.codigo}
-              nombre={insignia.nombre}
-              icono={insignia.icono}
-              criterio={insignia.descripcion}
-              obtenida={insigniaPorCodigo(insignia.codigo)}
-              tamano={56}
+            <Ionicons
+              name="flame"
+              size={28}
+              color={racha?.fecha === hoyLaPaz && racha?.completada ? '#EA580C' : '#9C5367'}
             />
-          ))}
+          </Animated.View>
+          <Text className="text-[#801F3F] text-3xl font-black">{loading ? '…' : racha?.rachaActual ?? 0}</Text>
+          <Text className="text-[#9C5367] text-[10px] font-extrabold tracking-wider">DÍAS DE RACHA</Text>
+          <Text className="text-[#9C5367] text-[11px] font-semibold mt-0.5">Récord: {racha?.mejorRacha ?? 1} d</Text>
+        </View>
+
+        <View className="flex-1 rounded-3xl bg-white p-4 items-center justify-center min-h-40 border border-gray-200">
+          <View className="w-12 h-12 rounded-2xl bg-amber-100 items-center justify-center mb-2">
+            <Ionicons name="diamond-outline" size={25} color="#D97706" />
+          </View>
+          <Text className="text-[#801F3F] text-3xl font-black">
+            {loading ? '…' : puntosInd.toLocaleString('es-BO')}
+          </Text>
+          <Text className="text-gray-500 text-[10px] font-extrabold tracking-wider">PUNTOS ACADÉMICOS</Text>
+          <Text className="text-gray-500 text-[10px] mt-0.5">
+            Hoy: {resumen?.puntosHoy ?? 0}/{resumen?.limiteDiario ?? 20} pts
+          </Text>
+          <View className="mt-2 h-1.5 w-full rounded-full bg-amber-100 overflow-hidden">
+            <View
+              className="h-full rounded-full bg-amber-500"
+              style={{
+                width: `${Math.min(100, ((resumen?.puntosHoy ?? 0) / (resumen?.limiteDiario ?? 20)) * 100)}%`,
+              }}
+            />
+          </View>
         </View>
       </View>
 
+      {/* Insignias */}
       <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
-        <View className="flex-row items-center justify-between mb-2">
-          <Text className="text-[#801F3F] font-bold text-sm">Desafíos diarios</Text>
-          <Text className="text-[10px] text-gray-500 font-medium">Gana hasta 20 pts hoy</Text>
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <View className="h-8 w-8 rounded-xl bg-amber-100 items-center justify-center">
+              <Ionicons name="medal-outline" size={17} color="#B45309" />
+            </View>
+            <View>
+              <Text className="text-[#801F3F] font-extrabold text-sm">Tus insignias</Text>
+              <Text className="text-[10px] text-gray-500">Toca una insignia para ver cómo obtenerla</Text>
+            </View>
+          </View>
+          <View className="rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1">
+            <Text className="text-[10px] font-bold text-amber-800">
+              {insigniasObtenidas.length} / {INSIGNIAS_CATALOGO.length}
+            </Text>
+          </View>
         </View>
-        <View className="flex-row gap-2 px-1">
+
+        {isMobile ? (
+          <View className="gap-2.5">
+            <View className="flex-row gap-2.5">
+              {INSIGNIAS_CATALOGO.slice(0, 2).map((insignia) => (
+                <SvgInsignia
+                  key={insignia.codigo}
+                  nombre={insignia.nombre}
+                  icono={insignia.icono}
+                  color={insignia.color}
+                  criterio={insignia.descripcion}
+                  obtenida={insigniaPorCodigo(insignia.codigo)}
+                  tamano={64}
+                />
+              ))}
+            </View>
+            <View className="flex-row gap-2.5">
+              {INSIGNIAS_CATALOGO.slice(2, 4).map((insignia) => (
+                <SvgInsignia
+                  key={insignia.codigo}
+                  nombre={insignia.nombre}
+                  icono={insignia.icono}
+                  color={insignia.color}
+                  criterio={insignia.descripcion}
+                  obtenida={insigniaPorCodigo(insignia.codigo)}
+                  tamano={64}
+                />
+              ))}
+            </View>
+          </View>
+        ) : (
+          <View className="flex-row gap-3">
+            {INSIGNIAS_CATALOGO.map((insignia) => (
+              <SvgInsignia
+                key={insignia.codigo}
+                nombre={insignia.nombre}
+                icono={insignia.icono}
+                color={insignia.color}
+                criterio={insignia.descripcion}
+                obtenida={insigniaPorCodigo(insignia.codigo)}
+                tamano={68}
+              />
+            ))}
+          </View>
+        )}
+      </View>
+
+      {/* Desafíos diarios */}
+      <View className="rounded-3xl bg-white border border-gray-200 p-4 gap-3">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center gap-2">
+            <View className="h-8 w-8 rounded-xl bg-emerald-100 items-center justify-center">
+              <Ionicons name="checkmark-done-outline" size={17} color="#047857" />
+            </View>
+            <Text className="text-[#801F3F] font-extrabold text-sm">Desafíos diarios</Text>
+          </View>
+          <Text className="text-[10px] text-gray-500 font-semibold">Gana hasta 20 pts hoy</Text>
+        </View>
+
+        <View className="flex-row gap-2">
           {desafiosDiarios.map((reto) => (
-            <TouchableOpacity
+            <View
               key={reto.codigo}
-              className={`flex-1 p-3 rounded-2xl border flex-col items-center gap-1 ${
-                reto.completado
-                  ? 'bg-emerald-50 border-emerald-200'
-                  : 'bg-white border-gray-200'
+              className={`flex-1 p-3 rounded-2xl border items-center gap-1.5 ${
+                reto.completado ? 'bg-emerald-50 border-emerald-200' : 'bg-gray-50/70 border-gray-200'
               }`}
             >
               <Ionicons
@@ -616,74 +756,162 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
                 size={22}
                 color={reto.completado ? '#16A34A' : '#9CA3AF'}
               />
-              <Text className="text-[9px] font-bold text-center leading-tight text-gray-700">
+              <Text className="text-[10px] font-bold text-center leading-tight text-gray-700">
                 {NOMBRE_DESAFIO[reto.codigo] ?? reto.nombre}
               </Text>
-              {reto.completado && (
-                <Text className="text-[10px] font-bold text-emerald-600">✓ Completado</Text>
-              )}
-            </TouchableOpacity>
+              {reto.completado ? (
+                <View className="flex-row items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5">
+                  <Ionicons name="checkmark" size={10} color="#047857" />
+                  <Text className="text-[9px] font-bold text-emerald-700">Listo</Text>
+                </View>
+              ) : null}
+            </View>
           ))}
         </View>
-        {resumen?.bonoDesafiosOtorgado && (
-          <Text className="text-[10px] font-bold text-emerald-700 text-center">
-            ¡Bono semanal de hasta 20 puntos obtenido!
-          </Text>
-        )}
+
+        {resumen?.bonoDesafiosOtorgado ? (
+          <View className="flex-row items-center justify-center gap-1.5 rounded-xl bg-emerald-50 py-2 px-3">
+            <Ionicons name="star" size={14} color="#047857" />
+            <Text className="text-[11px] font-bold text-emerald-800">
+              ¡Bono semanal de hasta 20 puntos obtenido!
+            </Text>
+          </View>
+        ) : null}
       </View>
 
-      <BentoCard className="rounded-3xl p-5 border border-purple-100 bg-purple-50/40 gap-4">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-row items-center gap-2">
-            <View className="w-9 h-9 rounded-xl bg-purple-100 items-center justify-center">
-              <Ionicons name="sparkles" size={18} color="#7C3AED" />
+      {/* Cómo vas en tu aprendizaje */}
+      <BentoCard className="rounded-3xl p-5 border border-purple-200/80 bg-white gap-4">
+        <View className="flex-row items-center justify-between gap-2">
+          <View className="flex-row items-center gap-2.5 flex-1">
+            <View className="w-10 h-10 rounded-2xl bg-purple-100 items-center justify-center">
+              <Ionicons name="sparkles" size={20} color="#7C3AED" />
             </View>
-            <Text className="text-base font-bold text-purple-950">¿Qué aprendí hoy?</Text>
+            <View className="flex-1">
+              <Text className="text-base font-black text-gray-900">Cómo vas en tu aprendizaje</Text>
+              <Text className="text-[11px] text-gray-500">Resumen diario y análisis personalizado</Text>
+            </View>
           </View>
           <StatusBadge label="Resumen IA" variant="brand" />
         </View>
-        <View className="rounded-2xl bg-white p-4 border border-purple-100 shadow-sm">
+
+        <View className="rounded-2xl bg-purple-50/60 p-4 border border-purple-100">
+          <View className="flex-row items-center gap-1.5 mb-1.5">
+            <Ionicons name="today-outline" size={14} color="#6D28D9" />
+            <Text className="text-[10px] font-black uppercase tracking-wider text-purple-900">
+              Actividad de hoy
+            </Text>
+          </View>
           <Text className="text-sm text-gray-800 leading-relaxed">{resumenNarrativo()}</Text>
-          <Text className="text-[10px] text-gray-500 mt-3">
-            {totalTemasHoy > 0 ? `Promedio de acierto hoy: ${Math.round(promedioAciertoHoy * 100)}% · ${totalTemasHoy} actividad${totalTemasHoy > 1 ? 'es' : ''} completada${totalTemasHoy > 1 ? 's' : ''}.` : 'Completa tu primera actividad para generar tu resumen.'}
+          <Text className="text-[11px] text-gray-500 mt-2.5">
+            {totalTemasHoy > 0
+              ? `${evaluacionesHoy.length ? `Promedio de evaluación: ${Math.round(promedioAciertoHoy * 100)}% · ` : ''}${totalTemasHoy} actividad${totalTemasHoy > 1 ? 'es' : ''} registrada${totalTemasHoy > 1 ? 's' : ''}.`
+              : 'Completa tu primera actividad para generar tu resumen.'}
           </Text>
         </View>
-        <TouchableOpacity onPress={handleOpenPerfil} className="self-start rounded-xl bg-[#801F3F] px-4 py-2 flex-row items-center gap-2"><Ionicons name="sparkles" size={15} color="white"/><Text className="text-xs font-bold text-white">Ver cómo voy</Text></TouchableOpacity>
+
+        {perfil ? (
+          <View className="rounded-2xl bg-slate-50 p-4 border border-slate-200 gap-2.5">
+            <View className="flex-row items-center justify-between">
+              <Text className="text-[10px] font-black uppercase tracking-wider text-violet-900">
+                Vista previa de tu informe
+              </Text>
+              <View className="rounded-full bg-violet-100 px-2 py-0.5">
+                <Text className="text-[10px] font-bold text-violet-800">{perfil.completed_topics ?? 0} temas</Text>
+              </View>
+            </View>
+            <View className="gap-1.5">
+              <Text className="text-xs text-gray-800 leading-5">
+                <Text className="font-bold text-gray-900">Tu ritmo: </Text>
+                {perfil.learning_rhythm}
+              </Text>
+              <Text className="text-xs text-gray-800 leading-5">
+                <Text className="font-bold text-gray-900">Aprendes mejor con: </Text>
+                {perfil.preferred_formats.map((f) => ETIQUETAS_FORMATO[f] || f.replaceAll('_', ' ')).join(', ') ||
+                  perfil.learning_orientation.replaceAll('_', ' ')}
+              </Text>
+              <Text className="text-xs text-gray-800 leading-5">
+                <Text className="font-bold text-gray-900">Siguiente recomendación: </Text>
+                {perfil.personalization_recommendation}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View className="flex-row items-center gap-2 rounded-2xl bg-gray-50 px-3.5 py-3 border border-gray-200">
+            <Ionicons name="information-circle-outline" size={16} color="#6B7280" />
+            <Text className="flex-1 text-[11px] text-gray-600">
+              {perfilAutoLoading
+                ? 'Preparando tu análisis de ritmo, estilo y recomendaciones…'
+                : 'Completa un resumen y una actividad para desbloquear tu informe detallado.'}
+            </Text>
+          </View>
+        )}
+
+        <View className="flex-row gap-2.5">
+          <TouchableOpacity
+            onPress={handleOpenPerfil}
+            className="flex-1 rounded-2xl bg-[#801F3F] px-4 py-3 flex-row items-center justify-center gap-2 shadow-sm"
+          >
+            <Ionicons name="analytics-outline" size={16} color="#FFFFFF" />
+            <Text className="text-xs font-extrabold text-white">Ver informe completo</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleOpenTienda}
+            className="rounded-2xl bg-amber-50 border border-amber-200 px-4 py-3 flex-row items-center justify-center gap-1.5"
+          >
+            <Ionicons name="bag-handle-outline" size={16} color="#B45309" />
+            <Text className="text-xs font-extrabold text-amber-900">Tienda</Text>
+          </TouchableOpacity>
+        </View>
       </BentoCard>
 
-      <View className="flex-row gap-3">
-        <TouchableOpacity onPress={handleOpenTienda} className="flex-1 rounded-3xl bg-[#801F3F] items-center justify-center p-4">
-          <Ionicons name="bag-handle-outline" size={30} color="#F3D9B7" /><Text className="text-[#F3D9B7] text-xs font-bold mt-2">Tienda de Recompensas</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={handleOpenPerfil} className="flex-1 rounded-3xl bg-white border border-gray-200 p-4 justify-center">
-          <View className="flex-row items-center justify-between"><Text className="text-gray-500 text-[10px] font-bold">Resumen de aprendizaje</Text><Ionicons name="locate-outline" size={17} color="#801F3F" /></View>
-          <Text className="text-[#801F3F] text-xs font-bold mt-3">Revisa tu rendimiento</Text>
-        </TouchableOpacity>
-      </View>
-
+      {/* Modal Tienda */}
       <Modal visible={tiendaModalOpen} animationType="fade" transparent onRequestClose={() => setTiendaModalOpen(false)}>
         <View className="flex-1 bg-black/60 justify-center items-center p-4">
           <View className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl max-h-[85%]">
             <View className="bg-amber-600 p-5 flex-row items-center justify-between">
               <View className="flex-1">
                 <Text className="text-white text-base font-black">Tienda de Recompensas</Text>
-                <Text className="text-white/80 text-xs">Tus Puntos: {puntosInd} pts</Text>
+                <Text className="text-white/85 text-xs">Tus puntos disponibles: {puntosInd} pts</Text>
               </View>
-              <TouchableOpacity onPress={() => setTiendaModalOpen(false)} className="w-8 h-8 rounded-full bg-white/20 items-center justify-center">
+              <TouchableOpacity
+                onPress={() => setTiendaModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/20 items-center justify-center"
+              >
                 <Ionicons name="close" size={18} color="#FFFFFF" />
               </TouchableOpacity>
             </View>
             <ScrollView className="p-4" contentContainerClassName="gap-3">
-              {recompensas.length === 0 ? <Text className="py-8 text-center text-xs text-gray-500">La tienda no tiene artículos disponibles ahora.</Text> : null}
+              {recompensas.length === 0 ? (
+                <Text className="py-8 text-center text-xs text-gray-500">
+                  La tienda no tiene artículos disponibles ahora.
+                </Text>
+              ) : null}
               {recompensas.map((rec) => (
-                <View key={rec.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex-row items-center justify-between">
+                <View
+                  key={rec.id}
+                  className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex-row items-center justify-between"
+                >
                   <View className="flex-1 pr-3">
                     <Text className="text-xs font-bold text-gray-900">{rec.nombre}</Text>
                     <Text className="text-[11px] text-gray-500 mt-0.5">{rec.descripcion}</Text>
-                    <Text className="text-xs font-black text-amber-700 mt-1">{rec.costoPuntosIndividuales} pts</Text>
+                    <Text className="text-xs font-black text-amber-700 mt-1">
+                      {rec.costoPuntosIndividuales} pts
+                    </Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleComprarRecompensa(rec)} disabled={comprando || puntosInd < rec.costoPuntosIndividuales} className={`px-3 py-2 rounded-xl ${puntosInd >= rec.costoPuntosIndividuales ? 'bg-amber-600 hover:bg-amber-700' : 'bg-gray-200'}`}>
-                    <Text className={`text-xs font-bold ${puntosInd >= rec.costoPuntosIndividuales ? 'text-white' : 'text-gray-400'}`}>Canjear</Text>
+                  <TouchableOpacity
+                    onPress={() => void handleComprarRecompensa(rec)}
+                    disabled={comprando || puntosInd < rec.costoPuntosIndividuales}
+                    className={`px-3.5 py-2 rounded-xl ${
+                      puntosInd >= rec.costoPuntosIndividuales ? 'bg-amber-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <Text
+                      className={`text-xs font-bold ${
+                        puntosInd >= rec.costoPuntosIndividuales ? 'text-white' : 'text-gray-400'
+                      }`}
+                    >
+                      Canjear
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -692,17 +920,62 @@ export function EstudianteDashboardScreen({ onNavigate }: { onNavigate?: (route:
         </View>
       </Modal>
 
+      {/* Modal Rangos */}
       <Modal visible={rangosModalOpen} transparent animationType="fade" onRequestClose={() => setRangosModalOpen(false)}>
-        <View className="flex-1 bg-black/60 justify-center p-4"><View className="max-h-[85%] rounded-3xl bg-white p-5">
-          <View className="mb-3 flex-row items-center justify-between"><Text className="text-lg font-black text-gray-900">Rangos y XP</Text><TouchableOpacity onPress={() => setRangosModalOpen(false)}><Ionicons name="close" size={22} color="#374151"/></TouchableOpacity></View>
-          <ScrollView contentContainerClassName="gap-2">
-            {[{ id: 'D', nombre: 'Explorador', desde: 0, hasta: 999 }, { id: 'C', nombre: 'Aprendiz', desde: 1000, hasta: 1999 }, { id: 'B', nombre: 'Avanzado', desde: 2000, hasta: 4499 }, { id: 'A', nombre: 'Experto', desde: 4500, hasta: 5999 }, { id: 'S', nombre: 'Maestro', desde: 6000, hasta: 6700 }].map((item) => <View key={item.id} className={`rounded-xl border p-3 ${rango === item.id ? 'border-[#801F3F] bg-rose-50' : 'border-gray-200'}`}><Text className="font-black text-gray-900">{item.id} · {item.nombre}{rango === item.id ? ' (actual)' : ''}</Text><Text className="mt-1 text-xs text-gray-600">{item.desde}–{item.hasta} XP · Sube al alcanzar {item.desde} XP</Text></View>)}
-          </ScrollView>
-        </View></View>
+        <View className="flex-1 bg-black/60 justify-center items-center p-4">
+          <View className="w-full max-w-md rounded-3xl bg-white p-5 gap-2.5 shadow-2xl">
+            <View className="flex-row items-center justify-between mb-1">
+              <View className="flex-row items-center gap-2">
+                <Ionicons name="shield-checkmark-outline" size={20} color="#801F3F" />
+                <Text className="text-lg font-black text-gray-900">Rangos y experiencia</Text>
+              </View>
+              <TouchableOpacity onPress={() => setRangosModalOpen(false)}>
+                <Ionicons name="close" size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+            {RANGOS_LISTA.map((item) => {
+              const actual = rango === item.id;
+              return (
+                <View
+                  key={item.id}
+                  className={`flex-row items-center gap-3 rounded-2xl border p-3 ${
+                    actual ? 'border-[#801F3F] bg-rose-50/70' : 'border-gray-200 bg-gray-50/50'
+                  }`}
+                >
+                  <View
+                    style={{ backgroundColor: item.color }}
+                    className="h-10 w-10 rounded-xl items-center justify-center"
+                  >
+                    <Text className="text-base font-black text-white">{item.id}</Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-extrabold text-sm text-gray-900">
+                      {item.nombre}
+                      {actual ? ' (Tu rango actual)' : ''}
+                    </Text>
+                    <Text className="text-xs text-gray-600">
+                      {item.desde === 0 ? 'Rango inicial' : `Alcanza ${item.desde.toLocaleString('es-BO')} XP para subir`}
+                    </Text>
+                  </View>
+                  {actual ? <Ionicons name="checkmark-circle" size={20} color="#801F3F" /> : null}
+                </View>
+              );
+            })}
+            <TouchableOpacity onPress={() => setRangosModalOpen(false)} className="mt-2 rounded-xl bg-[#801F3F] p-3">
+              <Text className="text-center font-bold text-white">Cerrar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
-      <InformeAprendizajeModal visible={perfilOpen} loading={perfilLoading} error={perfilError} perfil={perfil} onClose={() => setPerfilOpen(false)} onRetry={handleOpenPerfil} />
-      <ModalRespuestaPregunta visible={respuestaModalOpen} {...(respuestaPregunta ?? { pregunta: '', respuestaEstudiante: '', respuestaCorrecta: '' })} onClose={() => setRespuestaModalOpen(false)} />
+      <InformeAprendizajeModal
+        visible={perfilOpen}
+        loading={perfilLoading}
+        error={perfilError}
+        perfil={perfil}
+        onClose={() => setPerfilOpen(false)}
+        onRetry={handleOpenPerfil}
+      />
     </ScrollView>
   );
 }

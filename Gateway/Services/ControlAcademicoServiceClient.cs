@@ -1,18 +1,9 @@
 namespace RestApi.Services;
 
-public sealed class ControlAcademicoServiceClient
+// gateway -> cliente servicio control academico
+public sealed class ControlAcademicoServiceClient(HttpClient http, IConfiguration config)
+    : DownstreamServiceClient(http, config, "Services:ControlAcademicoService", TimeSpan.FromMinutes(2), "http://localhost:8888")
 {
-    private readonly HttpClient _http;
-
-    public ControlAcademicoServiceClient(HttpClient http, IConfiguration config)
-    {
-        _http = http;
-        var baseUrl = config["Services:ControlAcademicoService"] ?? "http://localhost:8888";
-        _http.BaseAddress = new Uri(baseUrl);
-        _http.Timeout = TimeSpan.FromMinutes(2);
-    }
-
-    // Asistencia
     public Task<HttpResponseMessage> GetAsistenciasAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/asistencia{ForwardQueryString(request)}", request);
 
@@ -37,7 +28,6 @@ public sealed class ControlAcademicoServiceClient
     public Task<HttpResponseMessage> GetAsistenciaEstudianteAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/asistencia/estudiante{queryString}", request);
 
-    // Calificaciones
     public Task<HttpResponseMessage> GetCalificacionesAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/calificaciones{ForwardQueryString(request)}", request);
 
@@ -56,7 +46,6 @@ public sealed class ControlAcademicoServiceClient
     public Task<HttpResponseMessage> GetReporteCalificacionesMateriaAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/calificaciones/reporte/materia{queryString}", request);
 
-    // Temas
     public Task<HttpResponseMessage> GetTemasAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/temas{ForwardQueryString(request)}", request);
 
@@ -84,7 +73,6 @@ public sealed class ControlAcademicoServiceClient
     public Task<HttpResponseMessage> GetTemasEvaluacionAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/temas/evaluacion{queryString}", request);
 
-    // Examenes
     public Task<HttpResponseMessage> GetExamenesAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/examenes{ForwardQueryString(request)}", request);
 
@@ -106,7 +94,6 @@ public sealed class ControlAcademicoServiceClient
     public Task<HttpResponseMessage> GetResultadosExamenAsync(long id, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/examenes/{id}/resultados", request);
 
-    // Reportes
     public Task<HttpResponseMessage> GetReporteAsistenciaCursoAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/reportes/asistencia{queryString}", request);
 
@@ -121,66 +108,4 @@ public sealed class ControlAcademicoServiceClient
 
     public Task<HttpResponseMessage> GetReportePDFAsync(string queryString, HttpRequest request)
         => ForwardAsync(HttpMethod.Get, $"/reportes/pdf{queryString}", request);
-
-    // Health
-    public Task<HttpResponseMessage> HealthAsync()
-        => _http.GetAsync("/health");
-
-    // metodo -> reenviar peticion con cabeceras
-    private async Task<HttpResponseMessage> ForwardAsync(HttpMethod method, string path, HttpRequest incomingRequest)
-    {
-        using var message = new HttpRequestMessage(method, path);
-
-        incomingRequest.EnableBuffering();
-        if (incomingRequest.Body.CanSeek)
-        {
-            incomingRequest.Body.Position = 0;
-        }
-
-        if (incomingRequest.ContentLength > 0 || incomingRequest.Headers.ContainsKey("Content-Type"))
-        {
-            using var ms = new MemoryStream();
-            await incomingRequest.Body.CopyToAsync(ms);
-            var bytes = ms.ToArray();
-
-            if (bytes.Length == 0 && incomingRequest.Body.CanSeek)
-            {
-                incomingRequest.Body.Position = 0;
-                await incomingRequest.Body.CopyToAsync(ms);
-                bytes = ms.ToArray();
-            }
-
-            var content = new ByteArrayContent(bytes);
-            if (!string.IsNullOrEmpty(incomingRequest.ContentType))
-            {
-                content.Headers.TryAddWithoutValidation("Content-Type", incomingRequest.ContentType);
-            }
-            content.Headers.ContentLength = bytes.Length;
-            message.Content = content;
-        }
-
-        CopyHeaderIfPresent(incomingRequest, message, "Authorization");
-        CopyHeaderIfPresent(incomingRequest, message, "User-Agent");
-        CopyHeaderIfPresent(incomingRequest, message, "X-Forwarded-For");
-        CopyHeaderIfPresent(incomingRequest, message, "X-Real-IP");
-
-        if (!message.Headers.Contains("X-Forwarded-For") && incomingRequest.HttpContext.Connection.RemoteIpAddress != null)
-        {
-            message.Headers.TryAddWithoutValidation("X-Forwarded-For", incomingRequest.HttpContext.Connection.RemoteIpAddress.ToString());
-        }
-
-        return await _http.SendAsync(message);
-    }
-
-    private static void CopyHeaderIfPresent(HttpRequest src, HttpRequestMessage dest, string headerName)
-    {
-        if (src.Headers.TryGetValue(headerName, out var values))
-        {
-            dest.Headers.TryAddWithoutValidation(headerName, values.ToArray());
-        }
-    }
-
-    // proxy -> reenviar query string
-    public static string ForwardQueryString(HttpRequest request)
-        => request.QueryString.HasValue ? request.QueryString.Value! : string.Empty;
 }
