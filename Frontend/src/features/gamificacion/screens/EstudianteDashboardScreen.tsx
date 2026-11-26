@@ -607,7 +607,7 @@ export function EstudianteDashboardScreen(_props: { onNavigate?: (route: string)
             </View>
             <View className="flex-row items-center justify-between pt-0.5">
               <Text className="text-white/80 text-[11px] flex-1" numberOfLines={1}>
-                Faltan {puntosFaltantes} XP para subir
+                Faltan {puntosFaltantes} XP para subir de nivel
               </Text>
               <TouchableOpacity
                 onPress={() => setRangosModalOpen(true)}

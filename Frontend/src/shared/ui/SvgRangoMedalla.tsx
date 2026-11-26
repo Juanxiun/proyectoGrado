@@ -1,39 +1,34 @@
-// SvgRangoMedalla -> escudo de rango con sombra en forma de escudo y letra de alto contraste
-import { Svg, Path, Polygon, Defs, LinearGradient, Stop, Text } from 'react-native-svg';
+// SvgRangoMedalla -> emblema de rango con degradado metálico y corona
+import { Svg, Circle, Path, Polygon, Defs, LinearGradient, Stop, Text } from 'react-native-svg';
 
 interface SvgRangoMedallaProps {
   rango: string;
-  nivel?: number;
+  nivel: number;
   colorRango: string;
   tamano?: number;
 }
 
-const PALETA_RANGO: Record<
-  string,
-  { claro: string; medio: string; oscuro: string; borde: string; texto: string; bordeTexto: string }
-> = {
-  D: { claro: '#94A3B8', medio: '#475569', oscuro: '#1E293B', borde: '#E2E8F0', texto: '#F8FAFC', bordeTexto: '#0F172A' },
-  C: { claro: '#D98A4E', medio: '#9A5423', oscuro: '#5C2E0E', borde: '#FDE68A', texto: '#FFFBEB', bordeTexto: '#3B1A06' },
-  B: { claro: '#60A5FA', medio: '#2563EB', oscuro: '#1E3A8A', borde: '#DBEAFE', texto: '#FFFFFF', bordeTexto: '#0F172A' },
-  A: { claro: '#FBBF24', medio: '#D97706', oscuro: '#78350F', borde: '#FEF3C7', texto: '#FFFBEB', bordeTexto: '#451A03' },
-  S: { claro: '#F87171', medio: '#DC2626', oscuro: '#7F1D1D', borde: '#FEE2E2', texto: '#FEF08A', bordeTexto: '#450A0A' },
+const PALETA_RANGO: Record<string, { claro: string; medio: string; oscuro: string; borde: string; nombre: string }> = {
+  D: { claro: '#E2E8F0', medio: '#94A3B8', oscuro: '#475569', borde: '#CBD5E1', nombre: 'EXPLORADOR' },
+  C: { claro: '#F5CBA7', medio: '#B87333', oscuro: '#6E3B16', borde: '#FDEBD0', nombre: 'APRENDIZ' },
+  B: { claro: '#93C5FD', medio: '#2563EB', oscuro: '#1E3A8A', borde: '#DBEAFE', nombre: 'AVANZADO' },
+  A: { claro: '#FDE68A', medio: '#D97706', oscuro: '#78350F', borde: '#FEF3C7', nombre: 'EXPERTO' },
+  S: { claro: '#FCA5A5', medio: '#DC2626', oscuro: '#7F1D1D', borde: '#FEE2E2', nombre: 'MAESTRO' },
 };
-
-const SHIELD_PATH = 'M60 10 L102 27 L96 75 C94 91 78 103 60 109 C42 103 26 91 24 75 L18 27 Z';
 
 export function SvgRangoMedalla({
   rango,
+  nivel,
   colorRango,
-  tamano = 112,
+  tamano = 124,
 }: SvgRangoMedallaProps) {
   const clave = rango.toUpperCase();
   const paleta = PALETA_RANGO[clave] ?? {
     claro: colorRango,
     medio: colorRango,
-    oscuro: '#1E293B',
+    oscuro: '#334155',
     borde: '#FFFFFF',
-    texto: '#FFFFFF',
-    bordeTexto: '#0F172A',
+    nombre: `RANGO ${clave}`,
   };
   const gradId = `rangoGrad_${clave}_${tamano}`;
   const brilloId = `rangoGlow_${clave}_${tamano}`;
@@ -43,74 +38,71 @@ export function SvgRangoMedalla({
       <Defs>
         <LinearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="100%">
           <Stop offset="0%" stopColor={paleta.claro} />
-          <Stop offset="55%" stopColor={paleta.medio} />
+          <Stop offset="48%" stopColor={paleta.medio} />
           <Stop offset="100%" stopColor={paleta.oscuro} />
         </LinearGradient>
         <LinearGradient id={brilloId} x1="0%" y1="0%" x2="0%" y2="100%">
-          <Stop offset="0%" stopColor="rgba(255,255,255,0.22)" />
-          <Stop offset="100%" stopColor="rgba(255,255,255,0)" />
+          <Stop offset="0%" stopColor="rgba(255,255,255,0.45)" />
+          <Stop offset="100%" stopColor="rgba(255,255,255,0.0)" />
         </LinearGradient>
       </Defs>
 
-      {/* Sombra con forma de escudo (sin círculo) */}
-      <Path d={SHIELD_PATH} fill="rgba(0,0,0,0.34)" transform="translate(0, 6) scale(1.02) translate(-1.2, -1)" />
-      <Path d={SHIELD_PATH} fill="rgba(0,0,0,0.18)" transform="translate(0, 3) scale(1.05) translate(-3, -2.5)" />
+      {/* Halo exterior sutil */}
+      <Circle cx="60" cy="60" r="56" fill="rgba(255,255,255,0.12)" stroke="rgba(255,255,255,0.28)" strokeWidth="1.5" />
 
-      {/* Escudo principal */}
+      {/* Escudo / emblema hexagonal redondeado */}
       <Path
-        d={SHIELD_PATH}
+        d="M60 10 L102 28 L96 76 C94 92 78 104 60 110 C42 104 26 92 24 76 L18 28 Z"
         fill={`url(#${gradId})`}
         stroke={paleta.borde}
         strokeWidth="3"
         strokeLinejoin="round"
       />
 
-      {/* Marco interior sutil */}
+      {/* Borde interior */}
       <Path
-        d="M60 17 L95 31 L90 73 C88 86 75 96 60 101 C45 96 32 86 30 73 L25 31 Z"
+        d="M60 17 L95 32 L90 74 C88 87 75 97 60 102 C45 97 32 87 30 74 L25 32 Z"
         fill="none"
-        stroke="rgba(255,255,255,0.32)"
+        stroke="rgba(255,255,255,0.4)"
         strokeWidth="1.2"
       />
 
-      {/* Reflejo superior suave sin tapar la letra */}
+      {/* Brillo superior */}
       <Path
-        d="M60 17 L95 31 L93 46 C75 40 45 40 27 46 L25 31 Z"
+        d="M60 17 L95 32 L92 54 C76 47 44 47 28 54 L25 32 Z"
         fill={`url(#${brilloId})`}
       />
 
-      {/* Estrella decorativa superior */}
+      {/* Estrella superior */}
       <Polygon
-        points="60,21 62.2,25.8 67.4,26.5 63.5,30 64.5,35.1 60,32.6 55.5,35.1 56.5,30 52.6,26.5 57.8,25.8"
-        fill={paleta.borde}
-        opacity="0.95"
+        points="60,21 62.6,26.6 68.8,27.4 64.2,31.6 65.4,37.6 60,34.6 54.6,37.6 55.8,31.6 51.2,27.4 57.4,26.6"
+        fill="#FFFFFF"
+        opacity="0.92"
       />
 
-      {/* Sombra de la letra para máximo contraste */}
+      {/* Letra del rango */}
       <Text
         x="60"
-        y="83"
+        y="74"
         textAnchor="middle"
-        fill={paleta.bordeTexto}
-        fontSize="50"
+        fill="#FFFFFF"
+        fontSize="42"
         fontWeight="900"
-        opacity="0.55"
       >
         {clave}
       </Text>
 
-      {/* Letra principal del rango */}
+      {/* Etiqueta inferior de nivel / categoría */}
       <Text
         x="60"
-        y="80"
+        y="91"
         textAnchor="middle"
-        fill={paleta.texto}
-        stroke={paleta.bordeTexto}
-        strokeWidth="1.5"
-        fontSize="50"
-        fontWeight="900"
+        fill="rgba(255,255,255,0.94)"
+        fontSize="8.5"
+        fontWeight="800"
+        letterSpacing="0.8"
       >
-        {clave}
+        {`${paleta.nombre} · NV ${nivel}`}
       </Text>
     </Svg>
   );

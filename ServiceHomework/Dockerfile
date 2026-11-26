@@ -1,8 +1,8 @@
-﻿FROM denoland/deno:2.9.7
+FROM docker.io/denoland/deno:2.9.7
 
 WORKDIR /app
 
-COPY deno.json deno.lock* ./
+COPY deno.json ./
 RUN deno install --frozen=false
 
 COPY . .

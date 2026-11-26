@@ -82,9 +82,11 @@ dotnet build RestApi.csproj    # verificacion (el warning NU1903 de Microsoft.Op
 Desde la raíz del repositorio:
 
 ```powershell
-docker compose -p shalom_backend --env-file .env up -d rest-api
-docker compose -p shalom_backend --env-file .env build rest-api   # tras cambiar codigo C#
-docker compose -p shalom_backend --env-file .env logs -f rest-api
+docker compose -p shalom_backend --env-file .env up -d api-gateway
+docker compose -p shalom_backend --env-file .env build api-gateway   # tras cambiar codigo C#
+docker compose -p shalom_backend --env-file .env logs -f api-gateway
 ```
 
-Contenedor `shalom_rest_api` (puertos 5141 y 7064). **No tiene hot reload** (sin volume): cualquier cambio de C# requiere rebuild. Dentro de la red compose lo configuran `Gateway__PublicUrl=http://rest-api:5141` y `Services__*Service=http://service-*:888x`.
+Contenedor `shalom_api_gateway` (puertos 5141 y 7064). **No tiene hot reload** (sin volume): cualquier cambio de C# requiere rebuild. Dentro de la red compose lo configuran `Gateway__PublicUrl=http://api-gateway:5141` y `Services__*Service=http://service-*:888x`.
+
+Para Podman desde la raíz del repositorio, usa `podman-compose -f podman-compose.yml --env-file .env up -d`. Para reconstruir solo el gateway: `podman-compose -f podman-compose.yml --env-file .env build api-gateway` y luego `podman-compose -f podman-compose.yml --env-file .env up -d api-gateway`.

@@ -1,0 +1,136 @@
+name: shalom-infra
+
+x-podman:
+  in_pod: false
+
+services:
+  postgresdb:
+    image: docker.io/library/postgres:16-alpine
+    container_name: postgresdb
+    restart: unless-stopped
+    command:
+      - postgres
+    environment:
+      POSTGRES_PASSWORD: "S@ndia1234"
+      POSTGRES_USER: Juanxiu
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "Juanxiu"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 2G
+    volumes:
+      - podman-postgres-data:/var/lib/postgresql/data
+    networks:
+      - shalom_infra
+
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:9.17
+    container_name: pgadmin
+    restart: unless-stopped
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_PASSWORD: "S@ndia1234"
+      PGADMIN_CONFIG_SERVER_MODE: "True"
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+    ports:
+      - "30001:80"
+    volumes:
+      - podman-pgadmin-data:/var/lib/pgadmin
+    networks:
+      - shalom_infra
+
+  redisinsightpanel:
+    image: docker.io/redis/redisinsight:latest
+    container_name: redisinsightpanel
+    restart: unless-stopped
+    ports:
+      - "8002:5540"
+    volumes:
+      - podman-redis-insight-data:/data
+    networks:
+      - shalom_infra
+
+  rediscacheserver:
+    image: docker.io/library/redis:7.4-alpine
+    container_name: rediscacheserver
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --user
+      - default
+      - "off"
+      - --user
+      - admin
+      - "on"
+      - ">AdminCachePass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --user
+      - cache_user
+      - "on"
+      - ">UserCachePass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --appendonly
+      - "no"
+    ports:
+      - "6379:6379"
+    volumes:
+      - podman-redis-cache-data:/data
+    networks:
+      - shalom_infra
+
+  redisragserver:
+    image: docker.io/redis/redis-stack-server:latest
+    container_name: redisragserver
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --protected-mode
+      - "no"
+      - --user
+      - default
+      - "off"
+      - --user
+      - admin
+      - "on"
+      - ">AdminRagPass123"
+      - "~*"
+      - "&*"
+      - "+@all"
+      - --appendonly
+      - "yes"
+    ports:
+      - "6380:6379"
+    volumes:
+      - podman-redis-rag-data:/data
+    networks:
+      - shalom_infra
+
+volumes:
+  podman-postgres-data:
+  podman-pgadmin-data:
+  podman-redis-insight-data:
+  podman-redis-cache-data:
+  podman-redis-rag-data:
+
+networks:
+  shalom_infra:
+    name: shalom_infra
+    driver: bridge
